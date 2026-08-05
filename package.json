@@ -47,10 +47,19 @@
     "marked": "^15.0.12"
   },
   "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "0.73.1",
+    "@earendil-works/pi-coding-agent": "^0.83.0",
     "@types/node": "^24.5.2",
     "prettier": "^3.8.4",
     "typescript": "^5.9.3",

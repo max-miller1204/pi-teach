@@ -21,7 +21,7 @@
  *   scaffold_lesson        — create a lesson from the canonical template
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { ClassroomBridge } from "./src/bridge.js";
 import { registerClassroomCommands } from "./src/commands.js";
