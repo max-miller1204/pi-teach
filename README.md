@@ -30,6 +30,15 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
 - **Canonical storage.** One place for all teaching material, so lessons are not
   scattered across whatever directory you happened to be in.
 
+## Install
+
+```bash
+pi install npm:pi-teach
+```
+
+The extension registers two commands, `/teach` and `/classroom`, four tools, and a status
+widget. It has one runtime dependency (`marked`) and no build step.
+
 ## What it looks like
 
 A classroom collects its lessons in order, alongside its mission, reference sheets, and
@@ -65,15 +74,6 @@ cards, and grades included.
 ![The same lesson in dark mode, showing a card and a graded quiz](screenshots/lesson-dark.png)
 
 <sub>Screenshots use a throwaway demo classroom, not real teaching material.</sub>
-
-## Install
-
-```bash
-pi install npm:pi-teach
-```
-
-The extension registers two commands, `/teach` and `/classroom`, four tools, and a status
-widget. It has one runtime dependency (`marked`) and no build step.
 
 ## Usage
 
