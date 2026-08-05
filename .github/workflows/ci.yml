@@ -30,6 +30,13 @@ jobs:
       - name: Verify packed tarball
         run: npm run test:pack
 
+      # Reason: `npm audit` walks the dev tree too, which here means auditing the Pi CLI
+      # we depend on only for `import type`. That code never runs and never ships, so it
+      # produces permanent noise that hides the one thing worth failing on: a problem in
+      # the runtime dependencies that actually reach users.
+      - name: Audit production dependencies
+        run: npm run audit
+
   version-guard:
     # Reason: main publishes whatever version the PR merged. If that version already
     # exists on the registry the release job would fail after merge, so fail here instead
