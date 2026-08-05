@@ -54,17 +54,16 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Reason: with the real version out, the `rc` tag would otherwise keep pointing at a
-      # candidate older than `latest`. Removing it is what makes `rc` mean "unreleased".
-      - name: Retire the rc dist-tag
-        if: steps.v.outputs.published == 'false'
-        continue-on-error: true
-        run: npm dist-tag rm "${{ steps.v.outputs.name }}" rc
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # Reason: prereleases cannot be unpublished after 72h, so deprecation is the only
-      # way to mark them superseded. Best-effort: never fail a release over hygiene.
+      # Reason: the `rc` dist-tag is deliberately NOT removed here. npm treats standalone
+      # dist-tag writes as 2FA-protected operations, and a token cannot produce a one-time
+      # password, so `npm dist-tag rm` returns 403 from CI on any 2FA-enforced account
+      # (publish and deprecate are exempt, which is why they work). The guarantee that
+      # matters — `pi install npm:pi-teach` never resolving to a candidate — is provided by
+      # `latest`, not by the absence of `rc`. Superseded candidates are marked by the
+      # deprecation below instead. See RELEASING.md; clearing `rc` needs a human with an OTP.
+      #
+      # Prereleases also cannot be unpublished after 72h, so deprecation is the only
+      # durable way to mark them superseded. Best-effort: never fail a release over hygiene.
       - name: Deprecate this version's candidates
         if: steps.v.outputs.published == 'false'
         continue-on-error: true
@@ -84,6 +83,24 @@ jobs:
             echo "deprecating $NAME@$v"
             npm deprecate "$NAME@$v" "Superseded by $NAME@$VERSION" || true
           done
+
+      - name: Summarise
+        if: steps.v.outputs.published == 'false'
+        env:
+          NAME: ${{ steps.v.outputs.name }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          {
+            echo "### Released \`$NAME@$VERSION\` as \`latest\`"
+            echo
+            echo "Candidates for this version are deprecated. The \`rc\` dist-tag still points"
+            echo "at the newest candidate — npm requires a one-time password to change a"
+            echo "dist-tag, so CI cannot clear it. To clear it by hand:"
+            echo
+            echo '```bash'
+            echo "npm dist-tag rm $NAME rc   # prompts for your OTP"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Tag and create GitHub release
         if: steps.v.outputs.published == 'false'
