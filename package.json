@@ -1,6 +1,6 @@
 {
   "name": "pi-teach",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A teacher you can interrupt — interactive HTML lessons for Pi, wired back into the live session for highlight-to-ask questions and graded quizzes.",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,8 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/joshrnoll/pi-teach/main/screenshots/answer.png"
   },
   "files": [
     "index.ts",
