@@ -1,0 +1,100 @@
+name: publish-rc
+
+# Publishes a release candidate for every PR push, so the change can be tried with
+#   pi install npm:pi-teach@<version>
+# RCs go out under the `rc` dist-tag, never `latest`.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: publish-rc-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  publish-rc:
+    # Secrets are not exposed to pull_request runs from forks, so skip them rather than
+    # fail. Maintainer branches in this repo publish normally.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+      pull-requests: write # the "here is how to install it" comment
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+      # Reason: npm versions are immutable and can never be reused, so every push needs a
+      # unique one. PR number keeps concurrent PRs apart; run number is monotonic within
+      # a PR. The base version comes from package.json, so an RC always sorts below the
+      # release it is a candidate for (0.2.0-rc.4.17 < 0.2.0).
+      - name: Compute RC version
+        id: rc
+        run: |
+          base=$(node -p "require('./package.json').version")
+          if [[ "$base" == *-* ]]; then
+            echo "::error::package.json version ($base) is already a prerelease. Use a plain x.y.z."
+            exit 1
+          fi
+          rc="${base}-rc.${{ github.event.number }}.${{ github.run_number }}"
+          echo "version=$rc" >> "$GITHUB_OUTPUT"
+          echo "name=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
+          # --no-git-tag-version: the bump is for the tarball only, never committed.
+          npm version "$rc" --no-git-tag-version --allow-same-version
+          echo "publishing $rc"
+
+      - name: Publish to npm
+        run: npm publish --tag rc --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Comment install command
+        uses: actions/github-script@v8
+        env:
+          SPEC: ${{ steps.rc.outputs.name }}@${{ steps.rc.outputs.version }}
+        with:
+          script: |
+            const spec = process.env.SPEC;
+            const marker = '<!-- pi-teach-rc -->';
+            const body = [
+              marker,
+              '📦 **Release candidate published**',
+              '',
+              '```bash',
+              `pi install npm:${spec}`,
+              '```',
+              '',
+              'Or try it for a single run, without touching your settings:',
+              '',
+              '```bash',
+              `pi -e npm:${spec}`,
+              '```',
+              '',
+              `Remove it with \`pi remove npm:${spec.split('@').slice(0, -1).join('@')}\`.`,
+              'RCs are published under the `rc` dist-tag and are never installed by `npm:pi-teach`.',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number,
+            });
+            // Reason: update one comment in place instead of spamming the PR on every push.
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body?.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
