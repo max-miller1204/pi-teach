@@ -1,15 +1,12 @@
 # pi-teach
 
-A teacher you can interrupt. A [Pi](https://github.com/badlogic/pi-mono) extension.
+A fully-featured [Pi](https://github.com/badlogic/pi-mono) extension based on Matt Pocock's `teach` skill (see `docs/ATTRIBUTION.md`).
 
 Lessons are self-contained HTML documents stored under `~/.pi/agent/classrooms/`. A
 local server presents them — a landing page of classrooms, each with its lessons,
 reference material, and mission — and wires every lesson back to the agent running in
 your Pi session. Highlight any sentence to ask about it and the answer appears in a card
 pinned to that passage. Hand in a quiz and your teacher grades it.
-
-The pedagogy comes from Matt Pocock's `teach` skill (see `docs/ATTRIBUTION.md`); what is
-new here is that the lesson is live — you can talk back to it.
 
 ## Features
 
@@ -35,19 +32,6 @@ new here is that the lesson is live — you can talk back to it.
 
 ```bash
 pi install npm:pi-teach
-```
-
-Or track the repo directly:
-
-```bash
-pi install git:github.com/joshrnoll/pi-teach
-```
-
-Or from a local clone:
-
-```bash
-git clone https://github.com/joshrnoll/pi-teach
-pi install ./pi-teach
 ```
 
 The extension registers two commands, `/teach` and `/classroom`, four tools, and a status
@@ -124,20 +108,9 @@ Optional, at `~/.pi/agent/classroom.json`:
 | `port`     | ephemeral | Preferred port. If taken (another Pi session), an ephemeral port is used instead. |
 | `autoOpen` | `true`    | Whether `/classroom` opens your browser. `PI_CLASSROOM_AUTO_OPEN=0` overrides.    |
 
-## Writing lessons
-
-The teacher does this, but the contract is worth knowing:
-
-- `assets/templates/lesson.html` — the lesson template
-- `assets/templates/quiz.html` — the quiz markup contract, with the rules that matter
-- `assets/templates/reference.html` — the reference-document template
-
-A lesson is plain, self-contained HTML: open one from disk and it still reads fine. The
-shared stylesheet and the interactive runtime are injected when the server serves it, so
-lessons written months ago pick up runtime fixes without being rewritten. Mark the
-highlightable region with `data-cl-content`; `<main>` or `<article>` is used otherwise.
-
 ## Tools
+
+\*used by the agent
 
 | Tool                     | Purpose                                                                                                      |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
@@ -193,5 +166,4 @@ the anchoring logic is tested against the same code that runs.
 ## License
 
 MIT — see `LICENSE`. The teaching methodology under `docs/` is derived from the `teach`
-skill by [Matt Pocock](https://github.com/mattpocock/skills), also MIT; the attribution in
-`docs/ATTRIBUTION.md` and `docs/LICENSE.upstream` must travel with any copy of `docs/`.
+skill by [Matt Pocock](https://github.com/mattpocock/skills).

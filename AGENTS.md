@@ -125,6 +125,5 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   churn that flips back and forth between macOS and the Ubuntu CI runners. Use
   `npm install --package-lock-only` for lockfile edits, and `npm ci` to install.
 - Bump `version` in `package.json` for anything user-visible; the package is published.
-- Update `README.md` when routes, storage layout, config, or the markup contract change,
-  and `assets/templates/quiz.html` when the quiz contract changes — the model reads that
-  file, so it is documentation and API at once.
+- Update `assets/templates/quiz.html` when the quiz contract changes — the model reads
+  that file, so it is documentation and API at once.
