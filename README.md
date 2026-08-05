@@ -34,6 +34,12 @@ new here is that the lesson is live — you can talk back to it.
 ## Install
 
 ```bash
+pi install npm:pi-teach
+```
+
+Or track the repo directly:
+
+```bash
 pi install git:github.com/joshrnoll/pi-teach
 ```
 
@@ -170,9 +176,14 @@ highlightable region with `data-cl-content`; `<main>` or `<article>` is used oth
 
 ```bash
 npm install
-npm run check   # tsc --noEmit
-npm test        # vitest
+npm run check       # tsc --noEmit
+npm test            # vitest
+npm run test:pack   # verify the published tarball, not just the working tree
 ```
+
+`npm run test:pack -- --keep` prints a path you can hand to `pi -e` to run exactly what
+an npm consumer would install. Release candidates are published automatically for every
+pull request under the `rc` dist-tag — see [`RELEASING.md`](RELEASING.md).
 
 Browser code under `assets/runtime/` is `.mjs`/`.js` with hand-written `.d.mts` sidecars
 where TypeScript needs types — this repo has no build step, and the browser has to load

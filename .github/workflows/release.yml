@@ -1,0 +1,98 @@
+name: release
+
+# On merge to main: publish the version in package.json as `latest`, retire the `rc`
+# dist-tag, deprecate the candidates that led here, and cut a GitHub release.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # git tag + GitHub release
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:pack
+
+      # Reason: main moves for README typos and chores too. Only publish when the version
+      # actually changed, and make that a skip rather than a red X on every such commit.
+      - name: Resolve version
+        id: v
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is already on the registry; nothing to release."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.v.outputs.published == 'false'
+        run: npm publish --tag latest --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Reason: with the real version out, the `rc` tag would otherwise keep pointing at a
+      # candidate older than `latest`. Removing it is what makes `rc` mean "unreleased".
+      - name: Retire the rc dist-tag
+        if: steps.v.outputs.published == 'false'
+        continue-on-error: true
+        run: npm dist-tag rm "${{ steps.v.outputs.name }}" rc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Reason: prereleases cannot be unpublished after 72h, so deprecation is the only
+      # way to mark them superseded. Best-effort: never fail a release over hygiene.
+      - name: Deprecate this version's candidates
+        if: steps.v.outputs.published == 'false'
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NAME: ${{ steps.v.outputs.name }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          versions=$(npm view "$NAME" versions --json \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                const v=JSON.parse(s);
+                (Array.isArray(v)?v:[v])
+                  .filter(x=>x.startsWith(process.env.VERSION+'-rc.'))
+                  .forEach(x=>console.log(x));
+              })")
+          for v in $versions; do
+            echo "deprecating $NAME@$v"
+            npm deprecate "$NAME@$v" "Superseded by $NAME@$VERSION" || true
+          done
+
+      - name: Tag and create GitHub release
+        if: steps.v.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes

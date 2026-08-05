@@ -1,6 +1,6 @@
 {
   "name": "pi-teach",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A teacher you can interrupt — interactive HTML lessons for Pi, wired back into the live session for highlight-to-ask questions and graded quizzes.",
   "type": "module",
   "license": "MIT",
@@ -40,6 +40,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "tsc --noEmit",
+    "test:pack": "bash scripts/test-pack.sh",
+    "audit": "npm audit --omit=dev --audit-level=moderate",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
