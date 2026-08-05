@@ -9,12 +9,12 @@ Two rules explain everything else here:
 
 ## The flow
 
-| Event                                 | What CI does                                                                                                                           |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| PR opened / pushed                    | Verifies, then publishes `<version>-rc.<pr>.<run>` under the `rc` tag and comments the install command on the PR.                      |
-| PR with a stale version               | `version-guard` fails: the version in `package.json` is already on the registry. Bump it.                                              |
-| Merge to `main`                       | Publishes `<version>` as `latest`, removes the `rc` dist-tag, deprecates that version's candidates, tags `v<version>`, cuts a release. |
-| Merge that did not change the version | Release job skips publishing (README typos and chores do not need a release).                                                          |
+| Event                                 | What CI does                                                                                                      |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| PR opened / pushed                    | Verifies, then publishes `<version>-rc.<pr>.<run>` under the `rc` tag and comments the install command on the PR. |
+| PR with a stale version               | `version-guard` fails: the version in `package.json` is already on the registry. Bump it.                         |
+| Merge to `main`                       | Publishes `<version>` as `latest`, deprecates that version's candidates, tags `v<version>`, cuts a release.       |
+| Merge that did not change the version | Release job skips publishing (README typos and chores do not need a release).                                     |
 
 So the only manual step is bumping `version` in `package.json` inside the PR — which is
 also where the human judgement is (patch, minor, or major).
@@ -33,6 +33,29 @@ there is nothing to clean up and no risk of leaving a candidate installed.
 
 Because `rc` is a dist-tag, `npm view pi-teach@rc version` tells you the newest candidate
 across all open PRs, and `pi install npm:pi-teach` still gets the last real release.
+
+## Why the `rc` tag lingers after a release
+
+It keeps pointing at the newest candidate ever published, even once that candidate has
+shipped. That is deliberate, and it is a limitation rather than a preference.
+
+npm treats a standalone dist-tag write as a 2FA-protected operation. A CI token cannot
+produce a one-time password, so `npm dist-tag rm` fails with `403 Forbidden` on any account
+that enforces 2FA for writes — while `npm publish` and `npm deprecate` succeed, because
+those are exempt for automation credentials. A classic **Automation** token would bypass
+2FA entirely and make the delete work, but it is account-wide, cannot be scoped to one
+package, and rules out trusted publishing. Tidier metadata is not worth that.
+
+Nothing depends on `rc` being absent. The guarantee that matters — `pi install
+npm:pi-teach` never resolving to a candidate — comes from `latest`. Released candidates get
+marked instead: the release job deprecates them, so installing one prints
+`Superseded by pi-teach@<version>`.
+
+To clear the tag anyway, run it from your own machine, where you can answer the OTP prompt:
+
+```bash
+npm dist-tag rm pi-teach rc
+```
 
 ## Verifying before you publish
 

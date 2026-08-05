@@ -119,6 +119,11 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
 - After changes: `npm run check` and `npm test` from the repo root.
 - Commit `package-lock.json` with any dependency change — Pi runs `npm install` after
   cloning a git target, and publishing to npm relies on the same lockfile.
+- **Never commit a lockfile produced by a bare `npm install` on macOS.** The Pi dev
+  dependency pulls optional platform-gated packages (`@mariozechner/clipboard-*`), and
+  installing on one platform prunes the others from the lockfile — roughly 440 lines of
+  churn that flips back and forth between macOS and the Ubuntu CI runners. Use
+  `npm install --package-lock-only` for lockfile edits, and `npm ci` to install.
 - Bump `version` in `package.json` for anything user-visible; the package is published.
 - Update `README.md` when routes, storage layout, config, or the markup contract change,
   and `assets/templates/quiz.html` when the quiz contract changes — the model reads that
