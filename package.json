@@ -1,0 +1,65 @@
+{
+  "name": "pi-teach",
+  "version": "0.1.0",
+  "description": "A teacher you can interrupt — interactive HTML lessons for Pi, wired back into the live session for highlight-to-ask questions and graded quizzes.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Josh Noll",
+  "homepage": "https://github.com/joshrnoll/pi-teach#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joshrnoll/pi-teach.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joshrnoll/pi-teach/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "teaching",
+    "learning",
+    "classroom"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "assets",
+    "docs",
+    "examples",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "marked": "^15.0.12"
+  },
+  "peerDependencies": {
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "0.73.1",
+    "@types/node": "^24.5.2",
+    "prettier": "^3.8.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

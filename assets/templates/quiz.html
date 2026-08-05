@@ -1,0 +1,83 @@
+<!--
+  Canonical quiz markup — the contract between a lesson and the classroom runtime.
+
+  Use this for quizzes, tests, and checks on learning; they are the same thing at
+  different sizes. Paste a <form class="cl-quiz"> anywhere in a lesson and the
+  runtime hydrates it: it adds the submit button and status line, locks the form on
+  submit, writes the answers to the lesson's quiz/ directory, asks the teacher to
+  grade them, and renders the grade inline when it comes back.
+
+  Rules the runtime relies on:
+
+    * The form must carry class="cl-quiz" and a data-quiz-id unique within the lesson.
+    * Every question is .cl-q with a data-question-id unique within the quiz. Grades
+      are matched back to questions by that id, so never renumber them after a learner
+      has submitted.
+    * The visible question text lives in .cl-q-prompt. It is sent along with the
+      answer, so the teacher grades with the question in hand.
+    * Do not add your own submit button — the runtime supplies one. If you do add one,
+      it is reused rather than duplicated.
+
+  Rules that matter pedagogically:
+
+    * Never put the answer key in the HTML. The learner can read the page source, and
+      grading is the teacher's job. If you want to record the intended answers, write
+      them to <lesson>/quiz/key.json — the server never serves that directory as files.
+    * Make every option the same length, in words and ideally characters. Formatting
+      must not leak which answer is right.
+    * Prefer retrieval over recognition. A question the learner can answer by spotting
+      a familiar phrase builds fluency, not storage strength.
+-->
+
+<form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
+  <ol class="cl-questions">
+    <!-- Multiple choice: exactly one correct option. -->
+    <li class="cl-q" data-question-id="q1" data-type="choice">
+      <p class="cl-q-prompt">Which of these describes a borrow that outlives its owner?</p>
+      <ul class="cl-options">
+        <li>
+          <label><input type="radio" name="q1" value="a" /> A dangling reference error</label>
+        </li>
+        <li>
+          <label><input type="radio" name="q1" value="b" /> A double free condition</label>
+        </li>
+        <li>
+          <label><input type="radio" name="q1" value="c" /> A mutable aliasing conflict</label>
+        </li>
+        <li>
+          <label><input type="radio" name="q1" value="d" /> A stack overflow at runtime</label>
+        </li>
+      </ul>
+    </li>
+
+    <!-- Multi-select: any number of correct options. -->
+    <li class="cl-q" data-question-id="q2" data-type="multi">
+      <p class="cl-q-prompt">Select every statement that holds for an immutable borrow.</p>
+      <ul class="cl-options">
+        <li>
+          <label><input type="checkbox" name="q2" value="a" /> Many may exist at once</label>
+        </li>
+        <li>
+          <label><input type="checkbox" name="q2" value="b" /> It blocks mutable borrows</label>
+        </li>
+        <li>
+          <label><input type="checkbox" name="q2" value="c" /> It transfers ownership away</label>
+        </li>
+      </ul>
+    </li>
+
+    <!-- Short answer: graded by the teacher, so ask for reasoning. -->
+    <li class="cl-q" data-question-id="q3" data-type="short">
+      <p class="cl-q-prompt">
+        In your own words, why does the compiler reject two mutable borrows?
+      </p>
+      <textarea name="q3" rows="3"></textarea>
+    </li>
+
+    <!-- One-line answer, for a term or a value. -->
+    <li class="cl-q" data-question-id="q4" data-type="term">
+      <p class="cl-q-prompt">What is the name for the region of code where a borrow is valid?</p>
+      <input type="text" name="q4" />
+    </li>
+  </ol>
+</form>

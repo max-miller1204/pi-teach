@@ -1,0 +1,54 @@
+<!doctype html>
+<!--
+  Canonical reference-document template.
+
+  Reference documents live in <classroom>/reference/ and are the compressed essence
+  of what the lessons taught: cheat sheets, syntax tables, algorithms, pose
+  sequences, glossaries. Lessons are read once; these get revisited, so optimise for
+  scanning and for printing — the stylesheet has a print rule that strips the chrome.
+
+  Served at /r/<classroom>/<file>.html. The shared stylesheet is injected, so keep
+  this file free of external assets.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{REFERENCE_TITLE}}</title>
+  </head>
+  <body>
+    <main class="cl-lesson-shell" data-cl-content>
+      <header>
+        <h1>{{REFERENCE_TITLE}}</h1>
+        <p class="cl-lede">{{WHEN_TO_REACH_FOR_THIS}}</p>
+      </header>
+
+      <section>
+        <h2>At a glance</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Thing</th>
+              <th>Means</th>
+              <th>Use when</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>example</code></td>
+              <td>What it is, in one line.</td>
+              <td>The situation that should bring it to mind.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Related lessons</h2>
+        <ul>
+          <li><a href="../001-some-lesson/lesson.html">Where this was taught</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

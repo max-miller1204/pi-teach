@@ -1,0 +1,1163 @@
+/*
+ * classroom.css — one stylesheet for the whole course.
+ *
+ * Loaded by the landing page, classroom pages, document pages, and (injected at
+ * serve time) every lesson. Lessons therefore inherit the course look without
+ * each one re-inventing typography.
+ *
+ * Theming: tokens on :root are light; `prefers-color-scheme: dark` supplies the
+ * dark values, and explicit [data-theme] wins over both so the header toggle can
+ * override the system preference in either direction.
+ */
+
+:root {
+  --cl-bg: #fbfaf8;
+  --cl-surface: #ffffff;
+  --cl-surface-2: #f4f2ee;
+  --cl-border: #e4e0d8;
+  --cl-border-strong: #cfc9bd;
+  --cl-text: #1f1d1a;
+  --cl-text-muted: #6b6559;
+  --cl-text-faint: #948d80;
+  --cl-accent: #9a5b2c;
+  --cl-accent-soft: #f2e4d6;
+  --cl-highlight: #fbe9c3;
+  --cl-highlight-active: #f6d68a;
+  --cl-success: #2f6f4f;
+  --cl-success-soft: #dcefe3;
+  --cl-danger: #a63b34;
+  --cl-danger-soft: #f7e0de;
+  --cl-shadow: 0 1px 2px rgba(31, 29, 26, 0.05), 0 8px 24px rgba(31, 29, 26, 0.06);
+  --cl-shadow-lifted: 0 2px 6px rgba(31, 29, 26, 0.08), 0 18px 44px rgba(31, 29, 26, 0.14);
+  --cl-radius: 12px;
+  --cl-radius-sm: 8px;
+  --cl-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --cl-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  --cl-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --cl-measure: 34rem;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cl-bg: #14161a;
+    --cl-surface: #1b1e24;
+    --cl-surface-2: #21252c;
+    --cl-border: #2c313a;
+    --cl-border-strong: #3d434e;
+    --cl-text: #e8e6e1;
+    --cl-text-muted: #a6a49d;
+    --cl-text-faint: #7c7a73;
+    --cl-accent: #e0a06a;
+    --cl-accent-soft: #35281d;
+    --cl-highlight: #4a3d1c;
+    --cl-highlight-active: #6b5624;
+    --cl-success: #7fc9a2;
+    --cl-success-soft: #1e2f26;
+    --cl-danger: #e4837b;
+    --cl-danger-soft: #33211f;
+    --cl-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+    --cl-shadow-lifted: 0 2px 6px rgba(0, 0, 0, 0.5), 0 18px 44px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+}
+
+/* Explicit choice beats the system preference, in both directions. */
+:root[data-theme="light"] {
+  --cl-bg: #fbfaf8;
+  --cl-surface: #ffffff;
+  --cl-surface-2: #f4f2ee;
+  --cl-border: #e4e0d8;
+  --cl-border-strong: #cfc9bd;
+  --cl-text: #1f1d1a;
+  --cl-text-muted: #6b6559;
+  --cl-text-faint: #948d80;
+  --cl-accent: #9a5b2c;
+  --cl-accent-soft: #f2e4d6;
+  --cl-highlight: #fbe9c3;
+  --cl-highlight-active: #f6d68a;
+  --cl-success: #2f6f4f;
+  --cl-success-soft: #dcefe3;
+  --cl-danger: #a63b34;
+  --cl-danger-soft: #f7e0de;
+  --cl-shadow: 0 1px 2px rgba(31, 29, 26, 0.05), 0 8px 24px rgba(31, 29, 26, 0.06);
+  --cl-shadow-lifted: 0 2px 6px rgba(31, 29, 26, 0.08), 0 18px 44px rgba(31, 29, 26, 0.14);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --cl-bg: #14161a;
+  --cl-surface: #1b1e24;
+  --cl-surface-2: #21252c;
+  --cl-border: #2c313a;
+  --cl-border-strong: #3d434e;
+  --cl-text: #e8e6e1;
+  --cl-text-muted: #a6a49d;
+  --cl-text-faint: #7c7a73;
+  --cl-accent: #e0a06a;
+  --cl-accent-soft: #35281d;
+  --cl-highlight: #4a3d1c;
+  --cl-highlight-active: #6b5624;
+  --cl-success: #7fc9a2;
+  --cl-success-soft: #1e2f26;
+  --cl-danger: #e4837b;
+  --cl-danger-soft: #33211f;
+  --cl-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --cl-shadow-lifted: 0 2px 6px rgba(0, 0, 0, 0.5), 0 18px 44px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--cl-bg);
+  color: var(--cl-text);
+  font-family: var(--cl-serif);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--cl-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--cl-mono);
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  background: var(--cl-surface-2);
+  border: 1px solid var(--cl-border);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--cl-surface-2);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-sm);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--cl-border);
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Wide content scrolls inside itself rather than pushing the page sideways. */
+.cl-doc table,
+.cl-lesson-content table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.cl-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem clamp(1rem, 4vw, 2.5rem);
+  background: color-mix(in srgb, var(--cl-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--cl-border);
+  font-family: var(--cl-sans);
+  font-size: 0.875rem;
+}
+
+.cl-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cl-crumb {
+  color: var(--cl-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-crumb:hover {
+  color: var(--cl-text);
+}
+
+.cl-crumb-current {
+  color: var(--cl-text);
+  font-weight: 600;
+}
+
+.cl-crumb-sep {
+  color: var(--cl-text-faint);
+}
+
+.cl-theme-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--cl-border);
+  border-radius: 999px;
+  background: var(--cl-surface);
+  color: var(--cl-text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.cl-theme-toggle:hover {
+  color: var(--cl-text);
+  border-color: var(--cl-border-strong);
+}
+
+/* Show the icon for the theme you would switch *to*. */
+.cl-theme-icon {
+  grid-area: 1 / 1;
+}
+
+.cl-theme-icon-light {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cl-theme-icon-dark {
+    display: none;
+  }
+  .cl-theme-icon-light {
+    display: block;
+  }
+}
+
+:root[data-theme="light"] .cl-theme-icon-dark {
+  display: block;
+}
+:root[data-theme="light"] .cl-theme-icon-light {
+  display: none;
+}
+:root[data-theme="dark"] .cl-theme-icon-light {
+  display: block;
+}
+:root[data-theme="dark"] .cl-theme-icon-dark {
+  display: none;
+}
+
+/* ── Shell layout ─────────────────────────────────────────────────────────── */
+
+.cl-main {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: clamp(1.75rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+}
+
+.cl-hero h1 {
+  font-size: clamp(1.9rem, 4.5vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.4rem;
+}
+
+.cl-hero-emoji {
+  margin-right: 0.5rem;
+}
+
+.cl-lede {
+  margin: 0 0 2rem;
+  max-width: var(--cl-measure);
+  color: var(--cl-text-muted);
+  font-size: 1.05rem;
+}
+
+.cl-section {
+  margin-top: 2.5rem;
+}
+
+.cl-section-title,
+.cl-panel-title {
+  font-family: var(--cl-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cl-text-faint);
+  margin: 0 0 0.9rem;
+}
+
+/* ── Classroom cards ──────────────────────────────────────────────────────── */
+
+.cl-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+}
+
+.cl-card {
+  display: flex;
+}
+
+.cl-card-link {
+  display: flex;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 1.15rem 1.25rem;
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius);
+  box-shadow: var(--cl-shadow);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.cl-card-link:hover {
+  transform: translateY(-2px);
+  border-color: var(--cl-border-strong);
+  box-shadow: var(--cl-shadow-lifted);
+}
+
+.cl-card-emoji {
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+
+.cl-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.cl-card-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.cl-card-why {
+  color: var(--cl-text-muted);
+  font-size: 0.925rem;
+  line-height: 1.45;
+}
+
+.cl-card-meta {
+  font-family: var(--cl-sans);
+  font-size: 0.75rem;
+  color: var(--cl-text-faint);
+}
+
+/* ── Lesson list ──────────────────────────────────────────────────────────── */
+
+.cl-lessons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius);
+  background: var(--cl-surface);
+  overflow: hidden;
+  box-shadow: var(--cl-shadow);
+}
+
+.cl-lesson + .cl-lesson {
+  border-top: 1px solid var(--cl-border);
+}
+
+.cl-lesson-link {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.95rem 1.25rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cl-lesson-link:hover {
+  background: var(--cl-surface-2);
+}
+
+.cl-lesson-index {
+  flex: none;
+  font-family: var(--cl-mono);
+  font-size: 0.8rem;
+  color: var(--cl-text-faint);
+}
+
+.cl-lesson-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.cl-lesson-title {
+  font-weight: 600;
+}
+
+.cl-lesson-summary {
+  color: var(--cl-text-muted);
+  font-size: 0.925rem;
+}
+
+.cl-lesson-badges {
+  display: flex;
+  flex: none;
+  gap: 0.35rem;
+}
+
+.cl-badge {
+  font-family: var(--cl-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--cl-surface-2);
+  color: var(--cl-text-muted);
+  white-space: nowrap;
+}
+
+.cl-badge-score {
+  background: var(--cl-success-soft);
+  color: var(--cl-success);
+}
+
+.cl-badge-pending {
+  background: var(--cl-accent-soft);
+  color: var(--cl-accent);
+}
+
+/* ── Side panels ──────────────────────────────────────────────────────────── */
+
+.cl-panels {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  margin-top: 2.75rem;
+}
+
+.cl-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-family: var(--cl-sans);
+  font-size: 0.9rem;
+}
+
+.cl-panel-list a {
+  text-decoration: none;
+}
+
+.cl-panel-list a:hover {
+  text-decoration: underline;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+
+.cl-empty {
+  border: 1px dashed var(--cl-border-strong);
+  border-radius: var(--cl-radius);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--cl-text-muted);
+}
+
+.cl-empty-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  color: var(--cl-text);
+}
+
+.cl-empty-body {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* ── Documents ────────────────────────────────────────────────────────────── */
+
+.cl-doc {
+  max-width: var(--cl-measure);
+}
+
+.cl-doc h1,
+.cl-doc h2,
+.cl-doc h3 {
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 2rem 0 0.6rem;
+}
+
+.cl-doc h1:first-child {
+  margin-top: 0;
+}
+
+.cl-doc blockquote {
+  margin: 1.4rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--cl-border-strong);
+  color: var(--cl-text-muted);
+}
+
+/* ── Lesson documents ─────────────────────────────────────────────────────── */
+
+/*
+ * Lessons are self-contained HTML written by the teacher. These rules give an
+ * unstyled lesson a readable default without overriding a lesson that brought its
+ * own layout — everything here is low-specificity element styling.
+ */
+
+body.cl-lesson-page {
+  padding: 0;
+}
+
+.cl-lesson-shell {
+  max-width: calc(var(--cl-measure) + 6rem);
+  margin: 0 auto;
+  padding: clamp(1.75rem, 5vw, 3.5rem) clamp(1rem, 4vw, 3rem) 6rem;
+}
+
+/* ── Highlight + ask ──────────────────────────────────────────────────────── */
+
+mark.cl-hl {
+  background: var(--cl-highlight);
+  color: inherit;
+  padding: 0.05em 0.06em;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+mark.cl-hl.cl-hl-active {
+  background: var(--cl-highlight-active);
+}
+
+mark.cl-hl.cl-hl-pending {
+  background: linear-gradient(
+    100deg,
+    var(--cl-highlight) 30%,
+    var(--cl-highlight-active) 50%,
+    var(--cl-highlight) 70%
+  );
+  background-size: 300% 100%;
+  animation: cl-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes cl-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+.cl-badge-marker {
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0 0.15rem;
+  vertical-align: super;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cl-accent);
+  color: var(--cl-bg);
+  font-family: var(--cl-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(0.1em);
+}
+
+/* The explicit display above beats the UA rule for [hidden], so restate it. */
+.cl-badge-marker[hidden] {
+  display: none;
+}
+
+.cl-badge-marker:hover {
+  filter: brightness(1.1);
+}
+
+.cl-ask-pill {
+  position: absolute;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cl-text);
+  color: var(--cl-bg);
+  font-family: var(--cl-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--cl-shadow-lifted);
+}
+
+.cl-ask-pill[hidden] {
+  display: none;
+}
+
+.cl-card-panel {
+  position: absolute;
+  z-index: 55;
+  width: min(24rem, calc(100vw - 2rem));
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border-strong);
+  border-radius: var(--cl-radius);
+  box-shadow: var(--cl-shadow-lifted);
+  font-family: var(--cl-sans);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  overflow: hidden;
+}
+
+.cl-card-panel[hidden] {
+  display: none;
+}
+
+/*
+ * A saved card sits in the document flow, directly after the block it asks about, so
+ * it can never cover the passage. Only the transient composer floats.
+ */
+.cl-card-inline {
+  position: static;
+  width: auto;
+  max-width: 100%;
+  margin: 1.1rem 0 1.6rem;
+  border-left: 3px solid var(--cl-accent);
+}
+
+.cl-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.75rem 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--cl-border);
+  background: var(--cl-surface-2);
+}
+
+.cl-card-quote {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--cl-text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cl-card-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 0.3rem;
+}
+
+/* A labelled, deliberate action — destructive things never hide behind an icon. */
+.cl-text-button {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: var(--cl-radius-sm);
+  background: none;
+  color: var(--cl-text-muted);
+  font-family: var(--cl-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.cl-text-button:hover {
+  background: var(--cl-surface);
+  color: var(--cl-text);
+}
+
+/* Red at rest, not just on hover, so the consequence is legible before you point at it. */
+.cl-text-button-danger {
+  border-color: var(--cl-danger);
+  background: var(--cl-danger-soft);
+  color: var(--cl-danger);
+}
+
+.cl-text-button-danger:hover {
+  background: var(--cl-danger);
+  color: var(--cl-bg);
+}
+
+.cl-icon-button {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cl-radius-sm);
+  background: none;
+  color: var(--cl-text-faint);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cl-icon-button:hover {
+  background: var(--cl-border);
+  color: var(--cl-text);
+}
+
+.cl-card-content {
+  padding: 0.85rem 0.9rem;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.cl-card-question {
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+}
+
+/* Each turn of the thread. Follow-ups are ruled off so a long card stays readable. */
+.cl-card-turn + .cl-card-turn {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--cl-border);
+}
+
+.cl-card-turn-followup .cl-card-question::before {
+  content: "↳ ";
+  color: var(--cl-text-faint);
+  font-weight: 400;
+}
+
+/* The follow-up composer, pinned under the (scrollable) thread in the same card. */
+.cl-card-followup {
+  padding: 0.8rem 0.9rem 0.9rem;
+  border-top: 1px solid var(--cl-border);
+  background: var(--cl-surface-2);
+}
+
+.cl-card-followup[hidden] {
+  display: none;
+}
+
+.cl-card-followup textarea {
+  min-height: 3rem;
+}
+
+.cl-card-answer > :first-child {
+  margin-top: 0;
+}
+
+.cl-card-answer > :last-child {
+  margin-bottom: 0;
+}
+
+.cl-card-answer pre {
+  font-size: 0.8rem;
+}
+
+.cl-card-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--cl-text-muted);
+  font-size: 0.85rem;
+}
+
+.cl-spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--cl-border-strong);
+  border-top-color: var(--cl-accent);
+  border-radius: 999px;
+  animation: cl-spin 0.7s linear infinite;
+}
+
+@keyframes cl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cl-card-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.cl-card-form textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-bg);
+  color: var(--cl-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.cl-card-form textarea:focus-visible {
+  outline: 2px solid var(--cl-accent);
+  outline-offset: 1px;
+}
+
+.cl-card-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cl-hint {
+  color: var(--cl-text-faint);
+  font-size: 0.75rem;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+.cl-button {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-accent);
+  color: var(--cl-bg);
+  font-family: var(--cl-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cl-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.cl-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cl-button-quiet {
+  background: none;
+  border-color: var(--cl-border-strong);
+  color: var(--cl-text-muted);
+}
+
+.cl-button-quiet:hover:not(:disabled) {
+  color: var(--cl-text);
+  filter: none;
+}
+
+.cl-button-danger {
+  background: var(--cl-danger);
+  color: var(--cl-bg);
+}
+
+/* ── Confirmation dialog ──────────────────────────────────────────────────── */
+
+.cl-confirm {
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1.1rem 1.2rem 1.2rem;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: var(--cl-radius);
+  background: var(--cl-surface);
+  color: var(--cl-text);
+  font-family: var(--cl-sans);
+  box-shadow: var(--cl-shadow-lifted);
+}
+
+.cl-confirm::backdrop {
+  background: rgba(31, 29, 26, 0.42);
+}
+
+.cl-confirm-title {
+  margin: 0 0 0.45rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.cl-confirm-body {
+  margin: 0 0 1.1rem;
+  color: var(--cl-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.cl-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* ── Quizzes ──────────────────────────────────────────────────────────────── */
+
+.cl-quiz {
+  margin: 2.5rem 0;
+  padding: 1.25rem 1.4rem 1.4rem;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-shadow);
+}
+
+.cl-quiz-title {
+  font-family: var(--cl-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cl-text-faint);
+  margin: 0 0 1rem;
+}
+
+.cl-questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  counter-reset: cl-question;
+}
+
+.cl-q {
+  position: relative;
+  padding-left: 2rem;
+  counter-increment: cl-question;
+}
+
+.cl-q::before {
+  content: counter(cl-question);
+  position: absolute;
+  left: 0;
+  top: 0.15rem;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: 999px;
+  font-family: var(--cl-mono);
+  font-size: 0.7rem;
+  color: var(--cl-text-faint);
+}
+
+.cl-q-prompt {
+  margin: 0 0 0.7rem;
+  font-weight: 600;
+}
+
+.cl-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cl-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius-sm);
+  cursor: pointer;
+}
+
+.cl-options label:hover {
+  border-color: var(--cl-border-strong);
+  background: var(--cl-surface-2);
+}
+
+.cl-options input {
+  margin-top: 0.35em;
+  accent-color: var(--cl-accent);
+}
+
+.cl-q textarea,
+.cl-q input[type="text"] {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--cl-border-strong);
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-bg);
+  color: var(--cl-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.cl-quiz-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.4rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--cl-border);
+}
+
+.cl-quiz-status {
+  font-family: var(--cl-sans);
+  font-size: 0.85rem;
+  color: var(--cl-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.cl-quiz[data-state="submitted"] .cl-options label,
+.cl-quiz[data-state="graded"] .cl-options label {
+  cursor: default;
+}
+
+.cl-grade-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0 0 1.2rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-surface-2);
+  font-family: var(--cl-sans);
+}
+
+.cl-grade-score {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cl-grade-banner[data-tone="pass"] {
+  background: var(--cl-success-soft);
+  color: var(--cl-success);
+}
+
+.cl-grade-banner[data-tone="mixed"] {
+  background: var(--cl-accent-soft);
+  color: var(--cl-accent);
+}
+
+.cl-grade-banner[data-tone="fail"] {
+  background: var(--cl-danger-soft);
+  color: var(--cl-danger);
+}
+
+.cl-grade-feedback {
+  margin: 0 0 1.2rem;
+  font-size: 0.95rem;
+}
+
+.cl-grade-feedback > :first-child {
+  margin-top: 0;
+}
+
+.cl-q-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--cl-radius-sm);
+  font-family: var(--cl-sans);
+  font-size: 0.85rem;
+}
+
+.cl-q-verdict[data-correct="true"] {
+  background: var(--cl-success-soft);
+  color: var(--cl-success);
+}
+
+.cl-q-verdict[data-correct="false"] {
+  background: var(--cl-danger-soft);
+  color: var(--cl-danger);
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Print ────────────────────────────────────────────────────────────────── */
+
+@media print {
+  .cl-header,
+  .cl-ask-pill,
+  .cl-card-panel,
+  .cl-confirm,
+  .cl-badge-marker,
+  .cl-quiz-footer {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

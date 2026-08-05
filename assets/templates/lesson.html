@@ -1,0 +1,98 @@
+<!doctype html>
+<!--
+  Canonical lesson template.
+
+  Copy this into <classroom>/<lesson-name>/lesson.html and fill it in. Keep it
+  self-contained: no external scripts, no CDN links. The classroom server injects
+  the shared stylesheet and the interactive runtime when it serves the page, so
+  everything below is just content.
+
+  Placeholders to replace: {{LESSON_TITLE}}, {{ONE_LINE_SUMMARY}}, and the marked
+  sections. Delete anything you do not use — a short lesson is the point.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{LESSON_TITLE}}</title>
+  </head>
+  <body>
+    <!--
+      data-cl-content marks the region a learner can highlight to ask a question.
+      Keep quizzes inside it too — the runtime excludes form controls itself.
+    -->
+    <main class="cl-lesson-shell" data-cl-content>
+      <header>
+        <h1>{{LESSON_TITLE}}</h1>
+        <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
+      </header>
+
+      <section>
+        <h2>The idea</h2>
+        <p>
+          Teach the one thing this lesson is about. Stay inside working memory: a learner should
+          finish this in a few minutes and come away with a single win they can build on. Cite
+          sources inline —
+          <a href="https://example.com">like this</a> — so every claim is checkable.
+        </p>
+      </section>
+
+      <section>
+        <h2>Worked example</h2>
+        <p>Show it concretely before asking the learner to do anything.</p>
+        <pre><code>// a small, complete, runnable example</code></pre>
+      </section>
+
+      <!--
+        Check on learning. See quiz.html for the full markup contract, including
+        multiple choice, short answer, and multi-select questions.
+      -->
+      <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
+        <ol class="cl-questions">
+          <li class="cl-q" data-question-id="q1" data-type="choice">
+            <p class="cl-q-prompt">Ask something that requires retrieval, not recognition.</p>
+            <ul class="cl-options">
+              <li>
+                <label
+                  ><input type="radio" name="q1" value="a" /> First candidate answer here</label
+                >
+              </li>
+              <li>
+                <label
+                  ><input type="radio" name="q1" value="b" /> Second candidate answer here</label
+                >
+              </li>
+              <li>
+                <label
+                  ><input type="radio" name="q1" value="c" /> Third candidate answer here</label
+                >
+              </li>
+            </ul>
+          </li>
+
+          <li class="cl-q" data-question-id="q2" data-type="short">
+            <p class="cl-q-prompt">Ask them to explain it back in their own words.</p>
+            <textarea name="q2" rows="3"></textarea>
+          </li>
+        </ol>
+      </form>
+
+      <section>
+        <h2>Go deeper</h2>
+        <p>
+          Recommend exactly one primary source — the highest-quality thing you found on this topic:
+          <a href="https://example.com">Author, “Title”</a>.
+        </p>
+      </section>
+
+      <footer>
+        <p>
+          <strong>Stuck on something?</strong> Highlight any sentence on this page and hit
+          <em>Ask</em>. Your question goes straight to your teacher in Pi, and the answer appears
+          right where you asked it.
+        </p>
+        <p><a href="../">Back to the classroom</a></p>
+      </footer>
+    </main>
+  </body>
+</html>
