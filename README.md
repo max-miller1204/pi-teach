@@ -8,6 +8,8 @@ reference material, and mission — and wires every lesson back to the agent run
 your Pi session. Highlight any sentence to ask about it and the answer appears in a card
 pinned to that passage. Hand in a quiz and your teacher grades it.
 
+![The classroom landing page, listing a classroom per topic](screenshots/classrooms.png)
+
 ## Features
 
 - **`/classroom`** — a local web UI for everything you have learned. Clean, responsive,
@@ -27,6 +29,42 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
   open, that is how you find the one a learner's browser is actually talking to.
 - **Canonical storage.** One place for all teaching material, so lessons are not
   scattered across whatever directory you happened to be in.
+
+## What it looks like
+
+A classroom collects its lessons in order, alongside its mission, reference sheets, and
+learning records. Lessons you have been quizzed on carry their score, and lessons you have
+asked about carry a question count.
+
+![A classroom page listing three lessons, the first showing a 92% score and two questions](screenshots/classroom.png)
+
+Select any text in a lesson and an _Ask_ pill appears above it.
+
+![A sentence selected in a lesson with an Ask pill floating above the selection](screenshots/highlight.png)
+
+The composer keeps the passage you highlighted attached to the question, so the teacher
+answers with the context in hand.
+
+![The ask composer open, quoting the highlighted passage above a typed question](screenshots/ask.png)
+
+The answer arrives as a card pinned below the block containing your highlight — never
+floating over the text it explains. The card is a thread: ask a follow-up in the box at
+the bottom and the teacher gets every turn so far.
+
+![An answered question card anchored under the highlighted sentence, with a follow-up in the same thread](screenshots/answer.png)
+
+Quizzes are graded in place, question by question, with an overall score and feedback at
+the top. Submissions and grades live in the lesson directory, so a reload brings the whole
+thing back.
+
+![A graded quiz showing 92%, overall feedback, and per-question verdicts](screenshots/quiz.png)
+
+Every page follows your system theme, with a manual override that sticks — lessons,
+cards, and grades included.
+
+![The same lesson in dark mode, showing a card and a graded quiz](screenshots/lesson-dark.png)
+
+<sub>Screenshots use a throwaway demo classroom, not real teaching material.</sub>
 
 ## Install
 
