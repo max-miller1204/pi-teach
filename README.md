@@ -132,6 +132,9 @@ answer key written to `quiz/key.json` is therefore not readable from the page.
 
 ### Links in teaching documents
 
+The lesson runtime opens PDF links in a new tab. Links with a `download` attribute
+keep their download behavior. Classroom and lesson navigation stay in the current tab.
+
 Lesson URLs use `/c/<classroom>/<lesson>` without a trailing slash. They do not match
 filesystem paths. From a lesson, use:
 
