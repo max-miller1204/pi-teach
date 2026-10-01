@@ -130,6 +130,20 @@ first `.html` file. Lesson order comes from the numeric prefix on the directory 
 The `quiz/` directory is never served as static files, only through the JSON API. An
 answer key written to `quiz/key.json` is therefore not readable from the page.
 
+### Links in teaching documents
+
+Lesson URLs use `/c/<classroom>/<lesson>` without a trailing slash. They do not match
+filesystem paths. From a lesson, use:
+
+- `./` for the classroom page.
+- `assets/<path>` for shared classroom assets.
+- `<other-lesson>` for another lesson in the same classroom.
+- `/r/<classroom>/<file>.html` for a reference document.
+
+Do not use `../assets/<path>` from a lesson. It resolves to `/c/assets/<path>`.
+From a reference document, use `/c/<classroom>/<lesson>` for lesson links. Replace
+`{{CLASSROOM_NAME}}` in the reference template with the classroom directory name.
+
 ## Configuration
 
 Optional, at `~/.pi/agent/classroom.json`:

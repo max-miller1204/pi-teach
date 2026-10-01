@@ -1,6 +1,6 @@
 {
   "name": "pi-teach",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A teacher you can interrupt — interactive HTML lessons for Pi, wired back into the live session for highlight-to-ask questions and graded quizzes.",
   "type": "module",
   "license": "MIT",
