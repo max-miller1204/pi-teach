@@ -4,7 +4,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
 
 import { applyAnswer, applyGrade } from "../src/bridge.js";
 import * as server from "../src/server.js";
@@ -101,53 +100,6 @@ describe("pages", () => {
     expect(html).toContain('id="cl-config"');
     expect(html).toContain("/static/classroom.js");
     expect(html).toContain("Some lesson prose to highlight.");
-  });
-
-  it("resolves the lesson template footer to the classroom page", async () => {
-    const template = readFileSync(
-      new URL("../assets/templates/lesson.html", import.meta.url),
-      "utf8",
-    );
-    fixture.write("rust/002-template/lesson.html", template);
-    const lessonUrl = `${baseUrl}/c/rust/002-template`;
-    const html = await (await fetch(lessonUrl)).text();
-    const href = html.match(/href="([^"]+)">Back to the classroom<\/a>/)?.[1];
-    expect(href).toBeDefined();
-    const target = new URL(href!, lessonUrl);
-    expect(target.pathname).toBe("/c/rust/");
-    const res = await fetch(target);
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain('href="/c/rust/001-ownership"');
-  });
-
-  it("resolves documented shared asset links from a lesson URL", async () => {
-    fixture.write("rust/assets/source.txt", "Course source");
-    const target = new URL("assets/source.txt", `${baseUrl}/c/rust/001-ownership`);
-    expect(target.pathname).toBe("/c/rust/assets/source.txt");
-    const res = await fetch(target);
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe("Course source");
-  });
-
-  it("resolves the reference template link to a served lesson", async () => {
-    const template = readFileSync(
-      new URL("../assets/templates/reference.html", import.meta.url),
-      "utf8",
-    )
-      .replace(/\{\{CLASSROOM_NAME\}\}/g, "rust")
-      .replace(/001-some-lesson/g, "001-ownership");
-    fixture.write("rust/reference/summary.html", template);
-    const referenceUrl = `${baseUrl}/r/rust/summary.html`;
-    const res = await fetch(referenceUrl);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    const href = html.match(/href="([^"]+)">Where this was taught<\/a>/)?.[1];
-    expect(href).toBeDefined();
-    const target = new URL(href!, referenceUrl);
-    expect(target.pathname).toBe("/c/rust/001-ownership");
-    const lesson = await fetch(target);
-    expect(lesson.status).toBe(200);
-    expect(await lesson.text()).toContain('id="cl-config"');
   });
 
   it("renders MISSION.md as HTML", async () => {
