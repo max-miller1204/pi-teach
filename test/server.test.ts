@@ -108,6 +108,31 @@ describe("pages", () => {
     expect(html).toContain("<h1");
   });
 
+  it("serves the learning records index, and records under it", async () => {
+    fixture.write("rust/learning-records/0001-owns.md", "# One owner\n\nThey can say why.");
+    const index = await (await get("/doc/rust/learning-records")).text();
+    expect(index).toContain("One owner");
+    expect(index).toContain("They can say why.");
+
+    const record = await (await get("/doc/rust/learning-records/0001-owns.md")).text();
+    expect(record).toContain('href="/doc/rust/learning-records"');
+  });
+
+  it("serves the topic files NOTES.md indexes", async () => {
+    fixture.write("rust/notes/debugging.md", "# Debugging\n\nReaches for println first.");
+    const res = await get("/doc/rust/notes/debugging.md");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Reaches for println first.");
+    expect(html).toContain('href="/doc/rust/NOTES.md"');
+  });
+
+  it("gives reference documents the link behaviour", async () => {
+    fixture.write("rust/reference/syntax.html", "<html><head></head><body>Ref</body></html>");
+    const html = await (await get("/r/rust/syntax.html")).text();
+    expect(html).toContain("/static/links.mjs");
+  });
+
   it("serves the bundled runtime assets", async () => {
     const css = await get("/static/classroom.css");
     expect(css.status).toBe(200);
@@ -120,6 +145,7 @@ describe("pages", () => {
     // The runtime imports these as modules, so they must be reachable too.
     expect((await get("/static/anchor.mjs")).status).toBe(200);
     expect((await get("/static/theme.mjs")).status).toBe(200);
+    expect((await get("/static/links.mjs")).status).toBe(200);
   });
 });
 
@@ -137,6 +163,9 @@ describe("refusals", () => {
       "/c/rust/assets/../../../package.json",
       "/c/rust/001-ownership/media/../../lesson.json",
       "/r/rust/../MISSION.md",
+      "/doc/rust/notes/../../../package.json",
+      "/doc/rust/notes/%2e%2e%2fMISSION.md",
+      "/doc/rust/learning-records/%2e%2e%2fMISSION.md",
     ]) {
       const res = await get(path);
       expect(res.status, path).toBe(404);
@@ -153,6 +182,10 @@ describe("refusals", () => {
     fixture.write("rust/SECRETS.md", "# nope");
     expect((await get("/doc/rust/SECRETS.md")).status).toBe(404);
     expect((await get("/doc/rust/NOTES.md")).status).toBe(404); // not present on disk
+    fixture.write("rust/notes/raw.txt", "nope");
+    expect((await get("/doc/rust/notes/raw.txt")).status).toBe(404);
+    fixture.write("rust/elsewhere/x.md", "# nope");
+    expect((await get("/doc/rust/elsewhere/x.md")).status).toBe(404);
   });
 
   it("rejects non-GET on page routes", async () => {

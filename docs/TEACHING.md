@@ -15,7 +15,8 @@ directory. The layout is canonical, because the classroom server reads it:
   MISSION.md              why they are learning this — grounds every other decision
   RESOURCES.md            trusted sources, split into Knowledge and Wisdom
   GLOSSARY.md             the canonical language for this topic
-  NOTES.md                their preferences, and your working notes
+  NOTES.md                their preferences, and an index of your working notes
+  notes/                  slug.md — one topic file per index entry in NOTES.md
   learning-records/       NNNN-slug.md — what they have actually learned
   reference/*.html        cheat sheets and compressed knowledge, built to be revisited
   assets/                 shared components: diagrams, data, images
@@ -26,8 +27,8 @@ directory. The layout is canonical, because the classroom server reads it:
     quiz/                 submissions and grades (managed for you — do not edit)
 ```
 
-Format guides for `MISSION.md`, `RESOURCES.md`, `GLOSSARY.md`, and the learning records
-sit next to this file. Read the one you need, when you need it.
+Format guides for `MISSION.md`, `RESOURCES.md`, `GLOSSARY.md`, `NOTES.md`, and the
+learning records sit next to this file. Read the one you need, when you need it.
 
 ## Philosophy
 
@@ -142,6 +143,13 @@ prior knowledge, correct a misconception, or shift the mission. Not when materia
 merely covered — coverage is not learning. These are what tell the next session where
 the floor is.
 
+## Notes
+
+`NOTES.md` is an index: their standing preferences, then one line per topic file in
+`notes/`. Read the index every session; open a topic file only when the work touches it.
+Put new detail in a topic file, never in `NOTES.md` itself. `NOTES-FORMAT.md` has the
+shape.
+
 ## Wisdom
 
 Some questions cannot be answered by a teacher, only by practice among practitioners.
@@ -151,7 +159,8 @@ community, respect it and note it in `RESOURCES.md`.
 
 ## Working rhythm
 
-1. Read `MISSION.md`, the learning records, and `NOTES.md` before anything else.
+1. Read `MISSION.md`, the learning records, and `NOTES.md` before anything else — the
+   notes index, not every topic file behind it.
 2. If the mission is thin, interview them.
 3. Research from trusted sources; record what you find in `RESOURCES.md`.
 4. Pick the one thing to teach next, in their zone of proximal development.

@@ -48,7 +48,8 @@ export function teachingPrompt(topic: string, classroom: string | null): string 
   parts.push(readDoc("TEACHING.md"));
   parts.push(
     "Reference documents you can read when you need them, in the extension's `docs/` directory " +
-      `(${docsDir()}): MISSION-FORMAT.md, RESOURCES-FORMAT.md, GLOSSARY-FORMAT.md, LEARNING-RECORD-FORMAT.md.`,
+      `(${docsDir()}): MISSION-FORMAT.md, RESOURCES-FORMAT.md, GLOSSARY-FORMAT.md, NOTES-FORMAT.md, ` +
+      "LEARNING-RECORD-FORMAT.md.",
   );
 
   return parts.filter(Boolean).join("\n\n");
@@ -176,6 +177,26 @@ function quote(text: string): string {
 }
 
 /** MISSION.md written when a classroom is scaffolded, before the interview happens. */
+/**
+ * The starting NOTES.md: an index rather than a notebook, so the shape that keeps it
+ * cheap to read is there before the first note is written. See NOTES-FORMAT.md.
+ */
+export function notesStub(): string {
+  return `# Notes
+
+Index of working notes. Detail lives in \`notes/<slug>.md\`, one file per topic — add
+it there and link it below, never here. See NOTES-FORMAT.md.
+
+## Preferences
+
+- _How they like to be taught, in a handful of bullets_
+
+## Index
+
+_No topic files yet._
+`;
+}
+
 export function missionStub(title: string): string {
   return `# Mission: ${title}
 

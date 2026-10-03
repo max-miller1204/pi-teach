@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { resolveClassroom } from "../src/commands.js";
-import { followUpPrompt, missionStub, teachingPrompt } from "../src/prompts.js";
+import { followUpPrompt, missionStub, notesStub, teachingPrompt } from "../src/prompts.js";
 import type { Annotation, FollowUp } from "../src/store.js";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.js";
 
@@ -41,6 +41,7 @@ describe("teachingPrompt", () => {
     const prompt = teachingPrompt("Rust", null);
     expect(prompt).toContain("MISSION-FORMAT.md");
     expect(prompt).toContain("LEARNING-RECORD-FORMAT.md");
+    expect(prompt).toContain("NOTES-FORMAT.md");
     // The guides themselves stay out of the prompt — they are read on demand.
     expect(prompt).not.toContain("One mission per workspace.");
   });
@@ -104,6 +105,15 @@ describe("missionStub", () => {
     expect(stub).toContain("# Mission: Rust");
     expect(stub).toContain("## Why");
     expect(stub).toContain("Interview the learner");
+  });
+});
+
+describe("notesStub", () => {
+  it("starts NOTES.md as an index that points detail at notes/", () => {
+    const stub = notesStub();
+    expect(stub).toContain("## Index");
+    expect(stub).toContain("`notes/<slug>.md`");
+    expect(stub).toContain("NOTES-FORMAT.md");
   });
 });
 

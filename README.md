@@ -33,7 +33,7 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
 ## Install
 
 ```bash
-pi install npm:pi-teach
+pi install git:github.com/max-miller1204/pi-teach
 ```
 
 The extension registers two commands, `/teach` and `/classroom`, four tools, and a status
@@ -42,7 +42,8 @@ widget. It has one runtime dependency (`marked`) and no build step.
 ## What it looks like
 
 A classroom collects its lessons in order, alongside its mission, reference sheets, and
-learning records. Lessons you have been quizzed on carry their score, and lessons you have
+its newest learning records — the full list, each with its summary, has a page of its
+own. Lessons you have been quizzed on carry their score, and lessons you have
 asked about carry a question count.
 
 ![A classroom page listing three lessons, the first showing a 92% score and two questions](screenshots/classroom.png)
@@ -108,7 +109,8 @@ it again, and nothing is lost, because all state is on disk.
     MISSION.md              why you are learning this
     RESOURCES.md            trusted sources, split Knowledge / Wisdom
     GLOSSARY.md             canonical terminology
-    NOTES.md                your preferences, the teacher's working notes
+    NOTES.md                your preferences, and an index of the teacher's notes
+    notes/                  slug.md — the topic files NOTES.md indexes
     learning-records/       NNNN-slug.md — what you have actually learned
     reference/*.html        cheat sheets, built to be revisited and printed
     assets/                 shared components across lessons
@@ -129,6 +131,25 @@ first `.html` file. Lesson order comes from the numeric prefix on the directory 
 
 The `quiz/` directory is never served as static files, only through the JSON API. An
 answer key written to `quiz/key.json` is therefore not readable from the page.
+
+### Links in teaching documents
+
+Links to other sites, and PDFs wherever they are hosted, open in a new tab — in
+lessons, reference documents, and the classroom's markdown pages. Classroom and lesson
+navigation stay in the current tab. Links that set their own `target`, or carry a
+`download` attribute, are left alone.
+
+Lesson URLs use `/c/<classroom>/<lesson>` without a trailing slash. They do not match
+filesystem paths. From a lesson, use:
+
+- `./` for the classroom page.
+- `assets/<path>` for shared classroom assets.
+- `<other-lesson>` for another lesson in the same classroom.
+- `/r/<classroom>/<file>.html` for a reference document.
+
+Do not use `../assets/<path>` from a lesson. It resolves to `/c/assets/<path>`.
+From a reference document, use `/c/<classroom>/<lesson>` for lesson links. Replace
+`{{CLASSROOM_NAME}}` in the reference template with the classroom directory name.
 
 ## Configuration
 
@@ -186,15 +207,14 @@ Optional, at `~/.pi/agent/classroom.json`:
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run check       # tsc --noEmit
 npm test            # vitest
-npm run test:pack   # verify the published tarball, not just the working tree
+pi -e .             # run this checkout in a Pi session without installing it
 ```
 
-`npm run test:pack -- --keep` prints a path you can hand to `pi -e` to run exactly what
-an npm consumer would install. Release candidates are published automatically for every
-pull request under the `rc` dist-tag — see [`RELEASING.md`](RELEASING.md).
+The package is installed from git, not npm: `pi install git:github.com/max-miller1204/pi-teach`
+clones the repository and runs `npm install`, so whatever is on `main` is what you get.
 
 Browser code under `assets/runtime/` is `.mjs`/`.js` with hand-written `.d.mts` sidecars
 where TypeScript needs types — this repo has no build step, and the browser has to load

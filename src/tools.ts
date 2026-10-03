@@ -13,7 +13,7 @@ import { Type } from "typebox";
 
 import { applyAnswer, applyGrade } from "./bridge.js";
 import { classroomDir, isValidSlug, lessonDir, slugify, templatesDir } from "./paths.js";
-import { missionStub } from "./prompts.js";
+import { missionStub, notesStub } from "./prompts.js";
 import * as server from "./server.js";
 import * as store from "./store.js";
 
@@ -169,7 +169,7 @@ export function registerClassroomTools(pi: any): void {
     name: "scaffold_classroom",
     label: "Scaffold Classroom",
     description:
-      "Create a classroom in the canonical location (~/.pi/agent/classrooms/<name>/) with a MISSION.md stub. " +
+      "Create a classroom in the canonical location (~/.pi/agent/classrooms/<name>/) with MISSION.md and NOTES.md stubs. " +
       "Call this once at the start of teaching a new topic, before writing any lesson.",
     parameters: Type.Object({
       name: Type.String({
@@ -196,6 +196,8 @@ export function registerClassroomTools(pi: any): void {
 
       const missionPath = path.join(dir, "MISSION.md");
       if (!fs.existsSync(missionPath)) fs.writeFileSync(missionPath, missionStub(title), "utf8");
+      const notesPath = path.join(dir, "NOTES.md");
+      if (!fs.existsSync(notesPath)) fs.writeFileSync(notesPath, notesStub(), "utf8");
 
       return ok(
         [

@@ -13,7 +13,9 @@
  *   GET    /c/<classroom>/assets/<path>       classroom-local assets
  *   GET    /c/<classroom>/<lesson>/media/<p>  lesson-local media
  *   GET    /doc/<classroom>/<file>.md         markdown document
+ *   GET    /doc/<classroom>/learning-records       every learning record, summarised
  *   GET    /doc/<classroom>/learning-records/<file>.md
+ *   GET    /doc/<classroom>/notes/<file>.md        a topic file indexed by NOTES.md
  *   GET    /r/<classroom>/<file>.html         reference document
  *   GET    /static/<file>                     bundled runtime assets
  *   POST   /api/ask                           ask a question about a highlight
@@ -38,7 +40,13 @@ import {
   runtimeAssetsDir,
   safeJoin,
 } from "./paths.js";
-import { classroomPage, documentPage, landingPage, notFoundPage } from "./pages.js";
+import {
+  classroomPage,
+  documentPage,
+  landingPage,
+  learningRecordsPage,
+  notFoundPage,
+} from "./pages.js";
 import * as store from "./store.js";
 
 // ── Callbacks into the extension ──────────────────────────────────────────────
@@ -126,6 +134,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
   ".html": "text/html; charset=utf-8",
+  ".pdf": "application/pdf",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -293,17 +302,42 @@ function handleDoc(res: http.ServerResponse, rest: string[]): void {
   const classroom = store.readClassroom(name);
   if (!classroom) return sendNotFound(res, `Unknown classroom: ${name}`);
 
+  // /doc/<classroom>/learning-records — the index of every record.
+  if (tail.length === 1 && tail[0] === "learning-records") {
+    return sendHtml(res, learningRecordsPage(classroom, store.readLearningRecords(name)));
+  }
+
+  // Only the classroom's own markdown is viewable — root-level docs, learning records,
+  // and the topic files NOTES.md indexes.
   const relative = tail.join("/");
-  // Only the classroom's own markdown is viewable — root-level docs and learning records.
+  // Reason: segments are decoded, so `..%2fMISSION.md` arrives as one segment holding a
+  // slash — insist on a plain file name, or it climbs out of the subdirectory.
+  const nested =
+    tail.length === 2 && tail[1].endsWith(".md") && !/[\\/]/.test(tail[1])
+      ? DOC_DIRS[tail[0]]
+      : undefined;
   const allowed =
     (tail.length === 1 && (store.CLASSROOM_DOCS as readonly string[]).includes(tail[0])) ||
-    (tail.length === 2 && tail[0] === "learning-records" && tail[1].endsWith(".md"));
+    nested !== undefined;
   if (!allowed) return sendNotFound(res, "Not found");
 
   const file = safeJoin(classroomDir(name), relative);
   if (!file || !isFile(file)) return sendNotFound(res, `No such document: ${relative}`);
-  sendHtml(res, documentPage(classroom, path.basename(file), fs.readFileSync(file, "utf8")));
+  const parent = nested && {
+    label: nested.label,
+    href: `/doc/${encodeURIComponent(name)}/${nested.href}`,
+  };
+  sendHtml(
+    res,
+    documentPage(classroom, path.basename(file), fs.readFileSync(file, "utf8"), parent),
+  );
 }
+
+/** Classroom subdirectories of markdown, and the index page each one sits under. */
+const DOC_DIRS: Record<string, { label: string; href: string } | undefined> = {
+  "learning-records": { label: "Learning records", href: "learning-records" },
+  notes: { label: "Notes", href: "NOTES.md" },
+};
 
 function handleReference(res: http.ServerResponse, rest: string[]): void {
   const [name, ...tail] = rest;
@@ -314,11 +348,13 @@ function handleReference(res: http.ServerResponse, rest: string[]): void {
   const file = safeJoin(path.join(classroomDir(name), "reference"), tail.join("/"));
   if (!file || !file.endsWith(".html") || !isFile(file)) return sendNotFound(res, "Not found");
 
-  // Reference docs get the stylesheet and the theme toggle, but not the lesson
-  // runtime: there is no quiz to submit and nothing to anchor questions to.
+  // Reference docs get the stylesheet, the theme bootstrap, and the link behaviour,
+  // but not the lesson runtime: there is no quiz to submit and nothing to anchor
+  // questions to.
   const html = fs.readFileSync(file, "utf8");
   const head = `<link rel="stylesheet" href="/static/classroom.css">
-<script>try{var t=localStorage.getItem("pi-classroom-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>`;
+<script>try{var t=localStorage.getItem("pi-classroom-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<script type="module">import{initLinks}from"/static/links.mjs";initLinks();</script>`;
   const idx = html.search(/<\/head\s*>/i);
   sendHtml(res, idx === -1 ? head + html : html.slice(0, idx) + head + html.slice(idx));
 }

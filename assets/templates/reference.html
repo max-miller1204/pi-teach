@@ -9,6 +9,8 @@
 
   Served at /r/<classroom>/<file>.html. The shared stylesheet is injected, so keep
   this file free of external assets.
+  Replace {{CLASSROOM_NAME}} with the classroom directory name. Link to lessons
+  with /c/<classroom>/<lesson>, not filesystem paths ending in /lesson.html.
 -->
 <html lang="en">
   <head>
@@ -46,7 +48,7 @@
       <section>
         <h2>Related lessons</h2>
         <ul>
-          <li><a href="../001-some-lesson/lesson.html">Where this was taught</a></li>
+          <li><a href="/c/{{CLASSROOM_NAME}}/001-some-lesson">Where this was taught</a></li>
         </ul>
       </section>
     </main>

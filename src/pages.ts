@@ -200,6 +200,9 @@ function lessonRow(lesson: Lesson, index: number): string {
 </li>`;
 }
 
+/** How many learning records the classroom page lists before deferring to their page. */
+export const RECENT_RECORDS = 5;
+
 function sidePanel(data: ClassroomPageData): string {
   const { classroom, docs, learningRecords, referenceDocs } = data;
   const name = encodeURIComponent(classroom.name);
@@ -227,14 +230,17 @@ function sidePanel(data: ClassroomPageData): string {
     );
   }
   if (learningRecords.length > 0) {
+    // Records accumulate for as long as the learner keeps going, so the panel shows only
+    // the newest few; the full list, with summaries, has a page of its own.
+    const recent = learningRecords.slice(-RECENT_RECORDS).reverse();
     sections.push(
-      panel(
-        "Learning records",
-        learningRecords.map(
+      panel("Learning records", [
+        ...recent.map(
           (file) =>
             `<a href="/doc/${name}/learning-records/${encodeURIComponent(file)}">${escapeHtml(prettyFileName(file))}</a>`,
         ),
-      ),
+        `<a class="cl-panel-more" href="/doc/${name}/learning-records">All ${plural(learningRecords.length, "record")} →</a>`,
+      ]),
     );
   }
 
@@ -258,14 +264,136 @@ export function prettyFileName(file: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// ── Learning records page ─────────────────────────────────────────────────────
+
+export interface RecordSummary {
+  file: string;
+  /** The `NNNN` prefix, when the file has one. */
+  number: number | null;
+  title: string;
+  /** First paragraph of the body, flattened to plain text. */
+  summary: string | null;
+  superseded: boolean;
+}
+
+/**
+ * Pull a title and one-paragraph summary out of a learning record.
+ *
+ * Records are a heading and a few sentences (see LEARNING-RECORD-FORMAT.md), so the
+ * first paragraph is the record — the page can show it without opening the file.
+ */
+export function summarizeRecord(file: string, markdown: string): RecordSummary {
+  let body = markdown.replace(/\r\n/g, "\n");
+  let superseded = false;
+  const frontmatter = /^---\n([\s\S]*?)\n---\n?/.exec(body);
+  if (frontmatter) {
+    superseded = /^status:\s*superseded/im.test(frontmatter[1]);
+    body = body.slice(frontmatter[0].length);
+  }
+
+  const heading = /^#\s+(.+)$/m.exec(body);
+  const paragraph = body
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .find((block) => block && !block.startsWith("#") && !/^status:/i.test(block));
+  const prefix = /^(\d+)[-_]/.exec(file);
+
+  return {
+    file,
+    number: prefix ? Number(prefix[1]) : null,
+    title: heading ? plainText(heading[1]) : prettyFileName(file),
+    summary: paragraph ? truncate(plainText(paragraph), 280) : null,
+    superseded,
+  };
+}
+
+/** Flatten the inline markdown a record is likely to use into readable text. */
+function plainText(markdown: string): string {
+  return markdown
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[`*_]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max - 3).trimEnd() + "…" : text;
+}
+
+/** Every learning record, newest first — the newest is where the learner is now. */
+export function learningRecordsPage(
+  classroom: Classroom,
+  records: Array<{ file: string; markdown: string }>,
+): string {
+  const name = encodeURIComponent(classroom.name);
+  const summaries = records.map((r) => summarizeRecord(r.file, r.markdown)).reverse();
+
+  const list =
+    summaries.length === 0
+      ? emptyState(
+          "No learning records yet",
+          "Your teacher writes one each time you demonstrate you have really learned something.",
+        )
+      : `<ol class="cl-lessons cl-records">
+${summaries.map((record, i) => recordRow(name, record, summaries.length - i)).join("\n")}
+</ol>`;
+
+  return shell({
+    title: `Learning records — ${classroom.title}`,
+    breadcrumb: `${classroomCrumbs(classroom)}<span class="cl-crumb-sep" aria-hidden="true">/</span><span class="cl-crumb cl-crumb-current">Learning records</span>`,
+    body: `<div class="cl-hero">
+  <h1>Learning records</h1>
+  <p class="cl-lede">What you have actually learned, newest first. ${plural(summaries.length, "record")}.</p>
+</div>
+${list}`,
+  });
+}
+
+function recordRow(classroomName: string, record: RecordSummary, fallbackIndex: number): string {
+  const href = `/doc/${classroomName}/learning-records/${encodeURIComponent(record.file)}`;
+  const badge = record.superseded
+    ? `<span class="cl-lesson-badges"><span class="cl-badge" title="Replaced by a later record">superseded</span></span>`
+    : "";
+  return `<li class="cl-lesson">
+  <a class="cl-lesson-link" href="${href}">
+    <span class="cl-lesson-index">${String(record.number ?? fallbackIndex).padStart(2, "0")}</span>
+    <span class="cl-lesson-body">
+      <span class="cl-lesson-title">${escapeHtml(record.title)}</span>
+      ${record.summary ? `<span class="cl-lesson-summary">${escapeHtml(record.summary)}</span>` : ""}
+    </span>
+    ${badge}
+  </a>
+</li>`;
+}
+
 // ── Markdown document page ────────────────────────────────────────────────────
 
-export function documentPage(classroom: Classroom, fileName: string, markdown: string): string {
+/**
+ * A markdown document from the classroom.
+ *
+ * `parent` adds a crumb between the classroom and the document, for files that live
+ * under an index of their own (a learning record, a note).
+ */
+export function documentPage(
+  classroom: Classroom,
+  fileName: string,
+  markdown: string,
+  parent?: { label: string; href: string },
+): string {
+  const sep = `<span class="cl-crumb-sep" aria-hidden="true">/</span>`;
+  const parentCrumb = parent
+    ? `${sep}<a class="cl-crumb" href="${escapeHtml(parent.href)}">${escapeHtml(parent.label)}</a>`
+    : "";
   return shell({
     title: `${prettyFileName(fileName)} — ${classroom.title}`,
-    breadcrumb: `<a class="cl-crumb" href="/">Classrooms</a><span class="cl-crumb-sep" aria-hidden="true">/</span><a class="cl-crumb" href="/c/${encodeURIComponent(classroom.name)}">${escapeHtml(classroom.title)}</a><span class="cl-crumb-sep" aria-hidden="true">/</span><span class="cl-crumb cl-crumb-current">${escapeHtml(prettyFileName(fileName))}</span>`,
+    breadcrumb: `${classroomCrumbs(classroom)}${parentCrumb}${sep}<span class="cl-crumb cl-crumb-current">${escapeHtml(prettyFileName(fileName))}</span>`,
     body: `<article class="cl-doc">\n${renderMarkdown(markdown)}\n</article>`,
   });
+}
+
+/** `Classrooms / <classroom>` — the start of every page inside a classroom. */
+function classroomCrumbs(classroom: Classroom): string {
+  return `<a class="cl-crumb" href="/">Classrooms</a><span class="cl-crumb-sep" aria-hidden="true">/</span><a class="cl-crumb" href="/c/${encodeURIComponent(classroom.name)}">${escapeHtml(classroom.title)}</a>`;
 }
 
 // ── Bits ──────────────────────────────────────────────────────────────────────

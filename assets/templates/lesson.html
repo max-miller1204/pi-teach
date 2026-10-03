@@ -7,6 +7,11 @@
   the shared stylesheet and the interactive runtime when it serves the page, so
   everything below is just content.
 
+  Served at /c/<classroom>/<lesson> without a trailing slash. Use ./ for the
+  classroom link. Use assets/<path> for shared assets and <other-lesson> for
+  sibling lessons. Use /r/<classroom>/<file>.html for reference documents.
+  Do not use ../assets: it resolves outside the classroom.
+
   Placeholders to replace: {{LESSON_TITLE}}, {{ONE_LINE_SUMMARY}}, and the marked
   sections. Delete anything you do not use — a short lesson is the point.
 -->
@@ -91,7 +96,7 @@
           <em>Ask</em>. Your question goes straight to your teacher in Pi, and the answer appears
           right where you asked it.
         </p>
-        <p><a href="../">Back to the classroom</a></p>
+        <p><a href="./">Back to the classroom</a></p>
       </footer>
     </main>
   </body>

@@ -19,6 +19,7 @@
  */
 
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
+import { initLinks } from "./links.mjs";
 import { initTheme } from "./theme.mjs";
 
 const config = readConfig();
@@ -73,6 +74,7 @@ function init() {
   buildHeader();
   // After buildHeader: the toggle it wires up is the button the header just created.
   initTheme();
+  initLinks();
 
   buildAskPill();
   buildComposer();
