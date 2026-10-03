@@ -51,7 +51,7 @@ This session has no \`/classroom\` command, and it cannot push the learner's que
 - \`open_classroom\` starts the classroom server and opens the browser. Call it before you give the learner a URL. Lesson URLs work only while this session runs.
 - \`wait_for_learner\` blocks until the learner asks about a passage, asks a follow-up, or submits a quiz. It returns the full request and names the tool that answers it.
 
-After you give the learner a lesson, call \`wait_for_learner\`. Answer what it returns, then call it again. Keep listening while the learner works through the lesson. When a wait ends with nothing, call it again. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
+After you give the learner a lesson, call \`wait_for_learner\`. Answer page questions with \`answer_lesson_question\`. Grade quizzes with \`grade_lesson_quiz\` and follow the shared quiz follow-up rule. A teacher's retrieval question belongs in chat, not in a passage card. While you need a chat reply, end your turn. Do not call \`wait_for_learner\`: it receives browser requests, not chat replies. Resume listening when the chat check is complete and the learner returns to the page. Do not start another lesson without the learner's agreement. When a wait ends with nothing, call it again. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
 
 // ── Learner inbox ─────────────────────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ const WAIT_TOOL = {
   description:
     "Wait for the learner to ask about a lesson passage, ask a follow-up, or submit a quiz. " +
     "Blocks until one arrives, then returns every waiting request in full, including the tool that answers it. " +
-    "Call it after you give the learner a lesson, and again after each answer. Requires open_classroom first.",
+    "Call it while the learner works on the page. Do not call it while you need a chat reply to a retrieval question. Requires open_classroom first.",
   inputSchema: {
     type: "object",
     properties: {
@@ -345,7 +345,7 @@ export class McpSession {
     const header =
       prompts.length === 1
         ? ""
-        : `${prompts.length} requests arrived. Handle each one, then call wait_for_learner again.\n\n`;
+        : `${prompts.length} requests arrived. Handle each one. Follow the quiz follow-up rule before listening again. If you ask a retrieval question in chat, end your turn and wait for a chat reply.\n\n`;
     return result(id, toolResult(ok(header + prompts.join("\n\n---\n\n"))));
   }
 }

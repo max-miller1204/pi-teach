@@ -35,6 +35,10 @@ function arrivalNote(delivery: Delivery): string {
     : "It arrived as the result of your `wait_for_learner` call.";
 }
 
+/** The same quiz follow-up rule applies to every host. */
+export const QUIZ_FOLLOW_UP =
+  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
+
 /**
  * The teaching brief sent by /teach.
  *
@@ -58,6 +62,7 @@ export function teachingPrompt(topic: string, classroom: string | null): string 
   }
 
   parts.push(readDoc("TEACHING.md"));
+  parts.push(`## After grading a quiz\n\n${QUIZ_FOLLOW_UP}`);
   parts.push(
     "Reference documents you can read when you need them, in the extension's `docs/` directory " +
       `(${docsDir()}): MISSION-FORMAT.md, RESOURCES-FORMAT.md, GLOSSARY-FORMAT.md, NOTES-FORMAT.md, ` +
@@ -180,7 +185,7 @@ export function gradePrompt(submission: QuizSubmission, delivery: Delivery): str
     "",
     `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. That is what renders the grade on their page.`,
     "",
-    "If they got something wrong that suggests a real gap, consider writing a learning record afterwards.",
+    QUIZ_FOLLOW_UP,
   ].join("\n");
 }
 

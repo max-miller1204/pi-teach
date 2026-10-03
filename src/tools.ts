@@ -15,7 +15,7 @@ import * as path from "node:path";
 
 import { applyAnswer, applyGrade } from "./bridge.ts";
 import { classroomDir, isValidSlug, lessonDir, slugify, templatesDir } from "./paths.ts";
-import { missionStub, notesStub } from "./prompts.ts";
+import { missionStub, notesStub, QUIZ_FOLLOW_UP } from "./prompts.ts";
 import * as server from "./server.ts";
 import * as store from "./store.ts";
 
@@ -145,7 +145,8 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       label: "Grade Lesson Quiz",
       description:
         "Grade a quiz a learner submitted from a classroom lesson. The grade is written to the lesson's quiz/grades directory and rendered inline on their page. " +
-        "Only call it with a submission_id you were given in a quiz submission notification.",
+        "Only call it with a submission_id you were given in a quiz submission notification. " +
+        "After a wrong answer, check the missed idea with a new question in chat before moving to another lesson.",
       parameters: object({
         submission_id: str("The submission id from the notification."),
         score: { type: "number", description: "Overall score out of 100." },
@@ -197,9 +198,17 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           })),
         });
 
+        const incorrectQuestionIds = grade.questions
+          .filter((question) => !question.correct)
+          .map((question) => question.questionId);
+        const followUp =
+          incorrectQuestionIds.length > 0
+            ? `Missed questions: ${incorrectQuestionIds.join(", ")}.\n\n${QUIZ_FOLLOW_UP}`
+            : "Every answer is correct. Ask whether the learner is ready to continue before starting the next lesson.";
+
         return ok(
-          `Graded ${submission.quizTitle} in ${submission.classroom}/${submission.lesson}: ${Math.round(grade.score)}%. The learner can see it now.`,
-          { submissionId: submission.id, score: grade.score },
+          `Graded ${submission.quizTitle} in ${submission.classroom}/${submission.lesson}: ${Math.round(grade.score)}%. The learner can see it now.\n\n${followUp}`,
+          { submissionId: submission.id, score: grade.score, incorrectQuestionIds },
         );
       },
     },

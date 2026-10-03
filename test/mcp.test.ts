@@ -15,6 +15,7 @@ import {
   waitSeconds,
   type JsonRpcResponse,
 } from "../src/mcp.ts";
+import { gradePrompt, QUIZ_FOLLOW_UP } from "../src/prompts.ts";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
@@ -132,6 +133,8 @@ describe("session tools", () => {
     expect(result.isError).toBe(false);
     expect(text(result)).toContain("Their classroom is `rust`");
     expect(text(result)).toContain(HOST_BRIEF);
+    expect(text(result)).toContain(QUIZ_FOLLOW_UP);
+    expect(HOST_BRIEF).toContain("Do not call `wait_for_learner`");
   });
 
   it("open_classroom starts the server and returns the classroom URL", async () => {
@@ -181,6 +184,44 @@ describe("wait_for_learner", () => {
     });
     expect(answered.isError).toBe(false);
     expect(store.findAnnotation(annotation.id)!.status).toBe("answered");
+  });
+
+  it("returns the shared quiz rule and preserves wrong-answer feedback", async () => {
+    await call("open_classroom");
+    const response = await fetch(`${server.getBaseUrl()}/api/quiz/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        classroom: "rust",
+        lesson: "001-ownership",
+        quizId: "check-1",
+        quizTitle: "Ownership",
+        answers: [{ questionId: "q1", prompt: "Who owns a value?", value: "Everyone" }],
+      }),
+    });
+    expect(response.status).toBe(201);
+    const submission = (await response.json()) as store.QuizSubmission;
+    const prompt = text(await call("wait_for_learner"));
+    expect(prompt).toBe(gradePrompt(submission, "wait"));
+
+    const graded = await call("grade_lesson_quiz", {
+      submission_id: submission.id,
+      score: 0,
+      feedback_markdown: "Review ownership.",
+      questions: [{ question_id: "q1", correct: false, feedback: "Each value has one owner." }],
+    });
+    expect(graded.isError).toBe(false);
+    expect(text(graded)).toContain(QUIZ_FOLLOW_UP);
+    expect(text(graded)).toContain("Missed questions: q1");
+    const state = await fetch(
+      `${server.getBaseUrl()}/api/state?classroom=rust&lesson=001-ownership`,
+    );
+    expect(await state.json()).toMatchObject({
+      grade: {
+        score: 0,
+        questions: [{ questionId: "q1", correct: false }],
+      },
+    });
   });
 
   it("keeps questions asked while nobody waits, and returns them together", async () => {

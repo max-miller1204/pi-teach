@@ -1,8 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { resolveClassroom } from "../src/commands.ts";
-import { followUpPrompt, missionStub, notesStub, teachingPrompt } from "../src/prompts.ts";
-import type { Annotation, FollowUp } from "../src/store.ts";
+import {
+  askPrompt,
+  followUpPrompt,
+  gradePrompt,
+  missionStub,
+  notesStub,
+  QUIZ_FOLLOW_UP,
+  teachingPrompt,
+} from "../src/prompts.ts";
+import type { Annotation, FollowUp, QuizSubmission } from "../src/store.ts";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
@@ -25,6 +33,7 @@ describe("teachingPrompt", () => {
     expect(prompt).toContain("grade_lesson_quiz");
     expect(prompt).toContain("zone of proximal development");
     expect(prompt).toContain("~/.pi/agent/classrooms/");
+    expect(prompt).toContain(QUIZ_FOLLOW_UP);
   });
 
   it("points at an existing classroom when continuing one", () => {
@@ -96,6 +105,61 @@ describe("followUpPrompt", () => {
     expect(prompt).toContain("Many readers, one writer.");
     expect(prompt).toContain("And across threads?");
     expect(prompt).not.toContain("Asked after this one");
+  });
+});
+
+describe("delivery parity", () => {
+  const card: Annotation = {
+    id: "a1",
+    classroom: "rust",
+    lesson: "001-ownership",
+    status: "answered",
+    question: "Why only one owner?",
+    selection: "one owner",
+    anchor: { exact: "one owner", prefix: "", suffix: "", occurrence: 0 },
+    answerMarkdown: "To prevent double-free.",
+    answerHtml: "<p>To prevent double-free.</p>",
+    createdAt: 1,
+    answeredAt: 2,
+  };
+  const followUp: FollowUp = {
+    id: "f1",
+    question: "What about borrowing?",
+    status: "pending",
+    answerMarkdown: null,
+    answerHtml: null,
+    askedAt: 3,
+    answeredAt: null,
+  };
+  const submission: QuizSubmission = {
+    id: "s1",
+    classroom: card.classroom,
+    lesson: card.lesson,
+    quizId: "check-1",
+    quizTitle: "Ownership",
+    answers: [{ questionId: "q1", prompt: "Who owns a value?", value: "Everyone" }],
+    submittedAt: 4,
+  };
+  const normalize = (prompt: string) =>
+    prompt.replace(
+      /This notification was delivered automatically; nothing was polled\.|It arrived as the result of your `wait_for_learner` call\./,
+      "(delivery)",
+    );
+
+  it.each([
+    ["question", (delivery: "push" | "wait") => askPrompt(card, delivery)],
+    ["follow-up", (delivery: "push" | "wait") => followUpPrompt(card, followUp, delivery)],
+    ["quiz", (delivery: "push" | "wait") => gradePrompt(submission, delivery)],
+  ] as const)("changes only the arrival note for a %s", (_name, prompt) => {
+    expect(normalize(prompt("wait"))).toBe(normalize(prompt("push")));
+  });
+
+  it.each(["push", "wait"] as const)("includes chat retrieval in %s grading", (delivery) => {
+    const prompt = gradePrompt(submission, delivery);
+    expect(prompt).toContain(QUIZ_FOLLOW_UP);
+    expect(prompt).toContain('submission_id: "s1"');
+    expect(prompt).toContain("End your turn");
+    expect(prompt).toContain("Do not create or start the next lesson");
   });
 });
 
