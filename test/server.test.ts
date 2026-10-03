@@ -5,10 +5,10 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 
-import { applyAnswer, applyGrade } from "../src/bridge.js";
-import * as server from "../src/server.js";
-import * as store from "../src/store.js";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.js";
+import { applyAnswer, applyGrade } from "../src/bridge.ts";
+import * as server from "../src/server.ts";
+import * as store from "../src/store.ts";
+import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
 let baseUrl: string;

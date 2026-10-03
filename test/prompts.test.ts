@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { resolveClassroom } from "../src/commands.js";
-import { followUpPrompt, missionStub, notesStub, teachingPrompt } from "../src/prompts.js";
-import type { Annotation, FollowUp } from "../src/store.js";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.js";
+import { resolveClassroom } from "../src/commands.ts";
+import { followUpPrompt, missionStub, notesStub, teachingPrompt } from "../src/prompts.ts";
+import type { Annotation, FollowUp } from "../src/store.ts";
+import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
 
@@ -75,7 +75,7 @@ describe("followUpPrompt", () => {
 
   it("replays the thread so a bare “why?” is answerable", () => {
     const pending = followUp("f1", "Why does that matter?", null);
-    const prompt = followUpPrompt({ ...card, followUps: [pending] }, pending);
+    const prompt = followUpPrompt({ ...card, followUps: [pending] }, pending, "push");
 
     expect(prompt).toContain("one owner"); // the passage
     expect(prompt).toContain("Why only one owner?"); // turn one
@@ -90,7 +90,7 @@ describe("followUpPrompt", () => {
     const asking = followUp("f2", "And across threads?", null);
     const later = followUp("f3", "Asked after this one", null);
 
-    const prompt = followUpPrompt({ ...card, followUps: [earlier, asking, later] }, asking);
+    const prompt = followUpPrompt({ ...card, followUps: [earlier, asking, later] }, asking, "push");
 
     expect(prompt).toContain("What about borrows?");
     expect(prompt).toContain("Many readers, one writer.");

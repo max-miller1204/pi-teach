@@ -14,11 +14,11 @@
  *      extension uses to route replies back to the right thread.
  */
 
-import { findLastAssistantText } from "./assistant-text.js";
-import { renderMarkdown } from "./markdown.js";
-import { askPrompt, followUpPrompt, gradePrompt } from "./prompts.js";
-import * as server from "./server.js";
-import * as store from "./store.js";
+import { findLastAssistantText } from "./assistant-text.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { askPrompt, followUpPrompt, gradePrompt } from "./prompts.ts";
+import * as server from "./server.ts";
+import * as store from "./store.ts";
 
 /** Minimal shape of the pi API this module needs, so tests can pass a stub. */
 export interface MessageSender {
@@ -33,7 +33,11 @@ export class ClassroomBridge {
   private readonly pending: Origin[] = [];
   private idle: () => boolean = () => true;
 
-  constructor(private readonly pi: MessageSender) {}
+  private readonly pi: MessageSender;
+
+  constructor(pi: MessageSender) {
+    this.pi = pi;
+  }
 
   /** Track whether the agent is mid-turn, so messages can be queued appropriately. */
   setIdleProbe(probe: () => boolean): void {
@@ -52,13 +56,13 @@ export class ClassroomBridge {
   /** Ask the agent to answer a highlighted-text question. */
   ask(annotation: store.Annotation): void {
     this.pending.push({ kind: "ask", annotationId: annotation.id, turn: null });
-    this.send(askPrompt(annotation));
+    this.send(askPrompt(annotation, "push"));
   }
 
   /** Ask the agent to answer a follow-up asked inside an existing card. */
   followUp(annotation: store.Annotation, followUp: store.FollowUp): void {
     this.pending.push({ kind: "ask", annotationId: annotation.id, turn: followUp.id });
-    this.send(followUpPrompt(annotation, followUp));
+    this.send(followUpPrompt(annotation, followUp, "push"));
   }
 
   /** Ask the agent to grade a quiz submission. */
@@ -66,7 +70,7 @@ export class ClassroomBridge {
     // Grading has no fallback path — a half-graded quiz would be worse than none —
     // so the origin is recorded as foreign and only the tool writes a grade.
     this.pending.push({ kind: "other" });
-    this.send(gradePrompt(submission));
+    this.send(gradePrompt(submission, "push"));
   }
 
   /**

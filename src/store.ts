@@ -21,7 +21,7 @@ import {
   isValidSlug,
   lessonDir,
   submissionsDir,
-} from "./paths.js";
+} from "./paths.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -11,6 +11,11 @@ The package root _is_ the extension root: `package.json` declares `pi.extensions
 `pi install /path/to/pi-teach` both work. Nothing may depend on files outside this
 directory.
 
+The same root is also a Claude Code and Codex plugin. `.claude-plugin/` and
+`.codex-plugin/` hold the manifests, `.claude-plugin/marketplace.json` and
+`.agents/plugins/marketplace.json` list the repository root as the plugin, `skills/`
+holds the two skills, and `mcp/launch.mjs` starts the MCP server. Pi ignores all of it.
+
 This is a fork of `joshrnoll/pi-teach` (the `upstream` remote), which is published to
 npm; this fork is not. A copy also lives in Josh's private `my-pi-packages` repo as
 `extensions/classroom`. They are all independent — a change here does not propagate.
@@ -23,7 +28,19 @@ yourself wanting the `web` extension's detached daemon, remember that a detached
 cannot reach the agent — questions and grading would stop working. Session-scoped is the
 feature, not a limitation to fix.
 
+Claude Code and Codex keep the same shape: the client spawns one MCP process per session,
+and the HTTP server lives in it. An MCP server cannot wake its client, so the browser's
+prompts go into a `LearnerInbox`, and the agent collects them with `wait_for_learner`.
+The prompts are the same as in Pi; only `Delivery` (`"push"` or `"wait"`) changes one
+sentence.
+
 **2. TS runs in the extension, `.mjs` runs in the browser.** There is no build step.
+
+Pi loads the `.ts` files with its own loader. Claude Code and Codex run them with Node's
+built-in type stripping (Node 22.18 or later). That is why relative imports end in `.ts`,
+and why `tsconfig.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax`: no enums, no
+parameter properties, and `import type` for type-only imports. `npm run check` enforces
+it.
 
 - `.ts` (`index.ts`, `src/`) — the extension process: commands, tools, server, store.
 - `.mjs` / `.js` (`assets/runtime/`) — loaded by the browser over `/static/`. Anything a
@@ -36,7 +53,8 @@ browser runs. Keep it that way — DOM work belongs in `classroom.js`.
 **3. Nothing goes in the system prompt.** The wake-up messages in `src/prompts.ts` are
 self-contained: they restate the classroom, the lesson, the question, and the exact tool
 that answers it, because they arrive out of band, possibly many turns later. Sessions
-that never teach pay nothing. Do not add a `before_agent_start` injection.
+that never teach pay nothing. Do not add a `before_agent_start` injection. For the same reason, the MCP server
+sends no `instructions`: the skills and `begin_teaching` carry the brief.
 
 ## Module map
 
@@ -53,7 +71,16 @@ Extension side (`.ts`):
   `<classroom>/<lesson>`.
 - `src/bridge.ts` — waking the agent, and the origin FIFO that keeps `agent_end`
   attribution honest.
-- `src/tools.ts` — the four tools.
+- `src/tools.ts` — the four shared tools, as plain JSON Schema. Pi's validator compiles
+  JSON Schema as-is, so there is no `typebox` import. `ToolHost` holds the one string
+  that differs between hosts.
+- `src/mcp.ts` — the MCP server for Claude Code and Codex: a pure JSON-RPC dispatcher
+  (`McpSession`), the `LearnerInbox`, and the session tools (`begin_teaching`,
+  `open_classroom`, `list_classrooms`, `wait_for_learner`).
+- `src/mcp-stdio.ts` — wires `McpSession` to stdin and stdout. stdout is the transport,
+  so nothing in the MCP process may write to it.
+- `mcp/launch.mjs` — the MCP entry point. Checks the Node version, runs
+  `npm ci --omit=dev` on the first start, then imports `src/mcp-stdio.ts`.
 - `src/commands.ts` — `/classroom` and `/teach`.
 - `src/status-widget.ts` — the "classroom server running on port N" widget below the
   editor.
@@ -88,6 +115,9 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   fallback cannot desync it. It uses plain string lines (the only content RPC mode
   honours) and swallows `setWidget` failures — a mode without widgets must not take the
   server down with it. Call it after anything that starts or stops the server.
+- **The learner inbox never drops a prompt.** A prompt that arrives while nobody waits
+  stays queued for the next `wait_for_learner`. A cancelled wait (the user pressed Esc)
+  gets no response and takes nothing from the queue.
 - **Grading has no prose fallback.** A half-invented grade is worse than none, so
   `bridge.grade()` records a foreign origin and only `grade_lesson_quiz` writes a grade.
 - **Answers render server-side.** `applyAnswer` and `applyGrade` store markdown _and_
@@ -116,7 +146,16 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   builds a temp classrooms root via `_overrideClassroomsDir`.
 - `test/server.test.ts` drives the real server over HTTP, including the SSE paths — add
   route changes there, and keep the traversal cases green.
-- After changes: `npm run check` and `npm test` from the repo root.
+- After changes: `npm run check` and `npm test` from the repo root. After a plugin
+  manifest change, also run `claude plugin validate .`.
+- After a change to the MCP server, the skills, or the prompts, run `npm run e2e:claude`
+  and `npm run e2e:codex`. They drive a real session through a question and a quiz.
+- `test/mcp.test.ts` drives `McpSession` against the real server. `test/plugin.test.ts`
+  checks the manifests against the package.
+- Keep `.codex-plugin/plugin.json` `version` equal to `package.json`. Codex caches the
+  plugin by version. The Claude manifest has no version, so Claude Code follows commits.
+- Codex passes no environment variables to the MCP server unless
+  `.codex-plugin/mcp.json` lists them in `env_vars`. Add any new `PI_*` variable there.
 - Commit `package-lock.json` with any dependency change — Pi runs `npm install` after
   cloning a git target.
 - **Never commit a lockfile produced by a bare `npm install` on macOS.** The Pi dev

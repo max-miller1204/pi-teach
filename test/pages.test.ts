@@ -9,8 +9,8 @@ import {
   missionWhy,
   prettyFileName,
   summarizeRecord,
-} from "../src/pages.js";
-import type { Classroom, Lesson } from "../src/store.js";
+} from "../src/pages.ts";
+import type { Classroom, Lesson } from "../src/store.ts";
 
 const classroom: Classroom = {
   name: "rust",

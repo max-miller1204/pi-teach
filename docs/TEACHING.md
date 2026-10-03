@@ -168,4 +168,5 @@ community, respect it and note it in `RESOURCES.md`.
 6. Answer what they ask; grade what they hand in.
 7. Write a learning record when they have actually learned something.
 
-Tell them they can run `/classroom` to browse everything in a browser.
+Tell them how to browse everything in a browser: `/classroom` in Pi, or the URL from
+`open_classroom` elsewhere.

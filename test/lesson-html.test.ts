@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { injectLessonRuntime, type LessonRuntimeConfig } from "../src/lesson-html.js";
+import { injectLessonRuntime, type LessonRuntimeConfig } from "../src/lesson-html.ts";
 
 const config: LessonRuntimeConfig = {
   classroom: "rust",

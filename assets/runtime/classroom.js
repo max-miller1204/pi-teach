@@ -4,7 +4,7 @@
  * Two features live here:
  *
  *   1. Highlight to ask. Select text, hit "Ask", type a question. It goes to the
- *      teacher running in your Pi session; the answer streams back into a card
+ *      teacher running in your agent session; the answer streams back into a card
  *      pinned to the highlight. A card is a thread: the box at the bottom asks a
  *      follow-up, which the teacher answers with the earlier turns in view. Cards
  *      minimise to a numbered badge and reopen on click. Everything is persisted
@@ -407,7 +407,7 @@ async function onAskSubmit(event) {
     renderCard(annotation, mark);
   } catch (err) {
     console.error("[classroom] ask failed", err);
-    alert("Could not reach your Pi session. Is /classroom still running?");
+    alert("Could not reach your teacher. Is the session that started the classroom still running?");
   } finally {
     submit.disabled = false;
   }
@@ -629,7 +629,7 @@ async function onFollowUpSubmit(event, annotationId) {
     renderCard(annotation, cards.get(annotationId)?.mark ?? null);
   } catch (err) {
     console.error("[classroom] follow-up failed", err);
-    alert("Could not reach your Pi session. Is /classroom still running?");
+    alert("Could not reach your teacher. Is the session that started the classroom still running?");
   } finally {
     submit.disabled = false;
   }
@@ -923,7 +923,10 @@ async function onQuizSubmit(event, form) {
   } catch (err) {
     console.error("[classroom] quiz submit failed", err);
     setQuizState(form, "fresh");
-    setQuizStatus(form, "Could not reach your Pi session. Is /classroom still running?");
+    setQuizStatus(
+      form,
+      "Could not reach your teacher. Is the session that started the classroom still running?",
+    );
   }
 }
 

@@ -1,0 +1,17 @@
+{
+  "name": "pi-teach",
+  "displayName": "Teach",
+  "description": "A teacher you can interrupt: interactive HTML lessons in a local web UI, with highlight-to-ask questions and graded quizzes.",
+  "author": { "name": "Josh Noll" },
+  "homepage": "https://github.com/max-miller1204/pi-teach#readme",
+  "repository": "https://github.com/max-miller1204/pi-teach",
+  "license": "MIT",
+  "keywords": ["teaching", "learning", "classroom", "lessons", "quiz"],
+  "mcpServers": {
+    "classroom": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/launch.mjs"],
+      "timeout": 3600000
+    }
+  }
+}

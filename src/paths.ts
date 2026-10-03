@@ -99,6 +99,10 @@ export function annotationsFile(classroom: string, lesson: string): string {
  */
 const extensionRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+export function packageRoot(): string {
+  return extensionRoot;
+}
+
 export function assetsDir(): string {
   return path.join(extensionRoot, "assets");
 }

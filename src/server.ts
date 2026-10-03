@@ -30,8 +30,8 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 
-import { readConfig, resolveConfiguredPort } from "./config.js";
-import { injectLessonRuntime } from "./lesson-html.js";
+import { readConfig, resolveConfiguredPort } from "./config.ts";
+import { injectLessonRuntime } from "./lesson-html.ts";
 import {
   classroomDir,
   isFile,
@@ -39,15 +39,15 @@ import {
   lessonDir,
   runtimeAssetsDir,
   safeJoin,
-} from "./paths.js";
+} from "./paths.ts";
 import {
   classroomPage,
   documentPage,
   landingPage,
   learningRecordsPage,
   notFoundPage,
-} from "./pages.js";
-import * as store from "./store.js";
+} from "./pages.ts";
+import * as store from "./store.ts";
 
 // ── Callbacks into the extension ──────────────────────────────────────────────
 

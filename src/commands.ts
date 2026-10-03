@@ -10,14 +10,14 @@
 
 import * as fs from "node:fs";
 
-import { shouldAutoOpen } from "./config.js";
-import { openUrl } from "./open-browser.js";
-import { classroomDir, slugify } from "./paths.js";
-import { teachingPrompt } from "./prompts.js";
-import * as server from "./server.js";
-import { attachStatusWidget, refreshStatusWidget } from "./status-widget.js";
-import * as store from "./store.js";
-import type { ClassroomBridge } from "./bridge.js";
+import { shouldAutoOpen } from "./config.ts";
+import { openUrl } from "./open-browser.ts";
+import { classroomDir, slugify } from "./paths.ts";
+import { teachingPrompt } from "./prompts.ts";
+import * as server from "./server.ts";
+import { attachStatusWidget, refreshStatusWidget } from "./status-widget.ts";
+import * as store from "./store.ts";
+import type { ClassroomBridge } from "./bridge.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -154,11 +154,17 @@ function handleStatus(ctx: any): void {
 }
 
 function handleList(ctx: any): void {
+  ctx.ui.notify(classroomListText("Run /teach <topic> to start one."), "info");
+}
+
+/**
+ * Every classroom and its lessons, with scores and pending grading, as markdown.
+ *
+ * `emptyHint` says how to start a classroom on the host that shows the list.
+ */
+export function classroomListText(emptyHint: string): string {
   const classrooms = store.listClassrooms();
-  if (classrooms.length === 0) {
-    ctx.ui.notify("No classrooms yet. Run /teach <topic> to start one.", "info");
-    return;
-  }
+  if (classrooms.length === 0) return `No classrooms yet. ${emptyHint}`;
 
   const lines = ["📚 **Classrooms**", ""];
   for (const classroom of classrooms) {
@@ -173,7 +179,7 @@ function handleList(ctx: any): void {
     if (classroom.lessonCount === 0) lines.push("   (no lessons yet)");
     lines.push("");
   }
-  ctx.ui.notify(lines.join("\n").trimEnd(), "info");
+  return lines.join("\n").trimEnd();
 }
 
 async function handleOpen(ctx: any, requested: string | null): Promise<void> {

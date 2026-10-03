@@ -6,7 +6,10 @@
     "strict": true,
     "noEmit": true,
     "types": ["node", "vitest/globals"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true
   },
-  "include": ["index.ts", "src/**/*.ts", "test/**/*.ts", "assets/**/*.d.mts"]
+  "include": ["index.ts", "src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "assets/**/*.d.mts"]
 }

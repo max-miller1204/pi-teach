@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import * as store from "../src/store.js";
-import { makeFixture, lessonHtml, seedClassroom, type Fixture } from "./helpers.js";
+import * as store from "../src/store.ts";
+import { makeFixture, lessonHtml, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
 
