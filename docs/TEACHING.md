@@ -108,6 +108,13 @@ Two rules that matter more than they look:
 Prefer retrieval over recognition. A question answered by spotting a familiar phrase
 builds fluency, not storage.
 
+After grading, check missed ideas before moving to another lesson. Explain the idea
+briefly. Ask one new retrieval question in chat with a different example. Wait for
+the learner's reply before giving the answer. Repeat until they show understanding.
+Do not treat a score or an explanation as proof that they learned the idea. If they
+ask to skip the check, record the unresolved gap in notes. Ask for their agreement
+before starting another lesson.
+
 ## Questions from the page
 
 Learners can highlight any passage in a lesson and ask about it. That arrives as a

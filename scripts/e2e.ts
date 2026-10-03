@@ -10,8 +10,9 @@
  *   2. Start the harness with this checkout as a plugin, and tell the agent to open the
  *      classroom and listen with `wait_for_learner`.
  *   3. Read the classroom URL from the harness's JSON event stream.
- *   4. Ask a question about a highlighted passage. Wait for the answer on the card.
- *   5. Submit a quiz. Wait for the grade.
+ *   4. Ask about a highlighted passage. Check the answer in the browser state.
+ *   5. Submit a wrong answer. Wait for the grade and a retrieval question in chat.
+ *   6. Check that the agent ends its turn without starting another lesson or wait.
  *
  * This calls a real model, so it needs a logged-in harness and is not part of CI.
  * Nothing touches your real classrooms or harness settings: the classrooms root is a
@@ -38,10 +39,11 @@ if (harness !== "claude" && harness !== "codex") {
 }
 
 const PROMPT = [
-  `Call the classroom MCP tool open_classroom with classroom "${CLASSROOM}".`,
+  `Call begin_teaching with topic "${CLASSROOM}" to get the teaching method.`,
+  `Use the existing lesson. Call open_classroom with classroom "${CLASSROOM}".`,
   "Then call wait_for_learner with timeout_seconds 120, and do what its result asks.",
   "Keep calling wait_for_learner and handling its results until you have answered one question and graded one quiz.",
-  "Keep each answer to two sentences. Then stop.",
+  "After grading, follow the teaching method, then end this run. Keep explanations short.",
 ].join(" ");
 
 function log(message: string): void {
@@ -83,6 +85,7 @@ function codexHome(): string {
 }
 
 const REQUIRED_TOOLS = [
+  "begin_teaching",
   "open_classroom",
   "wait_for_learner",
   "answer_lesson_question",
@@ -137,6 +140,32 @@ function toolCalls(events: string): string[] {
   return [...events.matchAll(pattern)].map((match) => match[1]!);
 }
 
+/** Only chat text after grading can count as a retrieval question. */
+function chatTextAfterGrade(events: string): string {
+  let graded = false;
+  const messages: string[] = [];
+  for (const line of events.split("\n").filter(Boolean)) {
+    const event = JSON.parse(line);
+    if (harness === "claude" && event.type === "assistant") {
+      for (const block of event.message.content) {
+        if (block.type === "tool_use" && block.name === `${CLAUDE_PREFIX}grade_lesson_quiz`) {
+          graded = true;
+        } else if (graded && block.type === "text") {
+          messages.push(block.text);
+        }
+      }
+    }
+    if (harness === "codex" && event.type === "item.completed") {
+      if (event.item?.type === "mcp_tool_call" && event.item.tool === "grade_lesson_quiz") {
+        graded = true;
+      } else if (graded && event.item?.type === "agent_message") {
+        messages.push(event.item.text);
+      }
+    }
+  }
+  return messages.join("\n");
+}
+
 async function until<T>(what: string, probe: () => T | null): Promise<T> {
   const deadline = Date.now() + STEP_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -187,6 +216,7 @@ async function main(): Promise<void> {
   let stderr = "";
   child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
   const exited = new Promise<number | null>((resolve) => child.on("close", resolve));
+  let exitTimer: ReturnType<typeof setTimeout> | undefined;
 
   try {
     const base = await until("the classroom URL", () => {
@@ -213,6 +243,18 @@ async function main(): Promise<void> {
     });
     log(`answer on the card: ${JSON.stringify(answer)}`);
 
+    const stateResponse = await fetch(`${base}/api/state?classroom=${CLASSROOM}&lesson=${LESSON}`);
+    if (stateResponse.status !== 200) {
+      throw new Error(`GET browser state returned ${stateResponse.status}`);
+    }
+    const state = (await stateResponse.json()) as {
+      annotations: Array<{ id: string; answerMarkdown: string; answerHtml: string }>;
+    };
+    const card = state.annotations.find((annotation) => annotation.id === asked["id"]);
+    if (!answer.trim() || card?.answerMarkdown !== answer || !card.answerHtml?.trim()) {
+      throw new Error("The browser state does not contain the rendered card answer.");
+    }
+
     const submitted = await post(`${base}/api/quiz/submit`, {
       classroom: CLASSROOM,
       lesson: LESSON,
@@ -222,7 +264,7 @@ async function main(): Promise<void> {
         {
           questionId: "q1",
           value: "b",
-          label: "The value is dropped",
+          label: "The value stays alive forever",
           prompt: "What happens to a value when its owner goes out of scope?",
         },
       ],
@@ -237,10 +279,28 @@ async function main(): Promise<void> {
         : null;
     });
     log(`grade: ${String(grade["score"])}%, ${JSON.stringify(grade["feedbackMarkdown"])}`);
+    const questions = grade["questions"] as Array<{ questionId: string; correct: boolean }>;
+    if (
+      grade["submissionId"] !== submitted["id"] ||
+      questions.length !== 1 ||
+      questions[0]?.questionId !== "q1" ||
+      questions[0].correct !== false ||
+      typeof grade["score"] !== "number" ||
+      !Number.isFinite(grade["score"]) ||
+      grade["score"] < 0 ||
+      grade["score"] >= 100
+    ) {
+      throw new Error("The agent did not mark the submitted wrong answer as incorrect.");
+    }
 
     const code = await Promise.race([
       exited,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), STEP_TIMEOUT_MS)),
+      new Promise<never>((_resolve, reject) => {
+        exitTimer = setTimeout(
+          () => reject(new Error(`${command} did not end its turn after grading.`)),
+          STEP_TIMEOUT_MS,
+        );
+      }),
     ]);
     if (code !== 0) throw new Error(`${command} exited with ${code}:\n${stderr}`);
 
@@ -249,8 +309,28 @@ async function main(): Promise<void> {
     for (const tool of REQUIRED_TOOLS) {
       if (!calls.includes(tool)) throw new Error(`The agent never called ${tool}`);
     }
-    log(`PASS: question answered and quiz graded through ${harness}`);
+    const afterGrade = calls.slice(calls.indexOf("grade_lesson_quiz") + 1);
+    if (afterGrade.includes("wait_for_learner")) {
+      throw new Error("The agent waited for browser input instead of a chat reply.");
+    }
+    const chat = chatTextAfterGrade(stream);
+    if (!chat.includes("?")) {
+      throw new Error(`The agent did not ask a retrieval question in chat:\n${chat}`);
+    }
+    const classroomDir = path.join(classrooms, CLASSROOM);
+    const lessons = fs
+      .readdirSync(classroomDir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() && fs.existsSync(path.join(classroomDir, entry.name, "lesson.html")),
+      );
+    if (lessons.length !== 1 || lessons[0]?.name !== LESSON) {
+      throw new Error("The agent changed the lesson set before the learner agreed.");
+    }
+    log(`chat check: ${JSON.stringify(chat)}`);
+    log(`PASS: wrong answer followed by a chat check through ${harness}`);
   } finally {
+    clearTimeout(exitTimer);
     child.kill();
     fs.rmSync(classrooms, { recursive: true, force: true });
     if (home) fs.rmSync(home, { recursive: true, force: true });

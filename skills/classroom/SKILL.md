@@ -14,4 +14,6 @@ The classroom server runs inside this session. It stops when the session ends. A
 material stays on disk.
 
 If the user will read a lesson now, call `wait_for_learner` after you give them the
-URL, so their questions and quizzes reach you.
+URL, so their questions and quizzes reach you. Follow the quiz follow-up rule in the
+grading result. If you ask a retrieval question in chat, end your turn and wait for
+a chat reply. Do not call `wait_for_learner` while you need that reply.

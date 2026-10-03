@@ -1,6 +1,6 @@
 {
   "name": "pi-teach",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A teacher you can interrupt: interactive HTML lessons in a local web UI, with highlight-to-ask questions and graded quizzes.",
   "author": { "name": "Josh Noll" },
   "homepage": "https://github.com/max-miller1204/pi-teach#readme",

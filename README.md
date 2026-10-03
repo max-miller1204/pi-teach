@@ -89,6 +89,10 @@ Quizzes are graded in place, question by question, with an overall score and fee
 the top. Submissions and grades live in the lesson directory, so a reload brings the whole
 thing back.
 
+After a wrong answer, the teacher explains the missed idea and asks a new question
+in chat. Reply there so the teacher can check your understanding before moving on.
+The same teaching rule applies in Pi, Claude Code, and Codex.
+
 ![A graded quiz showing 92%, overall feedback, and per-question verdicts](screenshots/quiz.png)
 
 Every page follows your system theme, with a manual override that sticks — lessons,
@@ -140,7 +144,12 @@ session. Claude Code and Codex cannot. The agent listens instead:
 1. The agent writes a lesson and calls `open_classroom`. The browser opens.
 2. The agent calls `wait_for_learner`. The call waits until you ask a question or
    submit a quiz in the browser.
-3. The agent answers on the page, then calls `wait_for_learner` again.
+3. The agent answers page questions with `answer_lesson_question` and grades quizzes
+   with `grade_lesson_quiz`.
+4. After a wrong quiz answer, the agent asks a retrieval question in chat and ends
+   its turn. Reply in chat. The agent checks your understanding before moving on.
+5. The agent resumes `wait_for_learner` when you return to the page. It does not wait
+   for browser input while it needs your chat reply.
 
 While the agent waits, the terminal is busy. Press Esc to stop the wait and talk to the
 agent. Ask it to keep listening when you go back to the lesson. Questions you ask while
