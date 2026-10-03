@@ -1,0 +1,12 @@
+{
+  "name": "pi-teach",
+  "interface": { "displayName": "pi-teach" },
+  "plugins": [
+    {
+      "name": "pi-teach",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Education"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
 
-import { isValidSlug, safeJoin, slugify } from "../src/paths.js";
+import { isValidSlug, safeJoin, slugify } from "../src/paths.ts";
 
 describe("isValidSlug", () => {
   it("accepts the directory names classrooms and lessons actually use", () => {

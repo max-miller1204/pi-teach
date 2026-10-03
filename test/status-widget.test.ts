@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 
-import * as server from "../src/server.js";
+import * as server from "../src/server.ts";
 import {
   WIDGET_KEY,
   attachStatusWidget,
@@ -8,8 +8,8 @@ import {
   refreshStatusWidget,
   statusWidgetLines,
   type WidgetHost,
-} from "../src/status-widget.js";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.js";
+} from "../src/status-widget.ts";
+import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 interface Call {
   key: string;

@@ -1,6 +1,8 @@
 # pi-teach
 
 A fully-featured [Pi](https://github.com/badlogic/pi-mono) extension based on Matt Pocock's `teach` skill (see `docs/ATTRIBUTION.md`).
+The same repository is also a plugin for [Claude Code](#claude-code-and-codex) and
+[Codex](#claude-code-and-codex).
 
 Lessons are self-contained HTML documents stored under `~/.pi/agent/classrooms/`. A
 local server presents them — a landing page of classrooms, each with its lessons,
@@ -32,12 +34,32 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
 
 ## Install
 
+### Pi
+
 ```bash
 pi install git:github.com/max-miller1204/pi-teach
 ```
 
 The extension registers two commands, `/teach` and `/classroom`, four tools, and a status
 widget. It has one runtime dependency (`marked`) and no build step.
+
+### Claude Code
+
+```bash
+claude plugin marketplace add max-miller1204/pi-teach
+claude plugin install pi-teach@pi-teach
+```
+
+### Codex
+
+```bash
+codex plugin marketplace add max-miller1204/pi-teach
+codex plugin add pi-teach@pi-teach
+```
+
+Claude Code and Codex need Node 22.18 or later on your `PATH`. The plugin runs
+TypeScript directly, with no build step. On its first start it runs
+`npm ci --omit=dev` in the plugin directory to install `marked`.
 
 ## What it looks like
 
@@ -100,6 +122,33 @@ That is what makes questions and grading work: a detached daemon could serve the
 but it could not reach your agent. It stops when the session ends — `/classroom` starts
 it again, and nothing is lost, because all state is on disk.
 
+## Claude Code and Codex
+
+The plugin gives Claude Code and Codex the same classrooms, lessons, and web UI as Pi. It
+has two skills and one MCP server, `classroom`.
+
+```text
+/pi-teach:teach <topic>     Claude Code: start or continue learning something
+/pi-teach:classroom         Claude Code: open or list your classrooms
+```
+
+In Codex, ask it to teach you a topic, or mention the `teach` or `classroom` skill.
+
+One thing works differently. Pi can push a question from the browser into the
+session. Claude Code and Codex cannot. The agent listens instead:
+
+1. The agent writes a lesson and calls `open_classroom`. The browser opens.
+2. The agent calls `wait_for_learner`. The call waits until you ask a question or
+   submit a quiz in the browser.
+3. The agent answers on the page, then calls `wait_for_learner` again.
+
+While the agent waits, the terminal is busy. Press Esc to stop the wait and talk to the
+agent. Ask it to keep listening when you go back to the lesson. Questions you ask while
+nobody listens stay in a queue. The next `wait_for_learner` call returns all of them.
+
+The classroom server runs inside the MCP server process, so it is session-scoped, as in
+Pi. It stops when the session ends.
+
 ## Storage
 
 ```text
@@ -123,7 +172,8 @@ it again, and nothing is lost, because all state is on disk.
         grades/*.json       your teacher's grading
 ```
 
-Set `PI_CLASSROOMS_DIR` to keep material somewhere else.
+Set `PI_CLASSROOMS_DIR` to keep material somewhere else. Pi, Claude Code, and Codex all
+use the same directory, so a classroom you start in one continues in the others.
 
 A lesson directory is recognised by containing an HTML document: `lesson.html` if
 present, else the first `lesson-*.html` (so a literal `lesson-001.html` works), else the
@@ -167,6 +217,8 @@ Optional, at `~/.pi/agent/classroom.json`:
 | `port`     | ephemeral | Preferred port. If taken (another Pi session), an ephemeral port is used instead. |
 | `autoOpen` | `true`    | Whether `/classroom` opens your browser. `PI_CLASSROOM_AUTO_OPEN=0` overrides.    |
 
+Claude Code and Codex read the same file. `autoOpen` also controls `open_classroom`.
+
 ## Tools
 
 \*used by the agent
@@ -177,6 +229,16 @@ Optional, at `~/.pi/agent/classroom.json`:
 | `grade_lesson_quiz`      | Grade a submitted quiz. Writes to `quiz/grades/` and renders inline.                                         |
 | `scaffold_classroom`     | Create a classroom in the canonical location with a `MISSION.md` stub.                                       |
 | `scaffold_lesson`        | Create a numbered lesson directory from the template.                                                        |
+
+The Claude Code and Codex plugin adds four more tools, in place of the Pi commands and
+the push from the browser:
+
+| Tool               | Purpose                                                                        |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `begin_teaching`   | Return the teaching method and the learner's classroom. Replaces `/teach`.     |
+| `open_classroom`   | Start the server, open the browser, and return the URL. Replaces `/classroom`. |
+| `list_classrooms`  | List classrooms and lessons with scores. Replaces `/classroom list`.           |
+| `wait_for_learner` | Wait for a question, a follow-up, or a quiz submission, and return it in full. |
 
 ## Limitations and gotchas
 
@@ -201,6 +263,9 @@ Optional, at `~/.pi/agent/classroom.json`:
   form rehydrates from the first one's submission.
 - **Never renumber `data-question-id`** after a learner has submitted — grades are
   matched back to questions by that id.
+- **Claude Code and Codex must listen.** A question reaches the agent only during a
+  `wait_for_learner` call. Until then it waits in a queue, and its card shows as
+  pending.
 - **Loopback only.** There is no auth and none is needed; nothing binds beyond
   `127.0.0.1`.
 
@@ -211,7 +276,15 @@ npm ci
 npm run check       # tsc --noEmit
 npm test            # vitest
 pi -e .             # run this checkout in a Pi session without installing it
+claude --plugin-dir .   # run this checkout as a Claude Code plugin
+claude plugin validate .
+npm run e2e:claude      # a real Claude Code session: answer a question, grade a quiz
+npm run e2e:codex       # the same, through Codex
 ```
+
+The e2e scripts call a real model, so they need a logged-in harness and are not part of
+CI. They use a temporary classrooms directory. The Codex run also uses a temporary
+`CODEX_HOME` that holds a copy of your `auth.json`. The script deletes both when it ends.
 
 The package is installed from git, not npm: `pi install git:github.com/max-miller1204/pi-teach`
 clones the repository and runs `npm install`, so whatever is on `main` is what you get.

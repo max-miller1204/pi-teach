@@ -10,7 +10,7 @@
  * RPC mode honours, and colour is applied here from the live theme instead.
  */
 
-import * as server from "./server.js";
+import * as server from "./server.ts";
 
 /** Namespaced so it never collides with another extension's widget. */
 export const WIDGET_KEY = "classroom-server";

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "classroom": {
+      "command": "node",
+      "args": ["./mcp/launch.mjs"],
+      "cwd": ".",
+      "env_vars": ["PI_CLASSROOMS_DIR", "PI_CLASSROOM_AUTO_OPEN"],
+      "tool_timeout_sec": 3600
+    }
+  }
+}

@@ -6,8 +6,8 @@
  * testable without a server or a filesystem.
  */
 
-import { escapeHtml, renderMarkdown } from "./markdown.js";
-import type { Classroom, Lesson } from "./store.js";
+import { escapeHtml, renderMarkdown } from "./markdown.ts";
+import type { Classroom, Lesson } from "./store.ts";
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export function landingPage(classrooms: Classroom[]): string {
     classrooms.length === 0
       ? emptyState(
           "No classrooms yet",
-          "Run <code>/teach &lt;topic&gt;</code> in your Pi session and your first classroom will appear here.",
+          "Ask your agent to teach you a topic (<code>/teach &lt;topic&gt;</code> in Pi) and your first classroom will appear here.",
         )
       : `<div class="cl-hero">
   <h1>Classrooms</h1>
@@ -148,7 +148,7 @@ export function classroomPage(data: ClassroomPageData): string {
     lessons.length === 0
       ? emptyState(
           "No lessons yet",
-          "Ask your teacher for the next lesson in your Pi session — it will show up here.",
+          "Ask your teacher for the next lesson in your agent session. It will show up here.",
         )
       : `<ol class="cl-lessons">
 ${lessons.map((lesson, i) => lessonRow(lesson, i)).join("\n")}

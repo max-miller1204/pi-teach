@@ -23,11 +23,11 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { ClassroomBridge } from "./src/bridge.js";
-import { registerClassroomCommands } from "./src/commands.js";
-import * as server from "./src/server.js";
-import { attachStatusWidget, detachStatusWidget } from "./src/status-widget.js";
-import { registerClassroomTools } from "./src/tools.js";
+import { ClassroomBridge } from "./src/bridge.ts";
+import { registerClassroomCommands } from "./src/commands.ts";
+import * as server from "./src/server.ts";
+import { attachStatusWidget, detachStatusWidget } from "./src/status-widget.ts";
+import { registerClassroomTools } from "./src/tools.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { ClassroomBridge, applyAnswer, applyGrade, applyTurnAnswer } from "../src/bridge.js";
-import * as store from "../src/store.js";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.js";
+import { ClassroomBridge, applyAnswer, applyGrade, applyTurnAnswer } from "../src/bridge.ts";
+import * as store from "../src/store.ts";
+import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
 let sent: Array<{ text: string; options?: { deliverAs?: string } }>;

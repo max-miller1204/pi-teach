@@ -1,0 +1,12 @@
+{
+  "name": "pi-teach",
+  "owner": { "name": "Max Miller" },
+  "description": "Interactive HTML lessons for Claude Code, with highlight-to-ask questions and graded quizzes.",
+  "plugins": [
+    {
+      "name": "pi-teach",
+      "source": "./",
+      "description": "Interactive HTML lessons with highlight-to-ask questions and graded quizzes."
+    }
+  ]
+}

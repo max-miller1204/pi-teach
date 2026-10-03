@@ -7,7 +7,7 @@
  * without being rewritten.
  */
 
-import { toScriptJson } from "./markdown.js";
+import { toScriptJson } from "./markdown.ts";
 
 export interface LessonRuntimeConfig {
   classroom: string;

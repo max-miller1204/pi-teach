@@ -11,8 +11,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { classroomDir, docsDir, lessonDir } from "./paths.js";
-import type { Annotation, FollowUp, QuizSubmission } from "./store.js";
+import { classroomDir, docsDir, lessonDir } from "./paths.ts";
+import type { Annotation, FollowUp, QuizSubmission } from "./store.ts";
 
 /** Read a bundled doc, returning "" when it is missing rather than throwing. */
 function readDoc(name: string): string {
@@ -21,6 +21,18 @@ function readDoc(name: string): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * How a wake-up message reached the model. Pi pushes it into the session; Claude Code
+ * and Codex receive it as the result of a `wait_for_learner` call.
+ */
+export type Delivery = "push" | "wait";
+
+function arrivalNote(delivery: Delivery): string {
+  return delivery === "push"
+    ? "This notification was delivered automatically; nothing was polled."
+    : "It arrived as the result of your `wait_for_learner` call.";
 }
 
 /**
@@ -61,9 +73,9 @@ export function teachingPrompt(topic: string, classroom: string | null): string 
  * The lesson path is included so the model can read the surrounding material — the
  * quoted selection alone is rarely enough to answer well.
  */
-export function askPrompt(annotation: Annotation): string {
+export function askPrompt(annotation: Annotation, delivery: Delivery): string {
   return [
-    `📚 A question just arrived from the classroom web page — the learner highlighted a passage in a lesson and asked about it. This notification was delivered automatically; nothing was polled.`,
+    `📚 A question just arrived from the classroom web page — the learner highlighted a passage in a lesson and asked about it. ${arrivalNote(delivery)}`,
     "",
     `Classroom: \`${annotation.classroom}\``,
     `Lesson: \`${annotation.lesson}\` (${path.join(lessonDir(annotation.classroom, annotation.lesson), "lesson.html")})`,
@@ -89,7 +101,11 @@ export function askPrompt(annotation: Annotation): string {
  * compaction) away from the original answer, and a follow-up like "why?" is meaningless
  * without it.
  */
-export function followUpPrompt(annotation: Annotation, followUp: FollowUp): string {
+export function followUpPrompt(
+  annotation: Annotation,
+  followUp: FollowUp,
+  delivery: Delivery,
+): string {
   const earlier: string[] = [];
   earlier.push("They asked:", "", quote(annotation.question), "");
   earlier.push(
@@ -110,7 +126,7 @@ export function followUpPrompt(annotation: Annotation, followUp: FollowUp): stri
   }
 
   return [
-    `📚 A follow-up question just arrived from the classroom web page — the learner is continuing a thread inside a card they already have an answer in. This notification was delivered automatically; nothing was polled.`,
+    `📚 A follow-up question just arrived from the classroom web page — the learner is continuing a thread inside a card they already have an answer in. ${arrivalNote(delivery)}`,
     "",
     `Classroom: \`${annotation.classroom}\``,
     `Lesson: \`${annotation.lesson}\` (${path.join(lessonDir(annotation.classroom, annotation.lesson), "lesson.html")})`,
@@ -138,7 +154,7 @@ export function followUpPrompt(annotation: Annotation, followUp: FollowUp): stri
  * The answers are inlined because they are short and grading should not require a
  * file read; the submission path is given for the cases where it would help.
  */
-export function gradePrompt(submission: QuizSubmission): string {
+export function gradePrompt(submission: QuizSubmission, delivery: Delivery): string {
   const answers = submission.answers
     .map((answer, i) => {
       const lines = [
@@ -150,7 +166,7 @@ export function gradePrompt(submission: QuizSubmission): string {
     .join("\n\n");
 
   return [
-    `📝 A quiz was just submitted from the classroom web page and is waiting on you to grade it. This notification was delivered automatically; nothing was polled.`,
+    `📝 A quiz was just submitted from the classroom web page and is waiting on you to grade it. ${arrivalNote(delivery)}`,
     "",
     `Classroom: \`${submission.classroom}\``,
     `Lesson: \`${submission.lesson}\` (${path.join(lessonDir(submission.classroom, submission.lesson), "lesson.html")})`,
