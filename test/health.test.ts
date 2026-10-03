@@ -137,6 +137,45 @@ describe("lessonHealthLines", () => {
 });
 
 describe("healthReport", () => {
+  it("counts spaced review misses under the original lesson, even in a selected report", () => {
+    const original = attempt("1", { q1: true });
+    const reviews = ["2", "3"].map((id) => {
+      const review = attempt(id, { r1: false }, "sure");
+      review.submission.lesson = `${id.padStart(3, "0")}-review`;
+      review.submission.quizId = "review";
+      review.submission.kind = "review";
+      review.submission.answers[0].reviewOf = "001-ownership/check-1/q1";
+      return input({
+        lesson: review.submission.lesson,
+        submissions: [review.submission],
+        grades: [review.grade],
+      });
+    });
+    const lessons = [
+      input({ submissions: [original.submission], grades: [original.grade] }),
+      ...reviews.reverse(),
+    ];
+    for (const selected of [undefined, "001-ownership"]) {
+      const report = healthReport("rust", lessons, [], selected);
+      expect(report).toContain('`check-1/q1` "What is q1?": missed 2 of 3');
+      expect(report).toContain('Wrong while "Sure"');
+      expect(report).not.toContain("`review/r1`");
+    }
+  });
+
+  it("leaves diagnostic pretests out of failure statistics", () => {
+    const pretest = attempt("1", { q1: false }, "sure");
+    pretest.submission.kind = "pretest";
+    expect(
+      lessonHealthLines(
+        input({
+          submissions: [pretest.submission],
+          grades: [pretest.grade],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it("leads with glossary errors and summarises quiet lessons", () => {
     const report = healthReport(
       "rust",

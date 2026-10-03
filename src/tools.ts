@@ -493,7 +493,8 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         }
 
         const glossary = store.readGlossary(params.classroom);
-        const inputs: LessonHealthInput[] = chosen.map((lesson) => ({
+        // Review answers live in other lessons. Read them before selecting the report.
+        const inputs: LessonHealthInput[] = lessons.map((lesson) => ({
           lesson: lesson.name,
           title: lesson.title,
           annotations: store.listAnnotations(params.classroom, lesson.name),
@@ -503,7 +504,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           avoided: avoidedUses(htmlText(fs.readFileSync(lesson.htmlPath, "utf8")), glossary),
         }));
 
-        return ok(healthReport(params.classroom, inputs, glossary.errors), {
+        return ok(healthReport(params.classroom, inputs, glossary.errors, params.lesson), {
           classroom: params.classroom,
           lessons: chosen.map((l) => l.name),
           glossaryErrors: glossary.errors,

@@ -314,10 +314,13 @@ claude --plugin-dir .   # run this checkout as a Claude Code plugin
 claude plugin validate .
 npm run e2e:claude      # a real Claude Code session: answer a question, grade a quiz
 npm run e2e:codex       # the same, through Codex
+npm run e2e:browser     # browser state tests with the real server
 ```
 
-The e2e scripts call a real model, so they need a logged-in harness and are not part of
-CI. They use a temporary classrooms directory. The Codex run also uses a temporary
+All e2e scripts use the installed `playwright-cli` to drive the lesson page.
+The Claude Code and Codex tests call a real model. They need a logged-in harness and
+are not part of CI. The browser state test uses the grading tool without a model.
+They use a temporary classrooms directory. The Codex run also uses a temporary
 `CODEX_HOME` that holds a copy of your `auth.json`. The script deletes both when it ends.
 
 The package is installed from git, not npm: `pi install git:github.com/max-miller1204/pi-teach`

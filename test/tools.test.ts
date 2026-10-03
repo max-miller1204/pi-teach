@@ -177,6 +177,31 @@ describe("scaffold_review", () => {
 });
 
 describe("lesson_health", () => {
+  it("reads review history from other lessons for a selected original lesson", async () => {
+    writeGradedAttempt({ at: 1, answers: [termAnswer("q1", "x")], correct: { q1: true } });
+    for (const [at, lesson] of [
+      [2, "002-review"],
+      [3, "003-review"],
+    ] as const) {
+      seedClassroom(fixture, { lesson });
+      writeGradedAttempt({
+        at,
+        lesson,
+        quizId: "review",
+        kind: "review",
+        answers: [termAnswer("r1", "x", { reviewOf: "001-ownership/check-1/q1" })],
+        correct: { r1: false },
+      });
+    }
+    const result = await tool("lesson_health").execute({
+      classroom: "rust",
+      lesson: "001-ownership",
+    });
+    expect(result.content[0].text).toContain("missed 2 of 3");
+    expect(result.content[0].text).not.toContain("002-review");
+    expect(result.details["lessons"]).toEqual(["001-ownership"]);
+  });
+
   it("reports avoided glossary words and glossary errors", async () => {
     fixture.write(
       "rust/GLOSSARY.md",

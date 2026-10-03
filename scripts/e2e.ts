@@ -25,6 +25,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { playwright, playwrightCode } from "./playwright.ts";
 
 type Harness = "claude" | "codex";
 
@@ -65,6 +66,12 @@ function seedClassroom(root: string): void {
     path.join(lesson, "lesson.html"),
     "<!doctype html><html><head><title>Ownership</title></head><body><main data-cl-content>" +
       "<p>Every value in Rust has one owner. When the owner goes out of scope, the value is dropped.</p>" +
+      '<form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">' +
+      '<ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="choice">' +
+      '<p class="cl-q-prompt">What happens to a value when its owner goes out of scope?</p>' +
+      '<label><input type="radio" name="q1" value="a">The value is dropped</label>' +
+      '<label><input type="radio" name="q1" value="b">The value stays alive forever</label>' +
+      "</li></ol></form>" +
       "</main></body></html>",
   );
 }
@@ -184,21 +191,12 @@ function readJson<T>(file: string): T | null {
   }
 }
 
-async function post(url: string, body: unknown): Promise<Record<string, unknown>> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status !== 201)
-    throw new Error(`POST ${url} returned ${res.status}: ${await res.text()}`);
-  return (await res.json()) as Record<string, unknown>;
-}
-
 async function main(): Promise<void> {
   const classrooms = fs.mkdtempSync(path.join(os.tmpdir(), "pi-teach-e2e-classrooms-"));
   const home = harness === "codex" ? codexHome() : null;
   seedClassroom(classrooms);
+  const browserSession = `pi-teach-${harness}-${process.pid}`;
+  let browserOpen = false;
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -224,15 +222,33 @@ async function main(): Promise<void> {
       return match ? `http://127.0.0.1:${match[1]}` : null;
     });
     log(`classroom server: ${base}`);
+    await playwright(browserSession, classrooms, "open", `${base}/c/${CLASSROOM}/${LESSON}`);
+    browserOpen = true;
 
     const annotationsFile = path.join(classrooms, CLASSROOM, LESSON, "annotations.json");
-    const asked = await post(`${base}/api/ask`, {
-      classroom: CLASSROOM,
-      lesson: LESSON,
-      question: "Why does Rust allow only one owner?",
-      selection: "one owner",
-      anchor: { exact: "one owner", prefix: "has ", suffix: ".", occurrence: 0 },
-    });
+    const asked = await playwrightCode<Record<string, unknown>>(
+      browserSession,
+      classrooms,
+      `async page => {
+      await page.evaluate(() => {
+        const text = document.querySelector('main > p').firstChild;
+        const start = text.textContent.indexOf('one owner');
+        const range = document.createRange();
+        range.setStart(text, start);
+        range.setEnd(text, start + 'one owner'.length);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      });
+      await page.locator('.cl-ask-pill').click();
+      await page.locator('[data-cl-question]').fill('Why does Rust allow only one owner?');
+      const response = page.waitForResponse(r => r.url().endsWith('/api/ask') && r.request().method() === 'POST');
+      await page.getByRole('button', {name:'Ask your teacher', exact:true}).click();
+      const result = await response;
+      if (result.status() !== 201) throw new Error(await result.text());
+      return await result.json();
+    }`,
+    );
     log(`asked question ${String(asked["id"])}`);
 
     const answer = await until("the answer", () => {
@@ -255,23 +271,21 @@ async function main(): Promise<void> {
       throw new Error("The browser state does not contain the rendered card answer.");
     }
 
-    const submitted = await post(`${base}/api/quiz/submit`, {
-      classroom: CLASSROOM,
-      lesson: LESSON,
-      quizId: "check-1",
-      quizTitle: "Check on learning",
-      kind: "check",
-      answers: [
-        {
-          questionId: "q1",
-          type: "choice",
-          confidence: "sure",
-          value: "b",
-          label: "The value stays alive forever",
-          prompt: "What happens to a value when its owner goes out of scope?",
-        },
-      ],
-    });
+    const submitted = await playwrightCode<Record<string, unknown>>(
+      browserSession,
+      classrooms,
+      `async page => {
+      await page.waitForFunction(() => document.querySelector('.cl-card-answer')?.textContent.trim()
+        && !document.querySelector('.cl-card-answer .cl-card-status'));
+      await page.locator('.cl-q input[value=b]').check();
+      await page.locator('.cl-confidence input[value=sure]').check();
+      const response = page.waitForResponse(r => r.url().endsWith('/api/quiz/submit') && r.request().method() === 'POST');
+      await page.getByRole('button', {name:'Submit for grading', exact:true}).click();
+      const result = await response;
+      if (result.status() !== 201) throw new Error(await result.text());
+      return await result.json();
+    }`,
+    );
     log(`submitted quiz ${String(submitted["id"])}`);
 
     const gradesDir = path.join(classrooms, CLASSROOM, LESSON, "quiz", "grades");
@@ -282,6 +296,16 @@ async function main(): Promise<void> {
         : null;
     });
     log(`grade: ${String(grade["score"])}%, ${JSON.stringify(grade["feedbackMarkdown"])}`);
+    await playwrightCode(
+      browserSession,
+      classrooms,
+      `async page => {
+      await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'graded');
+      if (!await page.locator('.cl-q-verdict').count()) throw new Error('The page has no question verdict.');
+      if (!await page.getByRole('button', {name:'Try again', exact:true}).isVisible()) throw new Error('The page has no retake button.');
+      return true;
+    }`,
+    );
     const questions = grade["questions"] as Array<{ questionId: string; correct: boolean }>;
     if (
       grade["submissionId"] !== submitted["id"] ||
@@ -335,6 +359,7 @@ async function main(): Promise<void> {
   } finally {
     clearTimeout(exitTimer);
     child.kill();
+    if (browserOpen) await playwright(browserSession, classrooms, "close");
     fs.rmSync(classrooms, { recursive: true, force: true });
     if (home) fs.rmSync(home, { recursive: true, force: true });
   }

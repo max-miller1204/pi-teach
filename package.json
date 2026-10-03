@@ -33,6 +33,7 @@
     "test:watch": "vitest",
     "e2e:claude": "node scripts/e2e.ts claude",
     "e2e:codex": "node scripts/e2e.ts codex",
+    "e2e:browser": "node scripts/e2e-browser.ts",
     "check": "tsc --noEmit",
     "audit": "npm audit --omit=dev --audit-level=moderate",
     "format": "prettier --write .",

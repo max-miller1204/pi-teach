@@ -7,7 +7,8 @@
  * instead of only answering around it.
  */
 
-import { answersByQuestion } from "./quiz.ts";
+import { parseReviewKey, reviewKey } from "../assets/runtime/quiz.mjs";
+import { answersByQuestion, kindOf } from "./quiz.ts";
 import type { AvoidedUse } from "./glossary.ts";
 import type { Annotation, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
 
@@ -29,6 +30,7 @@ export const HOTSPOT_TURNS = 3;
 export const REPEAT_MISS = 2;
 
 interface QuestionStats {
+  lesson: string;
   quizId: string;
   questionId: string;
   prompt: string;
@@ -38,19 +40,26 @@ interface QuestionStats {
   lastCorrect: boolean;
 }
 
-function questionStats(input: LessonHealthInput): QuestionStats[] {
-  const grades = new Map(input.grades.map((g) => [g.submissionId, g]));
+function questionStats(inputs: LessonHealthInput[]): QuestionStats[] {
+  const grades = new Map(inputs.flatMap((input) => input.grades).map((g) => [g.submissionId, g]));
   const stats = new Map<string, QuestionStats>();
-  for (const submission of input.submissions) {
+  const submissions = inputs
+    .flatMap((input) => input.submissions)
+    .sort((a, b) => a.submittedAt - b.submittedAt);
+  for (const submission of submissions) {
     const grade = grades.get(submission.id);
-    if (!grade) continue;
+    if (!grade || kindOf(submission) === "pretest") continue;
     for (const [questionId, group] of answersByQuestion(submission.answers)) {
       const verdict = grade.questions.find((q) => q.questionId === questionId);
       if (!verdict) continue;
-      const key = `${submission.quizId}/${questionId}`;
+      const key = group[0].reviewOf ?? reviewKey(submission.lesson, submission.quizId, questionId);
+      const origin =
+        group[0].reviewOf === undefined
+          ? { lesson: submission.lesson, quizId: submission.quizId, questionId }
+          : parseReviewKey(group[0].reviewOf);
+      if (!origin) throw new Error(`Invalid review key in health history: ${key}`);
       const entry = stats.get(key) ?? {
-        quizId: submission.quizId,
-        questionId,
+        ...origin,
         prompt: group[0].prompt ?? "",
         attempts: 0,
         misses: 0,
@@ -73,7 +82,10 @@ function clip(text: string, max: number): string {
 }
 
 /** The report for one lesson, as markdown lines. Empty when nothing needs attention. */
-export function lessonHealthLines(input: LessonHealthInput): string[] {
+export function lessonHealthLines(
+  input: LessonHealthInput,
+  stats = questionStats([input]).filter((s) => s.lesson === input.lesson),
+): string[] {
   const lines: string[] = [];
 
   const hotspots = input.annotations
@@ -94,7 +106,6 @@ export function lessonHealthLines(input: LessonHealthInput): string[] {
     lines.push(`- **Questions with no answer on the page:** ${failed.length}. Answer them again.`);
   }
 
-  const stats = questionStats(input);
   const repeated = stats.filter((s) => s.misses >= REPEAT_MISS);
   if (repeated.length > 0) {
     lines.push("- **Quiz questions missed more than once:**");
@@ -139,6 +150,7 @@ export function healthReport(
   classroom: string,
   lessons: LessonHealthInput[],
   glossaryErrors: string[],
+  selectedLesson?: string,
 ): string {
   const out = [`# Lesson health: ${classroom}`, ""];
 
@@ -147,8 +159,13 @@ export function healthReport(
   }
 
   let quiet = 0;
-  for (const lesson of lessons) {
-    const lines = lessonHealthLines(lesson);
+  const stats = questionStats(lessons);
+  const chosen = selectedLesson ? lessons.filter((l) => l.lesson === selectedLesson) : lessons;
+  for (const lesson of chosen) {
+    const lines = lessonHealthLines(
+      lesson,
+      stats.filter((s) => s.lesson === lesson.lesson),
+    );
     if (lines.length === 0) {
       quiet += 1;
       continue;
@@ -156,7 +173,7 @@ export function healthReport(
     out.push(`## ${lesson.title} (\`${lesson.lesson}\`)`, "", ...lines, "");
   }
 
-  if (quiet === lessons.length && glossaryErrors.length === 0) {
+  if (quiet === chosen.length && glossaryErrors.length === 0) {
     out.push("Nothing needs attention. No long threads, repeated misses, or glossary problems.");
   } else if (quiet > 0) {
     out.push(`${quiet} other lesson${quiet === 1 ? "" : "s"}: nothing needs attention.`);

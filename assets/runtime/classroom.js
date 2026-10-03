@@ -1310,6 +1310,7 @@ async function onQuizSubmit(event, form) {
   }
 
   setQuizState(form, "submitted");
+  form.dataset.activeAttempt = String(Number(form.dataset.attempts ?? "0") + 1);
   setQuizStatus(form, '<span class="cl-spinner"></span> Sent to your teacher for grading…', true);
 
   let response;
@@ -1340,7 +1341,10 @@ async function onQuizSubmit(event, form) {
     console.error("[classroom] quiz refused", body.error);
     setQuizState(form, "fresh");
     setQuizStatus(form, `The classroom refused this quiz: ${body.error}`);
+    return;
   }
+  const submission = await response.json();
+  applyQuizState({ submission, grade: null, attempts: submission.attempt });
 }
 
 function setQuizState(form, state) {
@@ -1373,7 +1377,7 @@ function setQuizStatus(form, html, isHtml = false) {
 }
 
 /** Clear the form for another attempt. The graded attempt stays on disk. */
-function resetQuiz(form) {
+function clearQuizAnswers(form) {
   for (const input of form.querySelectorAll(".cl-q input")) {
     if (input.type === "radio" || input.type === "checkbox") input.checked = false;
     else input.value = "";
@@ -1385,10 +1389,16 @@ function resetQuiz(form) {
   }
   for (const list of form.querySelectorAll(".cl-order"))
     reorder(list, list.dataset.clInitial.split(" "));
+}
+
+function resetQuiz(form) {
+  clearQuizAnswers(form);
   form.querySelector("[data-cl-grade]")?.remove();
   for (const verdict of form.querySelectorAll(".cl-q-verdict")) verdict.remove();
 
   const next = Number(form.dataset.attempts ?? "1") + 1;
+  // A revision of the previous grade must not replace this new attempt.
+  form.dataset.activeAttempt = String(next);
   setQuizState(form, "fresh");
   setQuizStatus(form, `Attempt ${next}. Your earlier attempts are saved.`);
   form.querySelector(".cl-q input, .cl-q textarea, .cl-q select, .cl-segment")?.focus();
@@ -1492,11 +1502,20 @@ function applyQuizState(state) {
     return;
   }
   if (form.dataset.state === "broken") return;
+  if (attempts < Number(form.dataset.activeAttempt ?? "0")) return;
+  if (submission.submittedAt < Number(form.dataset.submittedAt ?? "0")) return;
+  // The grade can arrive through SSE before the submit response arrives.
+  if (!grade && form.dataset.submissionId === submission.id && form.dataset.state === "graded")
+    return;
+  form.dataset.activeAttempt = String(attempts);
+  form.dataset.submissionId = submission.id;
+  form.dataset.submittedAt = String(submission.submittedAt);
   form.dataset.attempts = String(attempts);
 
   // Clear first: a grade can arrive for an attempt the form is already showing.
   form.querySelector("[data-cl-grade]")?.remove();
   for (const verdict of form.querySelectorAll(".cl-q-verdict")) verdict.remove();
+  clearQuizAnswers(form);
 
   const groups = new Map();
   for (const answer of submission.answers) {
@@ -1708,7 +1727,12 @@ function markTerms(section, terms) {
     text += node.nodeValue;
   }
 
-  const matches = firstUses(findTerms(text, terms));
+  const matches = firstUses(
+    findTerms(text, terms).filter((match) => {
+      const owner = nodes.findLast((entry) => entry.start <= match.start);
+      return owner && match.end <= owner.start + owner.node.nodeValue.length;
+    }),
+  );
   // Last first, so splitting a node cannot move the offsets of an earlier match.
   for (const match of matches.reverse()) {
     const owner = nodes.findLast((entry) => entry.start <= match.start);
