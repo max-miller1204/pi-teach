@@ -1,6 +1,6 @@
 {
   "name": "pi-teach",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "A teacher you can interrupt — interactive HTML lessons for Pi, wired back into the live session for highlight-to-ask questions and graded quizzes.",
   "type": "module",
@@ -33,6 +33,8 @@
     "test:watch": "vitest",
     "e2e:claude": "node scripts/e2e.ts claude",
     "e2e:codex": "node scripts/e2e.ts codex",
+    "e2e:browser": "node scripts/e2e-browser.ts",
+    "e2e:pi": "node scripts/e2e-pi.ts",
     "check": "tsc --noEmit",
     "audit": "npm audit --omit=dev --audit-level=moderate",
     "format": "prettier --write .",

@@ -19,6 +19,8 @@
  *   grade_lesson_quiz      — grade a submitted quiz (renders inline in the lesson)
  *   scaffold_classroom     — create a classroom in the canonical location
  *   scaffold_lesson        — create a lesson from the canonical template
+ *   scaffold_review        : create a spaced review session from the due questions
+ *   lesson_health          : report the passages and questions that did not land
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -40,6 +42,7 @@ export default function classroomExtension(pi: ExtensionAPI): void {
     onAsk: (annotation) => bridge.ask(annotation),
     onFollowUp: (annotation, followUp) => bridge.followUp(annotation, followUp),
     onQuizSubmit: (submission) => bridge.grade(submission),
+    onReflect: (reflection) => bridge.reflect(reflection),
   });
 
   registerClassroomTools(pi);

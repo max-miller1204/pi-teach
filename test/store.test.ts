@@ -3,7 +3,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import * as store from "../src/store.ts";
-import { makeFixture, lessonHtml, seedClassroom, type Fixture } from "./helpers.ts";
+import { DAY_MS } from "../src/review.ts";
+import {
+  makeFixture,
+  lessonHtml,
+  seedClassroom,
+  termAnswer,
+  writeGradedAttempt,
+  type Fixture,
+} from "./helpers.ts";
 
 let fixture: Fixture;
 
@@ -265,6 +273,7 @@ describe("quiz submissions and grades", () => {
       lesson,
       quizId: "check-1",
       quizTitle: "Check on learning",
+      kind: "check",
       answers: [{ questionId: "q1", value: "a", label: "First answer" }],
     });
   }
@@ -307,8 +316,8 @@ describe("quiz submissions and grades", () => {
       latestScore: 75,
     });
 
-    const state = store.latestQuizState(classroom, lesson);
-    expect(state.submission!.id).toBe(submission.id);
+    const [state] = store.latestQuizStates(classroom, lesson);
+    expect(state.submission.id).toBe(submission.id);
     expect(state.grade!.score).toBe(75);
   });
 
@@ -328,14 +337,132 @@ describe("quiz submissions and grades", () => {
     });
 
     submit(classroom, lesson);
-    const state = store.latestQuizState(classroom, lesson);
-    expect(state.submission!.id).not.toBe(first.id);
+    const [state] = store.latestQuizStates(classroom, lesson);
+    expect(state.submission.id).not.toBe(first.id);
     expect(state.grade).toBeNull();
+    expect(state.attempts).toBe(2);
+    expect(state.submission.attempt).toBe(2);
   });
 });
 
 describe("titleFromSlug", () => {
   it("drops the ordering prefix and title-cases the rest", () => {
     expect(store.titleFromSlug("003-closures-capture-by-value")).toBe("Closures Capture By Value");
+  });
+});
+
+describe("review items", () => {
+  const T0 = Date.UTC(2026, 0, 1);
+
+  it("schedules graded questions and leaves pretests out", () => {
+    seedClassroom(fixture);
+    writeGradedAttempt({
+      at: T0,
+      kind: "pretest",
+      quizId: "pretest",
+      answers: [termAnswer("p1", "no idea")],
+      correct: { p1: false },
+    });
+    writeGradedAttempt({
+      at: T0 + DAY_MS,
+      answers: [termAnswer("q1", "owner", { confidence: "sure" })],
+      correct: { q1: true },
+    });
+
+    const items = store.reviewItems("rust");
+    expect(items.map((item) => item.key)).toEqual(["001-ownership/check-1/q1"]);
+    expect(items[0]).toMatchObject({ box: 1, dueAt: T0 + 4 * DAY_MS, lastAnswer: "owner" });
+  });
+
+  it("counts a review question as another attempt at the item it names", () => {
+    seedClassroom(fixture);
+    seedClassroom(fixture, { lesson: "002-review" });
+    writeGradedAttempt({ at: T0, answers: [termAnswer("q1", "owner")], correct: { q1: true } });
+    writeGradedAttempt({
+      at: T0 + 3 * DAY_MS,
+      lesson: "002-review",
+      quizId: "review",
+      kind: "review",
+      answers: [termAnswer("r1", "borrow", { reviewOf: "001-ownership/check-1/q1" })],
+      correct: { r1: false },
+    });
+
+    const [item] = store.reviewItems("rust");
+    expect(item).toMatchObject({
+      key: "001-ownership/check-1/q1",
+      attempts: 2,
+      box: 0,
+      prompt: "Prompt for q1",
+    });
+  });
+
+  it("never lets a pretest set the lesson score", () => {
+    seedClassroom(fixture);
+    writeGradedAttempt({ at: T0, answers: [termAnswer("q1", "x")], correct: { q1: true } });
+    const grade = store.listGrades("rust", "001-ownership")[0];
+    store.writeGrade({ ...grade, score: 90 });
+    writeGradedAttempt({
+      at: T0 + 1,
+      kind: "pretest",
+      quizId: "pretest",
+      answers: [termAnswer("p1", "x")],
+      correct: { p1: false },
+    });
+    expect(store.readLesson("rust", "001-ownership")!.latestScore).toBe(90);
+  });
+});
+
+describe("quiz states", () => {
+  it("keeps the latest attempt at each quiz separately", () => {
+    seedClassroom(fixture);
+    const T0 = Date.UTC(2026, 0, 1);
+    writeGradedAttempt({
+      at: T0,
+      quizId: "pretest",
+      kind: "pretest",
+      answers: [termAnswer("p1", "x")],
+      correct: { p1: false },
+    });
+    writeGradedAttempt({ at: T0 + 1, answers: [termAnswer("q1", "a")], correct: { q1: false } });
+    const second = writeGradedAttempt({
+      at: T0 + 2,
+      answers: [termAnswer("q1", "b")],
+      correct: { q1: true },
+    });
+
+    const states = store.latestQuizStates("rust", "001-ownership");
+    expect(states.map((s) => [s.quizId, s.attempts])).toEqual([
+      ["pretest", 1],
+      ["check-1", 2],
+    ]);
+    expect(states[1].submission.id).toBe(second.id);
+    expect(store.previousGrade(second)!.questions[0].correct).toBe(false);
+  });
+});
+
+describe("reflections", () => {
+  it("keeps every save and returns the latest of each", () => {
+    seedClassroom(fixture);
+    const input = { classroom: "rust", lesson: "001-ownership", prompt: "Explain." };
+    store.createReflection({ ...input, reflectId: "a", text: "first" });
+    store.createReflection({ ...input, reflectId: "b", text: "other" });
+    store.createReflection({ ...input, reflectId: "a", text: "second" });
+
+    expect(store.listReflections("rust", "001-ownership")).toHaveLength(3);
+    expect(
+      store.latestReflections("rust", "001-ownership").map((r) => [r.reflectId, r.text]),
+    ).toEqual([
+      ["a", "second"],
+      ["b", "other"],
+    ]);
+  });
+});
+
+describe("readGlossary", () => {
+  it("parses GLOSSARY.md, and gives no terms when there is none", () => {
+    seedClassroom(fixture);
+    expect(store.readGlossary("rust")).toEqual({ terms: [], errors: [] });
+    fixture.write("rust/GLOSSARY.md", "**Owner**:\nThe variable a value belongs to.\n");
+    expect(store.readGlossary("rust").terms.map((t) => t.term)).toEqual(["Owner"]);
   });
 });

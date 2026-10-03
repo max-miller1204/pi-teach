@@ -26,6 +26,28 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
 - **Quizzes that get graded.** A canonical HTML markup contract for quizzes, tests, and
   checks on learning. Submitting writes your answers to the lesson directory and asks
   your teacher to grade them; the grade renders inline, per question.
+- **Nine question types for any topic.** Each question has a `data-type` for what the
+  learner produces: `choice`, `multi`, `term`, `short`, `numeric`, `cloze`, `order`,
+  `match`, and `locate`. A `.cl-q-stimulus` block holds what they look at: a passage,
+  code, a table, or an image. A quiz that breaks the contract shows its errors on the
+  page and cannot be submitted.
+- **Confidence on every answer.** Each question asks "How sure are you?". A wrong
+  answer marked Sure shows a misconception. A right answer marked Guessing does not
+  count as learned.
+- **Retakes and pretests.** A graded quiz can be taken again, and every attempt is
+  kept. A pretest (`data-kind="pretest"`) comes before the teaching. It never counts
+  toward the score.
+- **Spaced review.** Every graded question gets a review schedule: 1, 3, 7, 21, then 60
+  days. The schedule is calculated from the grades on disk. `scaffold_review` builds a
+  review lesson from the due questions, mixed across lessons.
+- **Self-explanations.** A `form.cl-reflect` asks the learner to explain an idea in
+  their own words. The teacher reads it. It is never graded.
+- **Glossary terms in lessons.** The first use of each `GLOSSARY.md` term in each
+  section is underlined. A click asks the learner to recall the meaning before it
+  shows the definition.
+- **Progress and lesson health.** The classroom page shows what is due, what is
+  mastered, and the glossary size. `lesson_health` tells the teacher which passages and
+  questions did not land.
 - **A widget that says who is teaching.** While the server is up, the TUI shows
   `📚 classroom server running on port <port>` below the editor. With several Pi sessions
   open, that is how you find the one a learner's browser is actually talking to.
@@ -176,6 +198,7 @@ Pi. It stops when the session ends.
       lesson.html           the lesson
       lesson.json           title and summary
       annotations.json      your question threads and their answers
+      reflections.json      your self-explanations
       quiz/
         submissions/*.json  your answers
         grades/*.json       your teacher's grading
@@ -238,16 +261,18 @@ Claude Code and Codex read the same file. `autoOpen` also controls `open_classro
 | `grade_lesson_quiz`      | Grade a submitted quiz. Writes to `quiz/grades/` and renders inline.                                         |
 | `scaffold_classroom`     | Create a classroom in the canonical location with a `MISSION.md` stub.                                       |
 | `scaffold_lesson`        | Create a numbered lesson directory from the template.                                                        |
+| `scaffold_review`        | Create a spaced review lesson from the questions that are due, and return them with their review keys.       |
+| `lesson_health`          | Report long question threads, repeated misses, confident misses, glossary problems, and self-explanations.   |
 
 The Claude Code and Codex plugin adds four more tools, in place of the Pi commands and
 the push from the browser:
 
-| Tool               | Purpose                                                                        |
-| ------------------ | ------------------------------------------------------------------------------ |
-| `begin_teaching`   | Return the teaching method and the learner's classroom. Replaces `/teach`.     |
-| `open_classroom`   | Start the server, open the browser, and return the URL. Replaces `/classroom`. |
-| `list_classrooms`  | List classrooms and lessons with scores. Replaces `/classroom list`.           |
-| `wait_for_learner` | Wait for a question, a follow-up, or a quiz submission, and return it in full. |
+| Tool               | Purpose                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `begin_teaching`   | Return the teaching method and the learner's classroom. Replaces `/teach`.      |
+| `open_classroom`   | Start the server, open the browser, and return the URL. Replaces `/classroom`.  |
+| `list_classrooms`  | List classrooms and lessons with scores. Replaces `/classroom list`.            |
+| `wait_for_learner` | Wait for a question, a follow-up, a quiz, or a self-explanation, and return it. |
 
 ## Limitations and gotchas
 
@@ -289,11 +314,22 @@ claude --plugin-dir .   # run this checkout as a Claude Code plugin
 claude plugin validate .
 npm run e2e:claude      # a real Claude Code session: answer a question, grade a quiz
 npm run e2e:codex       # the same, through Codex
+npm run e2e:browser     # browser state tests with the real server
+npm run e2e:pi          # a real Pi session: question, quiz, and retake
 ```
 
-The e2e scripts call a real model, so they need a logged-in harness and are not part of
-CI. They use a temporary classrooms directory. The Codex run also uses a temporary
+All e2e scripts use the installed `playwright-cli` to drive the lesson page.
+The Pi, Claude Code, and Codex tests call a real model. They need a logged-in harness and
+are not part of CI. The browser state test uses the grading tool without a model.
+They use a temporary classrooms directory. The Codex run also uses a temporary
 `CODEX_HOME` that holds a copy of your `auth.json`. The script deletes both when it ends.
+
+To save screenshots, pass an output directory to the browser or Pi test:
+
+```bash
+npm run e2e:browser -- /tmp/pi-teach-evidence
+npm run e2e:pi -- /tmp/pi-teach-evidence
+```
 
 The package is installed from git, not npm: `pi install git:github.com/max-miller1204/pi-teach`
 clones the repository and runs `npm install`, so whatever is on `main` is what you get.

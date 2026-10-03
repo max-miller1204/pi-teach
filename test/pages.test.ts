@@ -33,6 +33,7 @@ function lesson(overrides: Partial<Lesson> = {}): Lesson {
     createdAt: 1,
     updatedAt: 2,
     order: 1,
+    kind: "lesson",
     annotationCount: 0,
     latestScore: null,
     hasUngradedSubmission: false,
@@ -67,6 +68,13 @@ describe("landingPage", () => {
   });
 });
 
+const noProgress = {
+  review: { total: 0, due: 0, dueSoon: 0, mastered: 0, nextDueAt: null },
+  dueByLesson: {},
+  glossaryTerms: 0,
+  now: 0,
+};
+
 describe("classroomPage", () => {
   const data = {
     classroom,
@@ -74,6 +82,7 @@ describe("classroomPage", () => {
     docs: ["MISSION.md"],
     learningRecords: ["0001-owns-are-unique.md"],
     referenceDocs: ["syntax.html"],
+    progress: noProgress,
   };
 
   it("links lessons, documents, records, and reference material", () => {

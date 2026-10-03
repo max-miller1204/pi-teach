@@ -99,10 +99,12 @@ describe("protocol", () => {
       "answer_lesson_question",
       "begin_teaching",
       "grade_lesson_quiz",
+      "lesson_health",
       "list_classrooms",
       "open_classroom",
       "scaffold_classroom",
       "scaffold_lesson",
+      "scaffold_review",
       "wait_for_learner",
     ]);
   });
@@ -196,7 +198,10 @@ describe("wait_for_learner", () => {
         lesson: "001-ownership",
         quizId: "check-1",
         quizTitle: "Ownership",
-        answers: [{ questionId: "q1", prompt: "Who owns a value?", value: "Everyone" }],
+        kind: "check",
+        answers: [
+          { questionId: "q1", type: "term", prompt: "Who owns a value?", value: "Everyone" },
+        ],
       }),
     });
     expect(response.status).toBe(201);
@@ -217,10 +222,15 @@ describe("wait_for_learner", () => {
       `${server.getBaseUrl()}/api/state?classroom=rust&lesson=001-ownership`,
     );
     expect(await state.json()).toMatchObject({
-      grade: {
-        score: 0,
-        questions: [{ questionId: "q1", correct: false }],
-      },
+      quizzes: [
+        {
+          quizId: "check-1",
+          grade: {
+            score: 0,
+            questions: [{ questionId: "q1", correct: false }],
+          },
+        },
+      ],
     });
   });
 

@@ -21,7 +21,9 @@
  *   POST   /api/ask                           ask a question about a highlight
  *   POST   /api/annotations/<id>/follow-up    ask a follow-up inside an existing card
  *   POST   /api/quiz/submit                   submit quiz answers for grading
- *   GET    /api/state                         annotations + latest quiz state
+ *   POST   /api/reflect                       save a self-explanation (never graded)
+ *   GET    /api/state                         annotations, quiz attempts, reflections
+ *   GET    /api/glossary                      the classroom's GLOSSARY.md, parsed
  *   DELETE /api/annotations/<id>              remove a question
  *   GET    /api/events                        SSE: answer, grade, reload
  */
@@ -47,6 +49,9 @@ import {
   learningRecordsPage,
   notFoundPage,
 } from "./pages.ts";
+import { AnswerError, parseAnswers } from "./quiz.ts";
+import { isDue, summarize } from "./review.ts";
+import { isContractId, isQuizKind } from "../assets/runtime/quiz.mjs";
 import * as store from "./store.ts";
 
 // ── Callbacks into the extension ──────────────────────────────────────────────
@@ -58,6 +63,8 @@ export interface ServerHooks {
   onFollowUp(annotation: store.Annotation, followUp: store.FollowUp): void;
   /** Called after a quiz submission is persisted, to ask for grading. */
   onQuizSubmit(submission: store.QuizSubmission): void;
+  /** Called after a reflection is saved, so the teacher sees it. */
+  onReflect(reflection: store.Reflection): void;
 }
 
 let hooks: ServerHooks | null = null;
@@ -209,7 +216,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
-  if (segments.length === 0) return sendHtml(res, landingPage(store.listClassrooms()));
+  if (segments.length === 0) {
+    const classrooms = store.listClassrooms();
+    const now = Date.now();
+    const due = Object.fromEntries(
+      classrooms.map((c) => [c.name, summarize(store.reviewItems(c.name), now).due]),
+    );
+    return sendHtml(res, landingPage(classrooms, due));
+  }
   // Reason: lessons are plain documents with no <link rel="icon">, so the browser asks
   // for /favicon.ico and logs a 404 in the console on every lesson view.
   if (segments.length === 1 && segments[0] === "favicon.ico") return sendFavicon(res);
@@ -244,6 +258,12 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
 
   // /c/<classroom>
   if (second === undefined) {
+    const now = Date.now();
+    const items = store.reviewItems(name);
+    const dueByLesson: Record<string, number> = {};
+    for (const item of items) {
+      if (isDue(item, now)) dueByLesson[item.lesson] = (dueByLesson[item.lesson] ?? 0) + 1;
+    }
     return sendHtml(
       res,
       classroomPage({
@@ -252,6 +272,12 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
         docs: store.listClassroomDocs(name),
         learningRecords: store.listLearningRecords(name),
         referenceDocs: store.listReferenceDocs(name),
+        progress: {
+          review: summarize(items, now),
+          dueByLesson,
+          glossaryTerms: store.readGlossary(name).terms.length,
+          now,
+        },
       }),
     );
   }
@@ -373,6 +399,8 @@ async function handleApi(
   if (route === "state" && req.method === "GET") return handleState(res, url);
   if (route === "ask" && req.method === "POST") return handleAsk(req, res);
   if (route === "quiz/submit" && req.method === "POST") return handleQuizSubmit(req, res);
+  if (route === "reflect" && req.method === "POST") return handleReflect(req, res);
+  if (route === "glossary" && req.method === "GET") return handleGlossary(res, url);
   if (rest[0] === "annotations" && rest.length === 2 && req.method === "DELETE") {
     return handleDeleteAnnotation(res, rest[1], url);
   }
@@ -415,12 +443,19 @@ function handleState(res: http.ServerResponse, url: URL): void {
   const params = lessonParams(url);
   if (!params) return sendJson(res, { error: "classroom and lesson are required" }, 400);
 
-  const { submission, grade } = store.latestQuizState(params.classroom, params.lesson);
   sendJson(res, {
     annotations: store.listAnnotations(params.classroom, params.lesson),
-    submission,
-    grade,
+    quizzes: store.latestQuizStates(params.classroom, params.lesson),
+    reflections: store.latestReflections(params.classroom, params.lesson),
   });
+}
+
+function handleGlossary(res: http.ServerResponse, url: URL): void {
+  const classroom = url.searchParams.get("classroom") ?? "";
+  if (!isValidSlug(classroom) || !store.readClassroom(classroom)) {
+    return sendJson(res, { error: "Unknown classroom" }, 404);
+  }
+  sendJson(res, store.readGlossary(classroom));
 }
 
 /** Validate the anchor an untrusted browser sent us before persisting it. */
@@ -517,29 +552,87 @@ async function handleQuizSubmit(
   }
   if (!store.readLesson(classroom, lesson)) return sendJson(res, { error: "Unknown lesson" }, 404);
 
-  const rawAnswers = Array.isArray(body["answers"]) ? (body["answers"] as unknown[]) : [];
-  const answers: store.QuizAnswer[] = rawAnswers
-    .filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === "object")
-    .map((a) => ({
-      questionId: String(a["questionId"] ?? "").slice(0, 128),
-      value: String(a["value"] ?? "").slice(0, 8000),
-      label: typeof a["label"] === "string" ? a["label"].slice(0, 1000) : undefined,
-      prompt: typeof a["prompt"] === "string" ? a["prompt"].slice(0, 2000) : undefined,
-    }))
-    .filter((a) => a.questionId.length > 0);
+  const quizId = body["quizId"];
+  if (!isContractId(quizId)) return sendJson(res, { error: "A valid quizId is required" }, 400);
+  const kind = body["kind"];
+  if (!isQuizKind(kind)) {
+    return sendJson(res, { error: `Unknown quiz kind: ${JSON.stringify(kind)}` }, 400);
+  }
 
-  if (answers.length === 0) return sendJson(res, { error: "No answers submitted" }, 400);
+  let answers: store.QuizAnswer[];
+  try {
+    answers = parseAnswers(body["answers"], kind);
+  } catch (err) {
+    if (err instanceof AnswerError) return sendJson(res, { error: err.message }, 400);
+    throw err;
+  }
+
+  // A review question must name an item the learner was graded on before. Otherwise
+  // its grade would start a schedule for an item that does not exist.
+  if (kind === "review") {
+    const known = new Set(store.reviewItems(classroom).map((item) => item.key));
+    const unknown = answers.filter((a) => !known.has(a.reviewOf!)).map((a) => a.reviewOf);
+    if (unknown.length > 0) {
+      return sendJson(
+        res,
+        { error: `data-review-of names no graded question: ${unknown.join(", ")}` },
+        400,
+      );
+    }
+  }
+
+  // Reason: a retake is a new attempt at a graded quiz. While the last attempt waits on
+  // the teacher, a second one would only reach them as a duplicate.
+  const latest = store.latestQuizStates(classroom, lesson).find((q) => q.quizId === quizId);
+  if (latest && !latest.grade) {
+    return sendJson(res, { error: "The last attempt at this quiz is not graded yet" }, 409);
+  }
 
   const submission = store.createSubmission({
     classroom,
     lesson,
-    quizId: String(body["quizId"] ?? "quiz").slice(0, 128),
+    quizId,
     quizTitle: String(body["quizTitle"] ?? "Check on learning").slice(0, 200),
+    kind,
     answers,
   });
 
   hooks?.onQuizSubmit(submission);
   sendJson(res, submission, 201);
+}
+
+async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body: Record<string, unknown>;
+  try {
+    body = (await readJsonBody(req)) as Record<string, unknown>;
+  } catch (err) {
+    return sendJson(res, { error: (err as Error).message }, 400);
+  }
+
+  const classroom = String(body["classroom"] ?? "");
+  const lesson = String(body["lesson"] ?? "");
+  if (!isValidSlug(classroom) || !isValidSlug(lesson)) {
+    return sendJson(res, { error: "Unknown classroom or lesson" }, 400);
+  }
+  if (!store.readLesson(classroom, lesson)) return sendJson(res, { error: "Unknown lesson" }, 404);
+
+  const reflectId = body["reflectId"];
+  if (!isContractId(reflectId)) {
+    return sendJson(res, { error: "A valid reflectId is required" }, 400);
+  }
+  const text = typeof body["text"] === "string" ? body["text"].trim() : "";
+  if (!text) return sendJson(res, { error: "A reflection needs some text" }, 400);
+
+  const reflection = store.createReflection({
+    classroom,
+    lesson,
+    reflectId,
+    prompt: typeof body["prompt"] === "string" ? body["prompt"].slice(0, 2000) : "",
+    text: text.slice(0, 8000),
+  });
+
+  hooks?.onReflect(reflection);
+  sendJson(res, reflection, 201);
 }
 
 function handleDeleteAnnotation(res: http.ServerResponse, id: string, url: URL): void {

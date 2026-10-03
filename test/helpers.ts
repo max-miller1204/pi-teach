@@ -6,8 +6,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 
-import { _overrideClassroomsDir } from "../src/paths.ts";
+import { _overrideClassroomsDir, submissionsDir } from "../src/paths.ts";
+import * as store from "../src/store.ts";
 
 export interface Fixture {
   root: string;
@@ -72,4 +74,62 @@ export function seedClassroom(
   );
 
   return { classroom, lesson };
+}
+
+/**
+ * Write a graded quiz attempt straight to disk, at a chosen time.
+ *
+ * Review schedules are measured in days, so the tests place attempts in the past
+ * instead of waiting.
+ */
+export function writeGradedAttempt(options: {
+  classroom?: string;
+  lesson?: string;
+  quizId?: string;
+  kind?: store.QuizKind;
+  at: number;
+  answers: store.QuizAnswer[];
+  correct: Record<string, boolean>;
+}): store.QuizSubmission {
+  const classroom = options.classroom ?? "rust";
+  const lesson = options.lesson ?? "001-ownership";
+  const submission: store.QuizSubmission = {
+    id: randomUUID(),
+    classroom,
+    lesson,
+    quizId: options.quizId ?? "check-1",
+    quizTitle: "Check on learning",
+    kind: options.kind ?? "check",
+    attempt: 1,
+    answers: options.answers,
+    submittedAt: options.at,
+  };
+  const file = path.join(submissionsDir(classroom, lesson), `${options.at}-${submission.id}.json`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(submission), "utf8");
+  store.writeGrade({
+    submissionId: submission.id,
+    classroom,
+    lesson,
+    quizId: submission.quizId,
+    score: 0,
+    feedbackMarkdown: "",
+    feedbackHtml: "",
+    questions: Object.entries(options.correct).map(([questionId, correct]) => ({
+      questionId,
+      correct,
+      feedback: correct ? "Right." : "Not quite.",
+    })),
+    gradedAt: options.at + 1,
+  });
+  return submission;
+}
+
+/** A `term` answer, the simplest typed answer. */
+export function termAnswer(
+  questionId: string,
+  value: string,
+  extra: Partial<store.QuizAnswer> = {},
+): store.QuizAnswer {
+  return { questionId, type: "term", prompt: `Prompt for ${questionId}`, value, ...extra };
 }

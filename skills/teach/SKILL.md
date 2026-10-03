@@ -13,13 +13,17 @@ description: Teach the user a topic one short interactive lesson at a time, in a
 4. Before you give the learner a lesson URL, call `open_classroom`.
 5. After you give the learner a lesson, call `wait_for_learner`.
 6. Answer page questions with `answer_lesson_question`.
-7. Grade quizzes with `grade_lesson_quiz`. Follow the shared quiz follow-up rule from
+7. Grade quizzes with `grade_lesson_quiz`. Read each answer's confidence. A wrong
+   answer marked Sure is a misconception. Treat a pretest as diagnostic. Follow the shared quiz follow-up rule from
    `begin_teaching` and the grading result.
 8. After a wrong answer, explain the missed idea and ask one new retrieval question
    in chat. End your turn and wait for the learner's chat reply. Do not call
    `wait_for_learner` while you need that reply. Check understanding before moving on.
 9. Resume `wait_for_learner` when the learner returns to the page. Do not start the
    next lesson without their agreement.
+10. When `begin_teaching` reports questions due for review, offer a review before new
+    material. Create it with `scaffold_review`.
+11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.
 
 Do not answer the learner's highlighted-passage questions only in chat. Only
 `answer_lesson_question` puts those answers on their page. Your retrieval questions

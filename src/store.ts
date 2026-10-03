@@ -11,6 +11,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { reviewKey } from "../assets/runtime/quiz.mjs";
+import { parseGlossary, type Glossary } from "./glossary.ts";
 import {
   annotationsFile,
   classroomDir,
@@ -20,8 +22,19 @@ import {
   isFile,
   isValidSlug,
   lessonDir,
+  reflectionsFile,
   submissionsDir,
 } from "./paths.ts";
+import {
+  answerSummary,
+  answersByQuestion,
+  kindOf,
+  type QuizAnswer,
+  type QuizKind,
+} from "./quiz.ts";
+import { scheduleItems, type ReviewEvent, type ReviewItem } from "./review.ts";
+
+export type { QuizAnswer, QuizKind };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,10 +55,15 @@ export interface Classroom {
   lessonCount: number;
 }
 
+/** A normal lesson, or a review session that `scaffold_review` created. */
+export type LessonKind = "lesson" | "review";
+
 export interface LessonMeta {
   title: string;
   summary: string;
   createdAt: number;
+  /** Absent on lessons written before review sessions existed. */
+  kind?: LessonKind;
 }
 
 export interface Lesson {
@@ -60,8 +78,9 @@ export interface Lesson {
   updatedAt: number;
   /** Numeric ordering prefix on the directory name, if any. */
   order: number | null;
+  kind: LessonKind;
   annotationCount: number;
-  /** Grade of the most recent graded submission, when one exists. */
+  /** Grade of the most recent graded submission that is not a pretest, when one exists. */
   latestScore: number | null;
   hasUngradedSubmission: boolean;
 }
@@ -112,21 +131,16 @@ export interface Annotation {
  */
 export type TurnId = string | null;
 
-export interface QuizAnswer {
-  questionId: string;
-  /** The raw value the learner entered or chose. */
-  value: string;
-  /** Human-readable label for a chosen option, when the input was a choice. */
-  label?: string;
-  prompt?: string;
-}
-
 export interface QuizSubmission {
   id: string;
   classroom: string;
   lesson: string;
   quizId: string;
   quizTitle: string;
+  /** Absent on submissions written before quiz kinds existed. Read it with `kindOf`. */
+  kind?: QuizKind;
+  /** 1 for the first attempt at this quiz, 2 for the first retake, and so on. */
+  attempt?: number;
   answers: QuizAnswer[];
   submittedAt: number;
 }
@@ -303,8 +317,11 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
   const gradedIds = new Set(grades.map((g) => g.submissionId));
 
   // The score shown is the one for the most recent *graded* attempt — not simply the
-  // most recent grade file, which could belong to an older submission.
-  const lastGraded = [...submissions].reverse().find((s) => gradedIds.has(s.id));
+  // most recent grade file, which could belong to an older submission. A pretest is
+  // diagnostic, so it never sets the lesson's score.
+  const lastGraded = [...submissions]
+    .reverse()
+    .find((s) => gradedIds.has(s.id) && kindOf(s) !== "pretest");
   const latestScore = lastGraded
     ? (grades.find((g) => g.submissionId === lastGraded.id)?.score ?? null)
     : null;
@@ -318,6 +335,7 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
     createdAt: meta?.createdAt ?? mtime(htmlPath),
     updatedAt: mtime(htmlPath),
     order: orderPrefix(lesson),
+    kind: meta?.kind ?? "lesson",
     annotationCount: listAnnotations(classroom, lesson).length,
     latestScore,
     hasUngradedSubmission: submissions.some((s) => !gradedIds.has(s.id)),
@@ -515,7 +533,7 @@ export function listGrades(classroom: string, lesson: string): QuizGrade[] {
 }
 
 export function createSubmission(
-  input: Omit<QuizSubmission, "id" | "submittedAt">,
+  input: Omit<QuizSubmission, "id" | "submittedAt" | "attempt"> & { kind: QuizKind },
 ): QuizSubmission {
   // Reason: "latest submission" is what the page rehydrates from, so the ordering has
   // to be total. Two submissions in the same millisecond would otherwise tie and
@@ -523,8 +541,9 @@ export function createSubmission(
   const previous = listSubmissions(input.classroom, input.lesson);
   const last = previous.length > 0 ? previous[previous.length - 1].submittedAt : 0;
   const submittedAt = Math.max(Date.now(), last + 1);
+  const attempt = previous.filter((s) => s.quizId === input.quizId).length + 1;
 
-  const submission: QuizSubmission = { ...input, id: randomUUID(), submittedAt };
+  const submission: QuizSubmission = { ...input, id: randomUUID(), attempt, submittedAt };
   // Timestamp-prefixed so the directory listing is chronological.
   const file = path.join(
     submissionsDir(input.classroom, input.lesson),
@@ -552,16 +571,139 @@ export function writeGrade(grade: QuizGrade): void {
   );
 }
 
-/** The most recent submission for a lesson and its grade, if it has one yet. */
-export function latestQuizState(
-  classroom: string,
-  lesson: string,
-): { submission: QuizSubmission | null; grade: QuizGrade | null } {
+/** The latest attempt at one quiz in a lesson, its grade if it has one, and the attempt count. */
+export interface QuizState {
+  quizId: string;
+  submission: QuizSubmission;
+  grade: QuizGrade | null;
+  attempts: number;
+}
+
+/**
+ * The latest attempt at each quiz in a lesson, oldest quiz first.
+ *
+ * Reason: a lesson can hold several quizzes (a pretest and a check), so the page
+ * rehydrates each form from its own latest attempt, not from the lesson's latest one.
+ */
+export function latestQuizStates(classroom: string, lesson: string): QuizState[] {
   const submissions = listSubmissions(classroom, lesson);
-  const submission = submissions.length > 0 ? submissions[submissions.length - 1] : null;
-  if (!submission) return { submission: null, grade: null };
-  const grade = listGrades(classroom, lesson).find((g) => g.submissionId === submission.id) ?? null;
-  return { submission, grade };
+  const grades = listGrades(classroom, lesson);
+  const byQuiz = new Map<string, QuizSubmission[]>();
+  for (const submission of submissions) {
+    const list = byQuiz.get(submission.quizId);
+    if (list) list.push(submission);
+    else byQuiz.set(submission.quizId, [submission]);
+  }
+  return [...byQuiz.entries()].map(([quizId, list]) => {
+    const submission = list[list.length - 1];
+    return {
+      quizId,
+      submission,
+      grade: grades.find((g) => g.submissionId === submission.id) ?? null,
+      attempts: list.length,
+    };
+  });
+}
+
+/** The grade of the attempt before this one at the same quiz, when it was graded. */
+export function previousGrade(submission: QuizSubmission): QuizGrade | null {
+  const earlier = listSubmissions(submission.classroom, submission.lesson).filter(
+    (s) => s.quizId === submission.quizId && s.submittedAt < submission.submittedAt,
+  );
+  const before = earlier[earlier.length - 1];
+  if (!before) return null;
+  return (
+    listGrades(submission.classroom, submission.lesson).find((g) => g.submissionId === before.id) ??
+    null
+  );
+}
+
+// ── Spaced review ─────────────────────────────────────────────────────────────
+
+/**
+ * Every graded answer in a classroom, as review events.
+ *
+ * Pretests are left out: they come before teaching, so a wrong answer there says
+ * nothing about memory.
+ */
+export function reviewEvents(classroom: string): ReviewEvent[] {
+  const events: ReviewEvent[] = [];
+  for (const lesson of listLessonDirs(classroom)) {
+    const grades = new Map(listGrades(classroom, lesson).map((g) => [g.submissionId, g]));
+    for (const submission of listSubmissions(classroom, lesson)) {
+      const grade = grades.get(submission.id);
+      if (!grade || kindOf(submission) === "pretest") continue;
+      for (const [questionId, group] of answersByQuestion(submission.answers)) {
+        const verdict = grade.questions.find((q) => q.questionId === questionId);
+        if (!verdict) continue;
+        events.push({
+          key: group[0].reviewOf ?? reviewKey(lesson, submission.quizId, questionId),
+          at: submission.submittedAt,
+          correct: verdict.correct,
+          confidence: group[0].confidence,
+          prompt: group[0].prompt ?? "",
+          answer: answerSummary(group),
+          feedback: verdict.feedback,
+        });
+      }
+    }
+  }
+  return events;
+}
+
+/** Every review item in a classroom, with its schedule, soonest due first. */
+export function reviewItems(classroom: string): ReviewItem[] {
+  return scheduleItems(reviewEvents(classroom));
+}
+
+// ── Reflections ───────────────────────────────────────────────────────────────
+
+/** A self-explanation the learner wrote in a `form.cl-reflect`. It is never graded. */
+export interface Reflection {
+  id: string;
+  classroom: string;
+  lesson: string;
+  reflectId: string;
+  prompt: string;
+  text: string;
+  savedAt: number;
+}
+
+/** Every saved reflection in a lesson, oldest first. Each save is kept. */
+export function listReflections(classroom: string, lesson: string): Reflection[] {
+  if (!isValidSlug(classroom) || !isValidSlug(lesson)) return [];
+  return readJson<Reflection[]>(reflectionsFile(classroom, lesson)) ?? [];
+}
+
+export function createReflection(input: Omit<Reflection, "id" | "savedAt">): Reflection {
+  const list = listReflections(input.classroom, input.lesson);
+  const last = list.length > 0 ? list[list.length - 1].savedAt : 0;
+  const reflection: Reflection = {
+    ...input,
+    id: randomUUID(),
+    savedAt: Math.max(Date.now(), last + 1),
+  };
+  list.push(reflection);
+  writeJson(reflectionsFile(input.classroom, input.lesson), list);
+  return reflection;
+}
+
+/** The latest save of each reflection in a lesson. */
+export function latestReflections(classroom: string, lesson: string): Reflection[] {
+  const latest = new Map<string, Reflection>();
+  for (const reflection of listReflections(classroom, lesson)) {
+    latest.set(reflection.reflectId, reflection);
+  }
+  return [...latest.values()];
+}
+
+// ── Glossary ──────────────────────────────────────────────────────────────────
+
+/** The classroom's GLOSSARY.md, parsed. A classroom with no glossary has no terms. */
+export function readGlossary(classroom: string): Glossary {
+  const file = path.join(classroomDir(classroom), "GLOSSARY.md");
+  if (!isFile(file)) return { terms: [], errors: [] };
+  return parseGlossary(fs.readFileSync(file, "utf8"));
 }
 
 // ── Classroom documents (MISSION.md and friends) ──────────────────────────────

@@ -17,12 +17,19 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { classroomListText, resolveClassroom } from "./commands.ts";
+import { classroomListText, classroomReviewText, resolveClassroom } from "./commands.ts";
 import { shouldAutoOpen } from "./config.ts";
 import { openUrl } from "./open-browser.ts";
 import { packageRoot } from "./paths.ts";
-import { askPrompt, followUpPrompt, gradePrompt, teachingPrompt } from "./prompts.ts";
+import {
+  askPrompt,
+  followUpPrompt,
+  gradePrompt,
+  reflectPrompt,
+  teachingPrompt,
+} from "./prompts.ts";
 import * as server from "./server.ts";
+import * as store from "./store.ts";
 import { classroomTools, isFailure, type ClassroomTool, type ToolResult } from "./tools.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -49,7 +56,7 @@ export const HOST_BRIEF = `## Classroom tools in this session
 This session has no \`/classroom\` command, and it cannot push the learner's questions to you. Use these tools instead:
 
 - \`open_classroom\` starts the classroom server and opens the browser. Call it before you give the learner a URL. Lesson URLs work only while this session runs.
-- \`wait_for_learner\` blocks until the learner asks about a passage, asks a follow-up, or submits a quiz. It returns the full request and names the tool that answers it.
+- \`wait_for_learner\` blocks until the learner asks about a passage, asks a follow-up, submits a quiz, or saves a self-explanation. It returns the full request and names the tool that answers it.
 
 After you give the learner a lesson, call \`wait_for_learner\`. Answer page questions with \`answer_lesson_question\`. Grade quizzes with \`grade_lesson_quiz\` and follow the shared quiz follow-up rule. A teacher's retrieval question belongs in chat, not in a passage card. While you need a chat reply, end your turn. Do not call \`wait_for_learner\`: it receives browser requests, not chat replies. Resume listening when the chat check is complete and the learner returns to the page. Do not start another lesson without the learner's agreement. When a wait ends with nothing, call it again. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
 
@@ -121,7 +128,9 @@ export function connectInbox(inbox: LearnerInbox): void {
   server.setHooks({
     onAsk: (annotation) => inbox.push(askPrompt(annotation, "wait")),
     onFollowUp: (annotation, followUp) => inbox.push(followUpPrompt(annotation, followUp, "wait")),
-    onQuizSubmit: (submission) => inbox.push(gradePrompt(submission, "wait")),
+    onQuizSubmit: (submission) =>
+      inbox.push(gradePrompt(submission, "wait", store.previousGrade(submission))),
+    onReflect: (reflection) => inbox.push(reflectPrompt(reflection, "wait")),
   });
 }
 
@@ -162,7 +171,8 @@ function sessionTools(): ClassroomTool[] {
       async execute(params: { topic?: string }) {
         const topic = (params.topic ?? "").trim();
         const classroom = resolveClassroom(topic);
-        return ok(`${teachingPrompt(topic, classroom)}\n\n${HOST_BRIEF}`, { classroom });
+        const review = classroom ? classroomReviewText(classroom) : null;
+        return ok(`${teachingPrompt(topic, classroom, review)}\n\n${HOST_BRIEF}`, { classroom });
       },
     },
     {
@@ -206,7 +216,7 @@ const WAIT_TOOL = {
   name: "wait_for_learner",
   title: "Wait For Learner",
   description:
-    "Wait for the learner to ask about a lesson passage, ask a follow-up, or submit a quiz. " +
+    "Wait for the learner to ask about a lesson passage, ask a follow-up, submit a quiz, or save a self-explanation. " +
     "Blocks until one arrives, then returns every waiting request in full, including the tool that answers it. " +
     "Call it while the learner works on the page. Do not call it while you need a chat reply to a retrieval question. Requires open_classroom first.",
   inputSchema: {

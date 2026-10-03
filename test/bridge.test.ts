@@ -85,12 +85,30 @@ describe("waking the agent", () => {
     expect(text).toContain("What about borrows?"); // the new question
   });
 
+  it("shows the teacher a saved self-explanation and records a foreign origin", () => {
+    const reflection = store.createReflection({
+      classroom: "rust",
+      lesson: "001-ownership",
+      reflectId: "explain-1",
+      prompt: "Explain ownership.",
+      text: "Each value has exactly one owner.",
+    });
+    bridge.reflect(reflection);
+    expect(sent[0].text).toContain("Each value has exactly one owner.");
+    expect(sent[0].text).toContain("Do not grade it");
+    // The reflection run is not an ask, so its final text never fills a card.
+    const card = ask();
+    bridge.onAgentEnd(assistantRun("Noted."));
+    expect(store.findAnnotation(card.id)!.status).toBe("pending");
+  });
+
   it("sends the learner's answers inline when asking for a grade", () => {
     const submission = store.createSubmission({
       classroom: "rust",
       lesson: "001-ownership",
       quizId: "check-1",
       quizTitle: "Check on learning",
+      kind: "check",
       answers: [
         { questionId: "q1", value: "a", label: "Borrow checker", prompt: "What rejects it?" },
       ],
@@ -210,6 +228,7 @@ describe("agent_end fallback", () => {
       lesson: "001-ownership",
       quizId: "check-1",
       quizTitle: "Check",
+      kind: "check",
       answers: [{ questionId: "q1", value: "a" }],
     });
 
@@ -261,6 +280,7 @@ describe("applyGrade", () => {
       lesson: "001-ownership",
       quizId: "check-1",
       quizTitle: "Check",
+      kind: "check",
       answers: [{ questionId: "q1", value: "a" }],
     });
 

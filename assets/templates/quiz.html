@@ -1,37 +1,73 @@
 <!--
-  Canonical quiz markup — the contract between a lesson and the classroom runtime.
+  Canonical quiz markup: the contract between a lesson and the classroom runtime.
 
-  Use this for quizzes, tests, and checks on learning; they are the same thing at
-  different sizes. Paste a <form class="cl-quiz"> anywhere in a lesson and the
-  runtime hydrates it: it adds the submit button and status line, locks the form on
-  submit, writes the answers to the lesson's quiz/ directory, asks the teacher to
-  grade them, and renders the grade inline when it comes back.
+  Use this for quizzes, tests, pretests, reviews, and checks on learning. They are the
+  same thing at different sizes. Put a <form class="cl-quiz"> anywhere in a lesson.
+  The runtime checks it, adds the controls each question type needs, adds the submit
+  button and status line, locks the form on submit, writes the answers to the lesson's
+  quiz/ directory, asks the teacher to grade them, and shows the grade inline. After a
+  grade, the learner can take the quiz again. Each attempt is kept.
 
-  Rules the runtime relies on:
+  The runtime fails loudly. A quiz that breaks a rule below shows the errors on the
+  page and in the browser console, and it cannot be submitted.
 
-    * The form must carry class="cl-quiz" and a data-quiz-id unique within the lesson.
-    * Every question is .cl-q with a data-question-id unique within the quiz. Grades
-      are matched back to questions by that id, so never renumber them after a learner
-      has submitted.
-    * The visible question text lives in .cl-q-prompt. It is sent along with the
-      answer, so the teacher grades with the question in hand.
-    * Do not add your own submit button — the runtime supplies one. If you do add one,
-      it is reused rather than duplicated.
+  ── The form ──────────────────────────────────────────────────────────────────────
 
-  Rules that matter pedagogically:
+    * class="cl-quiz" and a data-quiz-id that is unique in the lesson. Ids use
+      letters, digits, "_", ".", and "-".
+    * data-title is the heading. Optional.
+    * data-kind is optional:
+        check    (default) the normal check on learning.
+        pretest  before the teaching. Diagnostic: wrong answers are expected, the
+                 score never counts as the lesson score, and the answers never enter
+                 the review schedule. Put it at the top of the lesson.
+        review   a spaced review. Made by scaffold_review. Every question needs
+                 data-review-of (see below).
+    * data-confidence="off" removes the "How sure are you?" row. It is on by default.
+      Keep it on: a wrong answer marked "Sure" shows a misconception, and a right
+      answer marked "Guessing" does not move the question to a longer review interval.
+    * Do not add your own submit button. The runtime adds one. If you add one, it is
+      used instead.
+
+  ── Each question ─────────────────────────────────────────────────────────────────
+
+    * <li class="cl-q"> with a data-question-id that is unique in the quiz. Grades
+      and the review schedule are matched to questions by this id, so never change
+      an id after a learner has submitted.
+    * data-type is required. It names what the learner produces, not what they look
+      at. Use one of the types below.
+    * .cl-q-prompt holds the question text. It is sent to the teacher with the answer.
+    * .cl-q-stimulus is optional. It holds what the learner looks at: a passage, code,
+      a table, an image, a diagram. Any HTML is allowed. Its text is sent to the
+      teacher with the answer. Give every image alt text: the teacher reads the alt
+      text, not the image.
+    * data-review-of="<lesson>/<quiz id>/<question id>": only in a review quiz. It
+      names the earlier question this one reviews. scaffold_review gives the keys.
+
+  ── Which type to use ─────────────────────────────────────────────────────────────
+
+    Retrieval types make the learner produce the answer. Use them by default:
+      term, short, numeric, cloze, order, locate.
+    Recognition types let the learner spot the answer. Use them for quick checks:
+      choice, multi, match.
+    A question the learner can answer by spotting a familiar phrase builds fluency,
+    not long-term memory. Prefer cloze or term to match when recall matters.
+
+  ── Rules that matter for learning ────────────────────────────────────────────────
 
     * Never put the answer key in the HTML. The learner can read the page source, and
-      grading is the teacher's job. If you want to record the intended answers, write
-      them to <lesson>/quiz/key.json — the server never serves that directory as files.
-    * Make every option the same length, in words and ideally characters. Formatting
-      must not leak which answer is right.
-    * Prefer retrieval over recognition. A question the learner can answer by spotting
-      a familiar phrase builds fluency, not storage strength.
+      grading is the teacher's job. To record the intended answers, write them to
+      <lesson>/quiz/key.json. The server never serves that directory.
+    * Make every option the same length, in words and if possible in characters.
+      Formatting must not show which answer is right.
+    * Shuffle order items and match items yourself. Their position in the HTML must
+      not show the answer. Do not mark the right segment of a locate question in any
+      different way from the others.
 -->
 
 <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
   <ol class="cl-questions">
-    <!-- Multiple choice: exactly one correct option. -->
+    <!-- choice: exactly one correct option. Two or more radios. -->
     <li class="cl-q" data-question-id="q1" data-type="choice">
       <p class="cl-q-prompt">Which of these describes a borrow that outlives its owner?</p>
       <ul class="cl-options">
@@ -44,13 +80,10 @@
         <li>
           <label><input type="radio" name="q1" value="c" /> A mutable aliasing conflict</label>
         </li>
-        <li>
-          <label><input type="radio" name="q1" value="d" /> A stack overflow at runtime</label>
-        </li>
       </ul>
     </li>
 
-    <!-- Multi-select: any number of correct options. -->
+    <!-- multi: any number of correct options. Two or more checkboxes. -->
     <li class="cl-q" data-question-id="q2" data-type="multi">
       <p class="cl-q-prompt">Select every statement that holds for an immutable borrow.</p>
       <ul class="cl-options">
@@ -66,18 +99,133 @@
       </ul>
     </li>
 
-    <!-- Short answer: graded by the teacher, so ask for reasoning. -->
-    <li class="cl-q" data-question-id="q3" data-type="short">
+    <!-- term: a word or a short phrase. Exactly one input type="text". -->
+    <li class="cl-q" data-question-id="q3" data-type="term">
+      <p class="cl-q-prompt">What is the name for the region of code where a borrow is valid?</p>
+      <input type="text" name="q3" />
+    </li>
+
+    <!-- short: an explanation. Exactly one textarea. Ask for reasoning. -->
+    <li class="cl-q" data-question-id="q4" data-type="short">
       <p class="cl-q-prompt">
         In your own words, why does the compiler reject two mutable borrows?
       </p>
-      <textarea name="q3" rows="3"></textarea>
+      <textarea name="q4" rows="3"></textarea>
     </li>
 
-    <!-- One-line answer, for a term or a value. -->
-    <li class="cl-q" data-question-id="q4" data-type="term">
-      <p class="cl-q-prompt">What is the name for the region of code where a borrow is valid?</p>
-      <input type="text" name="q4" />
+    <!--
+      short with a stimulus: "predict the output" is code to read plus an explanation.
+      The stimulus decides what the learner looks at. The type decides what they write.
+    -->
+    <li class="cl-q" data-question-id="q5" data-type="short">
+      <div class="cl-q-stimulus">
+        <pre><code>let a = vec![1];
+let b = a;
+println!("{:?}", a);</code></pre>
+      </div>
+      <p class="cl-q-prompt">What happens when this compiles, and why?</p>
+      <textarea name="q5" rows="3"></textarea>
+    </li>
+
+    <!--
+      numeric: a number, and an optional unit. Exactly one input.cl-number. At most one
+      .cl-unit, which can be an input or a select. The page accepts numbers like 9.81,
+      -2, and 3e8. Grade the unit and the precision on purpose.
+    -->
+    <li class="cl-q" data-question-id="q6" data-type="numeric">
+      <p class="cl-q-prompt">How many bytes does a u32 use?</p>
+      <div class="cl-numeric">
+        <input type="text" class="cl-number" name="q6" />
+        <input type="text" class="cl-unit" name="q6-unit" placeholder="unit" />
+      </div>
+    </li>
+
+    <!--
+      cloze: blanks in a passage. One .cl-cloze holds the passage. Each blank is an
+      input type="text" with a data-blank id that is unique in the question. The
+      teacher sees the passage with the learner's words in the blanks.
+    -->
+    <li class="cl-q" data-question-id="q7" data-type="cloze">
+      <p class="cl-q-prompt">Fill in the blanks.</p>
+      <p class="cl-cloze">
+        A value has exactly one <input type="text" data-blank="b1" />. When it goes out of
+        <input type="text" data-blank="b2" />, the value is dropped.
+      </p>
+    </li>
+
+    <!--
+      order: put items in sequence. One ol.cl-order with two or more li, each with a
+      data-item id. Shuffle the items. The page adds move buttons.
+    -->
+    <li class="cl-q" data-question-id="q8" data-type="order">
+      <p class="cl-q-prompt">Put these steps in the order they happen.</p>
+      <ol class="cl-order">
+        <li data-item="drop">The value is dropped</li>
+        <li data-item="bind">The value is bound to a variable</li>
+        <li data-item="scope">The variable goes out of scope</li>
+      </ol>
+    </li>
+
+    <!--
+      match: pair items from two lists. ul.cl-match-left and ul.cl-match-right, each
+      with two or more li with data-item ids. The page adds a select to each left item.
+      Shuffle both lists. This is partly recognition: prefer cloze or term when recall
+      matters.
+    -->
+    <li class="cl-q" data-question-id="q9" data-type="match">
+      <p class="cl-q-prompt">Match each term to what it means.</p>
+      <div class="cl-match">
+        <ul class="cl-match-left">
+          <li data-item="move">Move</li>
+          <li data-item="borrow">Borrow</li>
+          <li data-item="clone">Clone</li>
+        </ul>
+        <ul class="cl-match-right">
+          <li data-item="r1">A temporary reference</li>
+          <li data-item="r2">A deep copy of the value</li>
+          <li data-item="r3">Ownership goes elsewhere</li>
+        </ul>
+      </div>
+    </li>
+
+    <!--
+      locate: select a part of the stimulus. Find the bug, the error in a proof, the
+      grammar mistake. Mark each choice in the .cl-q-stimulus with a data-segment id.
+      Mark two or more segments, and mark them all the same way. data-select="many"
+      lets the learner select more than one. The default is "one".
+    -->
+    <li class="cl-q" data-question-id="q10" data-type="locate">
+      <div class="cl-q-stimulus">
+        <pre><code><span data-segment="s1">let s = String::from("hi");</span>
+<span data-segment="s2">let t = s;</span>
+<span data-segment="s3">println!("{s}");</span></code></pre>
+      </div>
+      <p class="cl-q-prompt">Select the line the compiler rejects.</p>
     </li>
   </ol>
+</form>
+
+<!--
+  A pretest, at the top of a lesson, before the teaching. Use retrieval types. Keep it
+  to two or three questions. The teacher uses the result to decide what to stress.
+-->
+<form class="cl-quiz" data-quiz-id="pretest" data-kind="pretest" data-title="Before you start">
+  <ol class="cl-questions">
+    <li class="cl-q" data-question-id="p1" data-type="short">
+      <p class="cl-q-prompt">What do you think happens to a value when its variable goes away?</p>
+      <textarea name="p1" rows="2"></textarea>
+    </li>
+  </ol>
+</form>
+
+<!--
+  A self-explanation. It is saved and shown to the teacher, but never graded:
+  explaining is the exercise. data-reflect-id is unique in the lesson. Exactly one
+  .cl-reflect-prompt and one textarea. The runtime adds the save button.
+-->
+<form class="cl-reflect" data-reflect-id="explain-drop">
+  <p class="cl-reflect-prompt">
+    Explain, as if to a friend, why Rust drops a value at the end of its scope.
+  </p>
+  <textarea rows="4"></textarea>
 </form>

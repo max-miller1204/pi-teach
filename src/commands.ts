@@ -13,7 +13,8 @@ import * as fs from "node:fs";
 import { shouldAutoOpen } from "./config.ts";
 import { openUrl } from "./open-browser.ts";
 import { classroomDir, slugify } from "./paths.ts";
-import { teachingPrompt } from "./prompts.ts";
+import { reviewStatusText, teachingPrompt } from "./prompts.ts";
+import { summarize } from "./review.ts";
 import * as server from "./server.ts";
 import { attachStatusWidget, refreshStatusWidget } from "./status-widget.ts";
 import * as store from "./store.ts";
@@ -81,7 +82,11 @@ export function registerClassroomCommands(pi: any, bridge: ClassroomBridge): voi
       // The teaching turn is a normal turn, but the bridge's FIFO must stay aligned
       // with agent_end or a later answer would be attributed to the wrong run.
       bridge.noteForeignTurn();
-      const prompt = teachingPrompt(topic, classroom);
+      const prompt = teachingPrompt(
+        topic,
+        classroom,
+        classroom ? classroomReviewText(classroom) : null,
+      );
       if (ctx.isIdle()) pi.sendUserMessage(prompt);
       else pi.sendUserMessage(prompt, { deliverAs: "followUp" });
 
@@ -115,6 +120,12 @@ export function resolveClassroom(topic: string): string | null {
 
   const byTitle = classrooms.find((c) => c.title.toLowerCase() === topic.toLowerCase());
   return byTitle?.name ?? null;
+}
+
+/** The classroom's spaced-review status, as a section of the teaching brief. */
+export function classroomReviewText(classroom: string): string {
+  const now = Date.now();
+  return reviewStatusText(summarize(store.reviewItems(classroom), now), now);
 }
 
 // ── /classroom handlers ───────────────────────────────────────────────────────
@@ -167,13 +178,17 @@ export function classroomListText(emptyHint: string): string {
   if (classrooms.length === 0) return `No classrooms yet. ${emptyHint}`;
 
   const lines = ["📚 **Classrooms**", ""];
+  const now = Date.now();
   for (const classroom of classrooms) {
-    lines.push(`${classroom.emoji} **${classroom.title}**  \`${classroom.name}\``);
+    const review = summarize(store.reviewItems(classroom.name), now);
+    const due = review.due > 0 ? `  ·  ${review.due} due for review` : "";
+    lines.push(`${classroom.emoji} **${classroom.title}**  \`${classroom.name}\`${due}`);
     for (const lesson of store.listLessons(classroom.name)) {
       const score = lesson.latestScore !== null ? `  ·  ${Math.round(lesson.latestScore)}%` : "";
       const pending = lesson.hasUngradedSubmission ? "  ·  awaiting grading" : "";
+      const review = lesson.kind === "review" ? "  ·  review" : "";
       lines.push(
-        `   ${String(lesson.order ?? 0).padStart(3, "0")}  ${lesson.title}${score}${pending}`,
+        `   ${String(lesson.order ?? 0).padStart(3, "0")}  ${lesson.title}${review}${score}${pending}`,
       );
     }
     if (classroom.lessonCount === 0) lines.push("   (no lessons yet)");
