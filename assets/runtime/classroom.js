@@ -10,16 +10,34 @@
  *      minimise to a numbered badge and reopen on click. Everything is persisted
  *      server-side, so it survives a reload.
  *
- *   2. Quizzes. Any `form.cl-quiz` in the lesson is hydrated: submitting posts the
- *      answers to disk and asks the teacher to grade them, and the grade renders
- *      inline when it arrives.
+ *   2. Quizzes. Any `form.cl-quiz` in the lesson is checked against the contract in
+ *      assets/templates/quiz.html and hydrated: each `data-type` gets its controls,
+ *      each question gets a confidence row, submitting posts the answers to disk and
+ *      asks the teacher to grade them, and the grade renders inline when it arrives.
+ *      A graded quiz can be taken again.
+ *
+ *   3. Self-explanations. A `form.cl-reflect` is saved and shown to the teacher, but
+ *      never graded.
+ *
+ *   4. Glossary terms. The first use of each GLOSSARY.md term in each section is
+ *      marked. A click asks the learner to recall the meaning, then shows it.
  *
  * No bundler, no dependencies. Answer and feedback markdown is rendered to HTML
  * server-side, so nothing here needs a markdown parser.
  */
 
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
+import { findTerms, firstUses } from "./glossary.mjs";
 import { initLinks } from "./links.mjs";
+import {
+  CONFIDENCE_LABELS,
+  CONFIDENCE_LEVELS,
+  QUIZ_KINDS,
+  isContractId,
+  isQuizKind,
+  parseNumber,
+  questionErrors,
+} from "./quiz.mjs";
 import { initTheme } from "./theme.mjs";
 
 const config = readConfig();
@@ -79,7 +97,12 @@ function init() {
   buildAskPill();
   buildComposer();
   hydrateQuizzes();
-  loadState();
+  hydrateReflections();
+  // The glossary waits for the saved highlights: they anchor to the lesson text, and
+  // must be restored before terms are wrapped.
+  loadState().then(() =>
+    initGlossary().catch((err) => console.error("[classroom] glossary failed", err)),
+  );
   connectEvents();
 
   document.addEventListener("mouseup", onSelectionSettled);
@@ -161,7 +184,7 @@ function buildTextIndex(root) {
       // anchor into them (and a lesson with no <main> makes contentRoot the body).
       if (
         parent.closest(
-          "script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker",
+          "script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error",
         )
       ) {
         return NodeFilter.FILTER_REJECT;
@@ -274,7 +297,11 @@ function onSelectionSettled() {
 
     const range = selection.getRangeAt(0);
     if (!contentRoot.contains(range.commonAncestorContainer)) return hideAskPill();
-    if (range.commonAncestorContainer.parentElement?.closest("form.cl-quiz, .cl-card-panel")) {
+    if (
+      range.commonAncestorContainer.parentElement?.closest(
+        "form.cl-quiz, form.cl-reflect, .cl-card-panel, .cl-term-pop",
+      )
+    ) {
       return hideAskPill();
     }
     if (normalizeText(range.toString()).length < 2) return hideAskPill();
@@ -793,7 +820,8 @@ async function loadState() {
       if (!mark) minimiseCard(annotation.id);
     }
 
-    if (state.submission) applyQuizState(state.submission, state.grade);
+    for (const quiz of state.quizzes) applyQuizState(quiz);
+    for (const reflection of state.reflections) applyReflection(reflection);
   } catch (err) {
     console.warn("[classroom] could not load lesson state", err);
   }
@@ -813,7 +841,11 @@ function connectEvents() {
 
   source.addEventListener("grade", (event) => {
     const payload = JSON.parse(event.data);
-    applyQuizState(payload.submission, payload.grade);
+    applyQuizState({
+      submission: payload.submission,
+      grade: payload.grade,
+      attempts: payload.submission.attempt ?? 1,
+    });
   });
 
   source.addEventListener("reload", () => location.reload());
@@ -821,20 +853,140 @@ function connectEvents() {
 
 // ── Quizzes ───────────────────────────────────────────────────────────────────
 
+/**
+ * The quiz contract lives in assets/templates/quiz.html. A form that breaks it is
+ * not hydrated: every problem is shown on the page and in the console, and the form
+ * cannot be submitted. A half-working quiz would hand the teacher answers that do not
+ * match the questions.
+ */
+
 function quizForms() {
   return [...document.querySelectorAll("form.cl-quiz")];
 }
 
+/** Elements inside a question, without the confidence row the runtime adds. */
+function own(question, selector) {
+  return [...question.querySelectorAll(selector)].filter(
+    (element) => !element.closest(".cl-confidence"),
+  );
+}
+
+/** Summarise a question's markup as plain data, for `questionErrors`. */
+function questionShape(question, kind) {
+  const ids = (selector, attribute) =>
+    [...question.querySelectorAll(selector)].map((el) => el.getAttribute(attribute) ?? "");
+  const count = (selector) => own(question, selector).length;
+  return {
+    id: question.dataset.questionId ?? null,
+    type: question.dataset.type ?? null,
+    kind,
+    reviewOf: question.dataset.reviewOf ?? null,
+    select: question.dataset.select ?? null,
+    hasStimulus: Boolean(question.querySelector(".cl-q-stimulus")),
+    hasCloze: Boolean(question.querySelector(".cl-cloze")),
+    radios: count("input[type=radio]"),
+    checkboxes: count("input[type=checkbox]"),
+    textInputs: count(
+      "input[type=text]:not([data-blank]):not(.cl-number):not(.cl-unit), input:not([type]):not([data-blank]):not(.cl-number):not(.cl-unit)",
+    ),
+    textareas: count("textarea"),
+    numbers: count("input.cl-number"),
+    units: count(".cl-unit"),
+    blanks: ids("input[data-blank]", "data-blank"),
+    orderItems: ids(".cl-order > li", "data-item"),
+    matchLeft: ids(".cl-match-left > li", "data-item"),
+    matchRight: ids(".cl-match-right > li", "data-item"),
+    segments: ids(".cl-q-stimulus [data-segment]", "data-segment"),
+  };
+}
+
+/** Problems with the form itself, before its questions are checked. */
+function quizErrors(form, seenQuizIds) {
+  const errors = [];
+  const quizId = form.dataset.quizId;
+  if (!quizId) errors.push("The quiz has no data-quiz-id.");
+  else if (!isContractId(quizId)) errors.push(`The data-quiz-id "${quizId}" is not valid.`);
+  else if (seenQuizIds.has(quizId)) errors.push(`Two quizzes use the data-quiz-id "${quizId}".`);
+
+  const kind = form.dataset.kind;
+  if (kind !== undefined && !isQuizKind(kind)) {
+    errors.push(`Unknown data-kind "${kind}". Use one of: ${QUIZ_KINDS.join(", ")}.`);
+  }
+  const confidence = form.dataset.confidence;
+  if (confidence !== undefined && confidence !== "on" && confidence !== "off") {
+    errors.push(`Unknown data-confidence "${confidence}". Use "on" or "off".`);
+  }
+
+  const questions = [...form.querySelectorAll(".cl-q")];
+  if (questions.length === 0) errors.push("The quiz has no .cl-q questions.");
+  const ids = questions.map((q) => q.dataset.questionId).filter(Boolean);
+  const repeated = ids.filter((id, i) => ids.indexOf(id) !== i);
+  if (repeated.length > 0)
+    errors.push(`Repeated data-question-id: ${[...new Set(repeated)].join(", ")}.`);
+  return errors;
+}
+
+/** Show markup errors where they are, so nobody mistakes a broken quiz for a working one. */
+function showErrors(container, heading, errors, before = null) {
+  const box = document.createElement("div");
+  box.className = "cl-contract-error";
+  box.setAttribute("role", "alert");
+  const title = document.createElement("p");
+  title.className = "cl-contract-error-title";
+  title.textContent = heading;
+  const list = document.createElement("ul");
+  for (const error of errors) {
+    const item = document.createElement("li");
+    item.textContent = error;
+    list.appendChild(item);
+    console.error(`[classroom] ${heading} ${error}`);
+  }
+  box.append(title, list);
+  if (before) container.insertBefore(box, before);
+  else container.prepend(box);
+}
+
+const KIND_NOTES = {
+  pretest:
+    "Pretest. Answer before you read the lesson. Wrong answers are expected: they show your teacher what to focus on.",
+  review:
+    "Review. These questions come back to ideas from earlier lessons, so you recall them after a gap.",
+};
+
 function hydrateQuizzes() {
+  const seenQuizIds = new Set();
   for (const form of quizForms()) {
-    if (!form.dataset.quizId) form.dataset.quizId = "quiz";
-    form.dataset.state = "fresh";
+    const formErrors = quizErrors(form, seenQuizIds);
+    if (form.dataset.quizId) seenQuizIds.add(form.dataset.quizId);
+    const kind = isQuizKind(form.dataset.kind) ? form.dataset.kind : "check";
+    form.dataset.kind = kind;
+
+    let broken = formErrors.length > 0;
+    for (const question of form.querySelectorAll(".cl-q")) {
+      const errors = questionErrors(questionShape(question, kind));
+      if (errors.length > 0) {
+        broken = true;
+        const label = question.dataset.questionId ?? "without an id";
+        showErrors(question, `Question ${label}`, errors);
+      }
+    }
 
     if (form.dataset.title && !form.querySelector(".cl-quiz-title")) {
       const heading = document.createElement("p");
       heading.className = "cl-quiz-title";
       heading.textContent = form.dataset.title;
       form.prepend(heading);
+    }
+    if (KIND_NOTES[kind] && !form.querySelector(".cl-quiz-kind")) {
+      const note = document.createElement("p");
+      note.className = "cl-quiz-kind";
+      note.textContent = KIND_NOTES[kind];
+      const title = form.querySelector(".cl-quiz-title");
+      if (title) title.after(note);
+      else form.prepend(note);
+    }
+    if (formErrors.length > 0) {
+      showErrors(form, "This quiz has errors.", formErrors, form.querySelector(".cl-questions"));
     }
 
     let footer = form.querySelector(".cl-quiz-footer");
@@ -854,61 +1006,315 @@ function hydrateQuizzes() {
     submit.classList.add("cl-button");
     footer.appendChild(submit);
 
+    const retake = document.createElement("button");
+    retake.type = "button";
+    retake.className = "cl-button cl-button-quiet";
+    retake.dataset.clRetake = "";
+    retake.textContent = "Try again";
+    retake.hidden = true;
+    retake.addEventListener("click", () => resetQuiz(form));
+    footer.appendChild(retake);
+
     const status = document.createElement("span");
     status.className = "cl-quiz-status";
     status.dataset.clQuizStatus = "";
     footer.appendChild(status);
 
+    if (broken) {
+      setQuizState(form, "broken");
+      setQuizStatus(
+        form,
+        "This quiz has errors, so it cannot be submitted. Ask your teacher to fix it.",
+      );
+      continue;
+    }
+
+    for (const question of form.querySelectorAll(".cl-q")) enhanceQuestion(form, question);
+    form.dataset.state = "fresh";
     form.addEventListener("submit", (event) => onQuizSubmit(event, form));
   }
 }
 
-/** Read the learner's answers out of the form's canonical markup. */
-function collectAnswers(form) {
-  const answers = [];
-  for (const question of form.querySelectorAll(".cl-q")) {
-    const questionId = question.dataset.questionId;
-    if (!questionId) continue;
-    const prompt = normalizeText(question.querySelector(".cl-q-prompt")?.textContent ?? "");
+function confidenceEnabled(form) {
+  return form.dataset.confidence !== "off";
+}
 
-    const checked = [
-      ...question.querySelectorAll("input[type=radio], input[type=checkbox]"),
-    ].filter((input) => input.checked);
-    if (checked.length > 0) {
-      for (const input of checked) {
-        answers.push({
-          questionId,
-          prompt,
-          value: input.value || "",
-          label: normalizeText(input.closest("label")?.textContent ?? ""),
+/** Add the controls a question type needs, and the confidence row. */
+function enhanceQuestion(form, question) {
+  switch (question.dataset.type) {
+    case "numeric":
+      for (const input of question.querySelectorAll("input.cl-number")) {
+        input.setAttribute("inputmode", "decimal");
+        input.addEventListener("input", () => {
+          const invalid = input.value.trim() !== "" && parseNumber(input.value) === null;
+          input.setAttribute("aria-invalid", String(invalid));
         });
       }
-      continue;
-    }
-
-    const free = question.querySelector("textarea, input[type=text]");
-    if (free) answers.push({ questionId, prompt, value: free.value.trim() });
+      break;
+    case "order":
+      enhanceOrder(question);
+      break;
+    case "match":
+      enhanceMatch(question);
+      break;
+    case "locate":
+      enhanceLocate(form, question);
+      break;
   }
-  return answers;
+  if (confidenceEnabled(form)) addConfidence(question);
+}
+
+function enhanceOrder(question) {
+  const list = question.querySelector(".cl-order");
+  // Kept so a retake starts from the order the author wrote, not the last answer.
+  list.dataset.clInitial = [...list.children].map((li) => li.dataset.item).join(" ");
+  for (const item of list.children) {
+    const controls = document.createElement("span");
+    controls.className = "cl-order-controls";
+    controls.innerHTML = `
+      <button type="button" class="cl-icon-button" data-cl-move="-1" aria-label="Move up">↑</button>
+      <button type="button" class="cl-icon-button" data-cl-move="1" aria-label="Move down">↓</button>`;
+    item.appendChild(controls);
+    controls.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-cl-move]");
+      if (!button || button.disabled) return;
+      const sibling =
+        button.dataset.clMove === "-1" ? item.previousElementSibling : item.nextElementSibling;
+      if (!sibling) return;
+      if (button.dataset.clMove === "-1") sibling.before(item);
+      else sibling.after(item);
+      button.focus();
+    });
+  }
+}
+
+/** The text of an order item, without the move buttons. */
+function itemLabel(item) {
+  const clone = item.cloneNode(true);
+  clone.querySelector(".cl-order-controls")?.remove();
+  return normalizeText(clone.textContent);
+}
+
+function enhanceMatch(question) {
+  const rights = [...question.querySelectorAll(".cl-match-right > li")];
+  for (const left of question.querySelectorAll(".cl-match-left > li")) {
+    const select = document.createElement("select");
+    select.className = "cl-match-select";
+    select.dataset.matchFor = left.dataset.item;
+    select.setAttribute("aria-label", `Match for ${normalizeText(left.textContent)}`);
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Choose a match…";
+    select.appendChild(blank);
+    for (const right of rights) {
+      const option = document.createElement("option");
+      option.value = right.dataset.item;
+      option.textContent = normalizeText(right.textContent);
+      select.appendChild(option);
+    }
+    left.appendChild(select);
+  }
+}
+
+function enhanceLocate(form, question) {
+  const many = question.dataset.select === "many";
+  for (const segment of question.querySelectorAll(".cl-q-stimulus [data-segment]")) {
+    segment.classList.add("cl-segment");
+    segment.setAttribute("role", "button");
+    segment.setAttribute("tabindex", "0");
+    segment.setAttribute("aria-pressed", "false");
+    const toggle = () => {
+      if (form.dataset.state !== "fresh") return;
+      const pressed = segment.getAttribute("aria-pressed") !== "true";
+      if (!many) {
+        for (const other of question.querySelectorAll(".cl-segment")) {
+          other.setAttribute("aria-pressed", "false");
+        }
+      }
+      segment.setAttribute("aria-pressed", String(pressed));
+    };
+    segment.addEventListener("click", toggle);
+    segment.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggle();
+      }
+    });
+  }
+}
+
+function addConfidence(question) {
+  const fieldset = document.createElement("fieldset");
+  fieldset.className = "cl-confidence";
+  const legend = document.createElement("legend");
+  legend.textContent = "How sure are you?";
+  fieldset.appendChild(legend);
+  for (const level of CONFIDENCE_LEVELS) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = `cl-confidence-${question.dataset.questionId}`;
+    input.value = level;
+    label.append(input, ` ${CONFIDENCE_LABELS[level]}`);
+    fieldset.appendChild(label);
+  }
+  question.appendChild(fieldset);
+}
+
+/** Plain text of a stimulus block. Line breaks are kept, because code needs them. */
+function stimulusText(element) {
+  const text = (element.innerText || element.textContent || "").trim();
+  const images = [...element.querySelectorAll("img")].map(
+    (img) => `[image: ${img.getAttribute("alt") || "no alt text"}]`,
+  );
+  return [text, ...images].filter(Boolean).join("\n");
+}
+
+/** A cloze passage as text, with each blank written as `[[<blank id>]]`. */
+function clozeText(element) {
+  const clone = element.cloneNode(true);
+  for (const blank of clone.querySelectorAll("input[data-blank]")) {
+    blank.replaceWith(document.createTextNode(`[[${blank.dataset.blank}]]`));
+  }
+  return normalizeText(clone.textContent);
+}
+
+/**
+ * Read one question's answer.
+ *
+ * Returns `{ answer }`, or `{ missing: true }` when the learner has not answered it
+ * yet, or `{ invalid: message }` when the answer cannot be sent as it is.
+ */
+function collectAnswer(form, question) {
+  const type = question.dataset.type;
+  const answer = {
+    questionId: question.dataset.questionId,
+    type,
+    prompt: normalizeText(question.querySelector(".cl-q-prompt")?.textContent ?? ""),
+  };
+  const stimulus = question.querySelector(".cl-q-stimulus");
+  if (stimulus) answer.stimulus = stimulusText(stimulus);
+  if (question.dataset.reviewOf) answer.reviewOf = question.dataset.reviewOf;
+
+  const labelOf = (input) => normalizeText(input.closest("label")?.textContent ?? input.value);
+
+  switch (type) {
+    case "choice": {
+      const chosen = own(question, "input[type=radio]").find((input) => input.checked);
+      if (!chosen) return { missing: true };
+      answer.value = chosen.value;
+      answer.label = labelOf(chosen);
+      break;
+    }
+    case "multi": {
+      const chosen = own(question, "input[type=checkbox]").filter((input) => input.checked);
+      if (chosen.length === 0) return { missing: true };
+      answer.parts = chosen.map((input) => ({ id: input.value, value: labelOf(input) }));
+      break;
+    }
+    case "term":
+    case "short": {
+      const field = own(question, "textarea, input[type=text], input:not([type])")[0];
+      if (!field.value.trim()) return { missing: true };
+      answer.value = field.value.trim();
+      break;
+    }
+    case "numeric": {
+      const number = question.querySelector("input.cl-number");
+      if (!number.value.trim()) return { missing: true };
+      if (parseNumber(number.value) === null) {
+        return { invalid: `"${number.value.trim()}" is not a number. Write it like 9.81 or 3e8.` };
+      }
+      answer.value = number.value.trim();
+      const unit = question.querySelector(".cl-unit");
+      if (unit) answer.unit = unit.value.trim();
+      break;
+    }
+    case "cloze": {
+      const blanks = [...question.querySelectorAll("input[data-blank]")];
+      if (blanks.some((blank) => !blank.value.trim())) return { missing: true };
+      answer.passage = clozeText(question.querySelector(".cl-cloze"));
+      answer.parts = blanks.map((blank) => ({
+        id: blank.dataset.blank,
+        value: blank.value.trim(),
+      }));
+      break;
+    }
+    case "order":
+      answer.parts = [...question.querySelectorAll(".cl-order > li")].map((item) => ({
+        id: item.dataset.item,
+        value: itemLabel(item),
+      }));
+      break;
+    case "match": {
+      const selects = [...question.querySelectorAll("select.cl-match-select")];
+      if (selects.some((select) => !select.value)) return { missing: true };
+      answer.pairs = selects.map((select) => ({
+        left: select.dataset.matchFor,
+        right: select.value,
+        leftLabel: itemText(select.closest("li")),
+        rightLabel: normalizeText(select.selectedOptions[0].textContent),
+      }));
+      break;
+    }
+    case "locate": {
+      const chosen = [...question.querySelectorAll(".cl-segment[aria-pressed=true]")];
+      if (chosen.length === 0) return { missing: true };
+      answer.parts = chosen.map((segment) => ({
+        id: segment.dataset.segment,
+        value: normalizeText(segment.textContent),
+      }));
+      break;
+    }
+  }
+
+  if (confidenceEnabled(form)) {
+    const level = question.querySelector(".cl-confidence input:checked");
+    if (!level) return { missing: true };
+    answer.confidence = level.value;
+  }
+  return { answer };
+}
+
+/** The text of a match item, without the select the runtime added. */
+function itemText(item) {
+  const clone = item.cloneNode(true);
+  clone.querySelector("select")?.remove();
+  return normalizeText(clone.textContent);
 }
 
 async function onQuizSubmit(event, form) {
   event.preventDefault();
-  if (form.dataset.state === "submitted") return;
+  if (form.dataset.state !== "fresh") return;
 
-  const answers = collectAnswers(form);
-  const unanswered =
-    [...form.querySelectorAll(".cl-q")].length - new Set(answers.map((a) => a.questionId)).size;
-  if (answers.length === 0 || unanswered > 0) {
-    setQuizStatus(form, `Answer every question first (${unanswered} left).`);
+  const questions = [...form.querySelectorAll(".cl-q")];
+  const answers = [];
+  let missing = 0;
+  for (const [i, question] of questions.entries()) {
+    const result = collectAnswer(form, question);
+    if (result.invalid) {
+      setQuizStatus(form, `Question ${i + 1}: ${result.invalid}`);
+      return;
+    }
+    if (result.missing) missing += 1;
+    else answers.push(result.answer);
+  }
+  if (missing > 0) {
+    setQuizStatus(
+      form,
+      confidenceEnabled(form)
+        ? `Answer every question, and say how sure you are (${missing} left).`
+        : `Answer every question first (${missing} left).`,
+    );
     return;
   }
 
   setQuizState(form, "submitted");
   setQuizStatus(form, '<span class="cl-spinner"></span> Sent to your teacher for grading…', true);
 
+  let response;
   try {
-    const response = await fetch("/api/quiz/submit", {
+    response = await fetch("/api/quiz/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -916,10 +1322,10 @@ async function onQuizSubmit(event, form) {
         lesson: config.lesson,
         quizId: form.dataset.quizId,
         quizTitle: form.dataset.title || "Check on learning",
+        kind: form.dataset.kind,
         answers,
       }),
     });
-    if (!response.ok) throw new Error(await response.text());
   } catch (err) {
     console.error("[classroom] quiz submit failed", err);
     setQuizState(form, "fresh");
@@ -927,19 +1333,36 @@ async function onQuizSubmit(event, form) {
       form,
       "Could not reach your teacher. Is the session that started the classroom still running?",
     );
+    return;
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: response.statusText }));
+    console.error("[classroom] quiz refused", body.error);
+    setQuizState(form, "fresh");
+    setQuizStatus(form, `The classroom refused this quiz: ${body.error}`);
   }
 }
 
 function setQuizState(form, state) {
   form.dataset.state = state;
-  const locked = state === "submitted" || state === "graded";
-  for (const field of form.querySelectorAll("input, textarea")) field.disabled = locked;
+  const locked = state !== "fresh";
+  for (const field of form.querySelectorAll(
+    ".cl-q input, .cl-q textarea, .cl-q select, .cl-q button",
+  )) {
+    field.disabled = locked;
+  }
+  for (const segment of form.querySelectorAll(".cl-segment")) {
+    segment.setAttribute("tabindex", locked ? "-1" : "0");
+  }
   const submit = form.querySelector('button[type="submit"], .cl-submit');
   if (submit) {
     submit.disabled = locked;
     if (state === "graded") submit.textContent = "Graded";
     else if (state === "submitted") submit.textContent = "Submitted";
+    else submit.textContent = "Submit for grading";
   }
+  const retake = form.querySelector("[data-cl-retake]");
+  if (retake) retake.hidden = state !== "graded";
 }
 
 function setQuizStatus(form, html, isHtml = false) {
@@ -949,38 +1372,155 @@ function setQuizStatus(form, html, isHtml = false) {
   else status.textContent = html;
 }
 
-/** Re-apply a stored submission (and its grade, if graded) to the form. */
-function applyQuizState(submission, grade) {
-  const form = quizForms().find((f) => f.dataset.quizId === submission.quizId) ?? quizForms()[0];
-  if (!form) return;
+/** Clear the form for another attempt. The graded attempt stays on disk. */
+function resetQuiz(form) {
+  for (const input of form.querySelectorAll(".cl-q input")) {
+    if (input.type === "radio" || input.type === "checkbox") input.checked = false;
+    else input.value = "";
+    input.removeAttribute("aria-invalid");
+  }
+  for (const field of form.querySelectorAll(".cl-q textarea, .cl-q select")) field.value = "";
+  for (const segment of form.querySelectorAll(".cl-segment")) {
+    segment.setAttribute("aria-pressed", "false");
+  }
+  for (const list of form.querySelectorAll(".cl-order"))
+    reorder(list, list.dataset.clInitial.split(" "));
+  form.querySelector("[data-cl-grade]")?.remove();
+  for (const verdict of form.querySelectorAll(".cl-q-verdict")) verdict.remove();
 
-  for (const answer of submission.answers) {
-    const question = form.querySelector(
-      `.cl-q[data-question-id="${cssEscape(answer.questionId)}"]`,
-    );
-    if (!question) continue;
-    const choice = [...question.querySelectorAll("input[type=radio], input[type=checkbox]")].find(
-      (input) => input.value === answer.value,
-    );
-    if (choice) choice.checked = true;
-    else {
-      const free = question.querySelector("textarea, input[type=text]");
-      if (free) free.value = answer.value;
+  const next = Number(form.dataset.attempts ?? "1") + 1;
+  setQuizState(form, "fresh");
+  setQuizStatus(form, `Attempt ${next}. Your earlier attempts are saved.`);
+  form.querySelector(".cl-q input, .cl-q textarea, .cl-q select, .cl-segment")?.focus();
+}
+
+/** Put the items of an order list in the given order of item ids. */
+function reorder(list, ids) {
+  for (const id of ids) {
+    const item = [...list.children].find((li) => li.dataset.item === id);
+    if (item) list.appendChild(item);
+  }
+}
+
+/** Put a saved answer back into its question. */
+function restoreAnswer(question, group) {
+  const answer = group[0];
+  const byValue = (selector, value) =>
+    own(question, selector).find((input) => input.value === value);
+
+  switch (answer.type) {
+    // Answers saved before question types were enforced: one entry for each ticked box.
+    case undefined:
+      for (const entry of group) {
+        const choice = byValue("input[type=radio], input[type=checkbox]", entry.value);
+        if (choice) choice.checked = true;
+        else {
+          const free = own(question, "textarea, input[type=text]")[0];
+          if (free) free.value = entry.value;
+        }
+      }
+      return;
+    case "choice": {
+      const choice = byValue("input[type=radio]", answer.value);
+      if (choice) choice.checked = true;
+      break;
     }
+    case "multi":
+      for (const part of answer.parts) {
+        const box = byValue("input[type=checkbox]", part.id);
+        if (box) box.checked = true;
+      }
+      break;
+    case "term":
+    case "short": {
+      const field = own(question, "textarea, input[type=text], input:not([type])")[0];
+      if (field) field.value = answer.value;
+      break;
+    }
+    case "numeric": {
+      const number = question.querySelector("input.cl-number");
+      if (number) number.value = answer.value;
+      const unit = question.querySelector(".cl-unit");
+      if (unit && answer.unit !== undefined) unit.value = answer.unit;
+      break;
+    }
+    case "cloze":
+      for (const part of answer.parts) {
+        const blank = question.querySelector(`input[data-blank="${cssEscape(part.id)}"]`);
+        if (blank) blank.value = part.value;
+      }
+      break;
+    case "order": {
+      const list = question.querySelector(".cl-order");
+      if (list)
+        reorder(
+          list,
+          answer.parts.map((part) => part.id),
+        );
+      break;
+    }
+    case "match":
+      for (const pair of answer.pairs) {
+        const select = question.querySelector(`select[data-match-for="${cssEscape(pair.left)}"]`);
+        if (select) select.value = pair.right;
+      }
+      break;
+    case "locate":
+      for (const part of answer.parts) {
+        const segment = question.querySelector(`.cl-segment[data-segment="${cssEscape(part.id)}"]`);
+        if (segment) segment.setAttribute("aria-pressed", "true");
+      }
+      break;
   }
 
+  if (answer.confidence) {
+    const level = question.querySelector(
+      `.cl-confidence input[value="${cssEscape(answer.confidence)}"]`,
+    );
+    if (level) level.checked = true;
+  }
+}
+
+/** Re-apply the latest attempt at a quiz (and its grade, if graded) to its form. */
+function applyQuizState(state) {
+  const { submission, grade, attempts } = state;
+  const form = quizForms().find((f) => f.dataset.quizId === submission.quizId);
+  if (!form) {
+    console.error(
+      `[classroom] A saved attempt belongs to quiz "${submission.quizId}", which is not on this page.`,
+    );
+    return;
+  }
+  if (form.dataset.state === "broken") return;
+  form.dataset.attempts = String(attempts);
+
+  // Clear first: a grade can arrive for an attempt the form is already showing.
+  form.querySelector("[data-cl-grade]")?.remove();
+  for (const verdict of form.querySelectorAll(".cl-q-verdict")) verdict.remove();
+
+  const groups = new Map();
+  for (const answer of submission.answers) {
+    if (!groups.has(answer.questionId)) groups.set(answer.questionId, []);
+    groups.get(answer.questionId).push(answer);
+  }
+  for (const [questionId, group] of groups) {
+    const question = form.querySelector(`.cl-q[data-question-id="${cssEscape(questionId)}"]`);
+    if (question) restoreAnswer(question, group);
+  }
+
+  const attemptNote = attempts > 1 ? ` · attempt ${attempts}` : "";
   if (!grade) {
     setQuizState(form, "submitted");
     setQuizStatus(
       form,
-      '<span class="cl-spinner"></span> Waiting for your teacher to grade this…',
+      `<span class="cl-spinner"></span> Waiting for your teacher to grade this…${attemptNote}`,
       true,
     );
     return;
   }
 
   setQuizState(form, "graded");
-  setQuizStatus(form, `Graded ${new Date(grade.gradedAt).toLocaleString()}`);
+  setQuizStatus(form, `Graded ${new Date(grade.gradedAt).toLocaleString()}${attemptNote}`);
   renderGrade(form, grade);
 }
 
@@ -989,15 +1529,23 @@ function renderGrade(form, grade) {
 
   const summary = document.createElement("div");
   summary.dataset.clGrade = "";
-  const tone = grade.score >= 80 ? "pass" : grade.score >= 50 ? "mixed" : "fail";
+  // A pretest comes before teaching, so its score is information, not a verdict.
+  const tone =
+    form.dataset.kind === "pretest"
+      ? "info"
+      : grade.score >= 80
+        ? "pass"
+        : grade.score >= 50
+          ? "mixed"
+          : "fail";
   summary.innerHTML = `
     <div class="cl-grade-banner" data-tone="${tone}">
       <span class="cl-grade-score">${Math.round(grade.score)}%</span>
       <span>${grade.questions.filter((q) => q.correct).length} of ${grade.questions.length} correct</span>
     </div>
     <div class="cl-grade-feedback">${grade.feedbackHtml || ""}</div>`;
-  const heading = form.querySelector(".cl-quiz-title");
-  if (heading) heading.after(summary);
+  const anchor = form.querySelector(".cl-quiz-kind") ?? form.querySelector(".cl-quiz-title");
+  if (anchor) anchor.after(summary);
   else form.prepend(summary);
 
   for (const questionGrade of grade.questions) {
@@ -1014,6 +1562,226 @@ function renderGrade(form, grade) {
     }</span>`;
     question.appendChild(verdict);
   }
+}
+
+// ── Self-explanations ─────────────────────────────────────────────────────────
+
+/**
+ * A `form.cl-reflect` asks the learner to explain something in their own words. It is
+ * saved and shown to the teacher, but never graded: explaining is the exercise.
+ */
+function reflectForms() {
+  return [...document.querySelectorAll("form.cl-reflect")];
+}
+
+function hydrateReflections() {
+  const seen = new Set();
+  for (const form of reflectForms()) {
+    const errors = [];
+    const id = form.dataset.reflectId;
+    if (!id) errors.push("The self-explanation has no data-reflect-id.");
+    else if (!isContractId(id)) errors.push(`The data-reflect-id "${id}" is not valid.`);
+    else if (seen.has(id)) errors.push(`Two self-explanations use the data-reflect-id "${id}".`);
+    if (id) seen.add(id);
+    if (!form.querySelector(".cl-reflect-prompt")) errors.push("It has no .cl-reflect-prompt.");
+    if (form.querySelectorAll("textarea").length !== 1) errors.push("It needs exactly 1 textarea.");
+
+    const footer = document.createElement("div");
+    footer.className = "cl-quiz-footer";
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "cl-button";
+    save.textContent = "Save";
+    const status = document.createElement("span");
+    status.className = "cl-quiz-status";
+    status.dataset.clQuizStatus = "";
+    footer.append(save, status);
+    form.appendChild(footer);
+
+    if (errors.length > 0) {
+      showErrors(form, "This self-explanation has errors.", errors);
+      save.disabled = true;
+      for (const field of form.querySelectorAll("textarea")) field.disabled = true;
+      continue;
+    }
+    form.addEventListener("submit", (event) => onReflectSubmit(event, form));
+  }
+}
+
+async function onReflectSubmit(event, form) {
+  event.preventDefault();
+  const field = form.querySelector("textarea");
+  const text = field.value.trim();
+  if (!text) {
+    setQuizStatus(form, "Write your explanation first.");
+    return;
+  }
+  const save = form.querySelector('button[type="submit"]');
+  save.disabled = true;
+  try {
+    const response = await fetch("/api/reflect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        classroom: config.classroom,
+        lesson: config.lesson,
+        reflectId: form.dataset.reflectId,
+        prompt: normalizeText(form.querySelector(".cl-reflect-prompt").textContent),
+        text,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(body.error);
+    }
+    const reflection = await response.json();
+    setQuizStatus(
+      form,
+      `Saved ${new Date(reflection.savedAt).toLocaleString()}. Your teacher will read it.`,
+    );
+  } catch (err) {
+    console.error("[classroom] reflection failed", err);
+    setQuizStatus(form, `Could not save: ${err.message}`);
+  } finally {
+    save.disabled = false;
+  }
+}
+
+function applyReflection(reflection) {
+  const form = reflectForms().find((f) => f.dataset.reflectId === reflection.reflectId);
+  if (!form) {
+    console.error(
+      `[classroom] A saved self-explanation belongs to "${reflection.reflectId}", which is not on this page.`,
+    );
+    return;
+  }
+  form.querySelector("textarea").value = reflection.text;
+  setQuizStatus(form, `Saved ${new Date(reflection.savedAt).toLocaleString()}.`);
+}
+
+// ── Glossary terms ────────────────────────────────────────────────────────────
+
+/**
+ * Mark the first use of each glossary term in each section of the lesson.
+ *
+ * Recall first: a click asks the learner what the term means before it shows the
+ * definition, so each look is a small retrieval attempt rather than a re-read.
+ */
+let termPopover = null;
+
+async function initGlossary() {
+  const response = await fetch(`/api/glossary?classroom=${encodeURIComponent(config.classroom)}`);
+  if (!response.ok) throw new Error(`GET /api/glossary returned ${response.status}`);
+  const glossary = await response.json();
+  for (const error of glossary.errors) console.error(`[classroom] GLOSSARY.md: ${error}`);
+  if (glossary.terms.length === 0) return;
+
+  buildTermPopover();
+  for (const section of glossarySections()) markTerms(section, glossary.terms);
+}
+
+/** Top-level sections of the lesson, or the whole lesson when it has none. */
+function glossarySections() {
+  const sections = [...contentRoot.querySelectorAll("section")].filter(
+    (section) => !section.parentElement?.closest("section"),
+  );
+  return sections.length > 0 ? sections : [contentRoot];
+}
+
+const NO_TERMS =
+  "script, style, pre, code, a, button, label, select, h1, h2, h3, h4, h5, h6, " +
+  "form.cl-quiz, form.cl-reflect, .cl-header, .cl-card-panel, .cl-ask-pill, " +
+  ".cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, mark.cl-hl";
+
+function markTerms(section, terms) {
+  const nodes = [];
+  let text = "";
+  const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.parentElement?.closest(NO_TERMS)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    nodes.push({ node, start: text.length });
+    text += node.nodeValue;
+  }
+
+  const matches = firstUses(findTerms(text, terms));
+  // Last first, so splitting a node cannot move the offsets of an earlier match.
+  for (const match of matches.reverse()) {
+    const owner = nodes.findLast((entry) => entry.start <= match.start);
+    if (!owner || match.end > owner.start + owner.node.nodeValue.length) continue; // spans tags
+    let target = owner.node;
+    const from = match.start - owner.start;
+    const to = match.end - owner.start;
+    if (to < target.nodeValue.length) target.splitText(to);
+    if (from > 0) target = target.splitText(from);
+
+    const term = document.createElement("span");
+    term.className = "cl-term";
+    term.tabIndex = 0;
+    term.setAttribute("role", "button");
+    term.setAttribute("aria-haspopup", "dialog");
+    target.parentNode.insertBefore(term, target);
+    term.appendChild(target);
+    const entry = terms[match.index];
+    term.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openTermPopover(term, entry);
+    });
+    term.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openTermPopover(term, entry);
+      }
+    });
+  }
+}
+
+function buildTermPopover() {
+  termPopover = document.createElement("div");
+  termPopover.className = "cl-term-pop";
+  termPopover.setAttribute("role", "dialog");
+  termPopover.hidden = true;
+  termPopover.innerHTML = `
+    <p class="cl-term-pop-title" data-cl-term-title></p>
+    <p class="cl-term-pop-ask">What does it mean? Say it to yourself first.</p>
+    <button type="button" class="cl-button" data-cl-reveal>Show the definition</button>
+    <div class="cl-term-pop-definition" data-cl-definition hidden></div>
+    <p class="cl-term-pop-avoid" data-cl-avoid hidden></p>`;
+  document.body.appendChild(termPopover);
+
+  termPopover.querySelector("[data-cl-reveal]").addEventListener("click", () => {
+    termPopover.querySelector("[data-cl-reveal]").hidden = true;
+    termPopover.querySelector(".cl-term-pop-ask").hidden = true;
+    termPopover.querySelector("[data-cl-definition]").hidden = false;
+    termPopover.querySelector("[data-cl-avoid]").hidden =
+      !termPopover.querySelector("[data-cl-avoid]").textContent;
+  });
+  document.addEventListener("mousedown", (event) => {
+    if (!termPopover.hidden && !termPopover.contains(event.target)) termPopover.hidden = true;
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") termPopover.hidden = true;
+  });
+}
+
+function openTermPopover(anchor, entry) {
+  termPopover.querySelector("[data-cl-term-title]").textContent = entry.term;
+  // innerHTML is safe here: the definition was rendered to HTML server-side.
+  termPopover.querySelector("[data-cl-definition]").innerHTML = entry.definitionHtml;
+  termPopover.querySelector("[data-cl-avoid]").textContent =
+    entry.avoid.length > 0 ? `Not: ${entry.avoid.join(", ")}` : "";
+  termPopover.querySelector("[data-cl-reveal]").hidden = false;
+  termPopover.querySelector(".cl-term-pop-ask").hidden = false;
+  termPopover.querySelector("[data-cl-definition]").hidden = true;
+  termPopover.querySelector("[data-cl-avoid]").hidden = true;
+  termPopover.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  position(termPopover, rect.left, rect.bottom + 8);
+  termPopover.querySelector("[data-cl-reveal]").focus();
 }
 
 function escapeText(value) {

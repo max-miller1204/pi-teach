@@ -7,6 +7,7 @@
  */
 
 import { escapeHtml, renderMarkdown } from "./markdown.ts";
+import { relativeDay, type ReviewSummary } from "./review.ts";
 import type { Classroom, Lesson } from "./store.ts";
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
@@ -64,7 +65,14 @@ ${options.body}
 
 // ── Landing page ──────────────────────────────────────────────────────────────
 
-export function landingPage(classrooms: Classroom[]): string {
+/**
+ * `dueByClassroom` maps a classroom name to how many of its questions are due for
+ * review. A classroom that is not in the map has none due.
+ */
+export function landingPage(
+  classrooms: Classroom[],
+  dueByClassroom: Record<string, number> = {},
+): string {
   const body =
     classrooms.length === 0
       ? emptyState(
@@ -76,7 +84,7 @@ export function landingPage(classrooms: Classroom[]): string {
   <p class="cl-lede">Pick up where you left off, or start something new with <code>/teach</code>.</p>
 </div>
 <ul class="cl-grid">
-${classrooms.map(classroomCard).join("\n")}
+${classrooms.map((c) => classroomCard(c, dueByClassroom[c.name] ?? 0)).join("\n")}
 </ul>`;
 
   return shell({
@@ -86,7 +94,7 @@ ${classrooms.map(classroomCard).join("\n")}
   });
 }
 
-function classroomCard(classroom: Classroom): string {
+function classroomCard(classroom: Classroom, due: number): string {
   const why = missionWhy(classroom.mission);
   return `<li class="cl-card">
   <a class="cl-card-link" href="/c/${encodeURIComponent(classroom.name)}">
@@ -94,7 +102,7 @@ function classroomCard(classroom: Classroom): string {
     <span class="cl-card-body">
       <span class="cl-card-title">${escapeHtml(classroom.title)}</span>
       ${why ? `<span class="cl-card-why">${escapeHtml(why)}</span>` : ""}
-      <span class="cl-card-meta">${plural(classroom.lessonCount, "lesson")}</span>
+      <span class="cl-card-meta">${plural(classroom.lessonCount, "lesson")}${due > 0 ? ` · <span class="cl-card-due">${due} due for review</span>` : ""}</span>
     </span>
   </a>
 </li>`;
@@ -133,12 +141,23 @@ export function missionWhy(mission: string | null): string | null {
 
 // ── Classroom page ────────────────────────────────────────────────────────────
 
+/** What the progress section of the classroom page shows. */
+export interface ClassroomProgress {
+  review: ReviewSummary;
+  /** Lesson name → questions from that lesson that are due for review. */
+  dueByLesson: Record<string, number>;
+  glossaryTerms: number;
+  /** The time the page is built, for "due tomorrow". */
+  now: number;
+}
+
 export interface ClassroomPageData {
   classroom: Classroom;
   lessons: Lesson[];
   docs: string[];
   learningRecords: string[];
   referenceDocs: string[];
+  progress: ClassroomProgress;
 }
 
 export function classroomPage(data: ClassroomPageData): string {
@@ -151,13 +170,14 @@ export function classroomPage(data: ClassroomPageData): string {
           "Ask your teacher for the next lesson in your agent session. It will show up here.",
         )
       : `<ol class="cl-lessons">
-${lessons.map((lesson, i) => lessonRow(lesson, i)).join("\n")}
+${lessons.map((lesson, i) => lessonRow(lesson, i, data.progress.dueByLesson[lesson.name] ?? 0)).join("\n")}
 </ol>`;
 
   const body = `<div class="cl-hero">
   <h1><span class="cl-hero-emoji" aria-hidden="true">${escapeHtml(classroom.emoji)}</span>${escapeHtml(classroom.title)}</h1>
   ${classroom.mission ? `<p class="cl-lede">${escapeHtml(missionWhy(classroom.mission) ?? "")}</p>` : ""}
 </div>
+${progressSection(data)}
 <section class="cl-section">
   <h2 class="cl-section-title">Lessons</h2>
   ${lessonList}
@@ -171,9 +191,58 @@ ${sidePanel(data)}`;
   });
 }
 
-function lessonRow(lesson: Lesson, index: number): string {
+/**
+ * The learner's progress: what is due, what is mastered, and what they have built.
+ *
+ * Only shown once there is something to show. A new classroom has no progress yet,
+ * and four zeros would only be noise.
+ */
+function progressSection(data: ClassroomPageData): string {
+  const { review, glossaryTerms, now } = data.progress;
+  const records = data.learningRecords.length;
+  if (review.total === 0 && glossaryTerms === 0 && records === 0) return "";
+
+  const stat = (value: string, label: string, tone = "") =>
+    `<div class="cl-stat"${tone ? ` data-tone="${tone}"` : ""}><span class="cl-stat-value">${value}</span><span class="cl-stat-label">${escapeHtml(label)}</span></div>`;
+
+  const stats = [
+    stat(String(review.due), "due for review", review.due > 0 ? "due" : ""),
+    stat(`${review.mastered}/${review.total}`, "questions mastered"),
+    stat(String(glossaryTerms), glossaryTerms === 1 ? "glossary term" : "glossary terms"),
+    stat(String(records), records === 1 ? "learning record" : "learning records"),
+  ];
+
+  const percent = review.total > 0 ? Math.round((review.mastered / review.total) * 100) : 0;
+  const note =
+    review.due > 0
+      ? "Ask your teacher for a review before the next lesson. Spaced recall is what makes it stick."
+      : review.nextDueAt !== null
+        ? `Nothing is due. The next review is due ${relativeDay(review.nextDueAt, now)}.`
+        : "";
+
+  return `<section class="cl-section cl-progress" aria-label="Progress">
+  <h2 class="cl-section-title">Progress</h2>
+  <div class="cl-stats">
+    ${stats.join("\n    ")}
+  </div>
+  ${review.total > 0 ? `<div class="cl-meter" role="meter" aria-label="Questions mastered" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width: ${percent}%"></span></div>` : ""}
+  ${note ? `<p class="cl-progress-note">${escapeHtml(note)}</p>` : ""}
+</section>`;
+}
+
+function lessonRow(lesson: Lesson, index: number, due: number): string {
   const href = `/c/${encodeURIComponent(lesson.classroom)}/${encodeURIComponent(lesson.name)}`;
   const badges: string[] = [];
+  if (lesson.kind === "review") {
+    badges.push(
+      `<span class="cl-badge cl-badge-review" title="Spaced review session">review</span>`,
+    );
+  }
+  if (due > 0) {
+    badges.push(
+      `<span class="cl-badge cl-badge-due" title="Questions from this lesson due for review">${due} due</span>`,
+    );
+  }
   if (lesson.latestScore !== null) {
     badges.push(
       `<span class="cl-badge cl-badge-score" title="Quiz score">${Math.round(lesson.latestScore)}%</span>`,

@@ -260,9 +260,12 @@ async function main(): Promise<void> {
       lesson: LESSON,
       quizId: "check-1",
       quizTitle: "Check on learning",
+      kind: "check",
       answers: [
         {
           questionId: "q1",
+          type: "choice",
+          confidence: "sure",
           value: "b",
           label: "The value stays alive forever",
           prompt: "What happens to a value when its owner goes out of scope?",

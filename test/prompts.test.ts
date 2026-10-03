@@ -3,14 +3,19 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { resolveClassroom } from "../src/commands.ts";
 import {
   askPrompt,
+  CONFIDENT_WRONG,
   followUpPrompt,
   gradePrompt,
   missionStub,
   notesStub,
+  PRETEST_FOLLOW_UP,
   QUIZ_FOLLOW_UP,
+  reflectPrompt,
+  reviewStatusText,
   teachingPrompt,
 } from "../src/prompts.ts";
-import type { Annotation, FollowUp, QuizSubmission } from "../src/store.ts";
+import { DAY_MS } from "../src/review.ts";
+import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "../src/store.ts";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
@@ -140,6 +145,15 @@ describe("delivery parity", () => {
     answers: [{ questionId: "q1", prompt: "Who owns a value?", value: "Everyone" }],
     submittedAt: 4,
   };
+  const reflection: Reflection = {
+    id: "r1",
+    classroom: card.classroom,
+    lesson: card.lesson,
+    reflectId: "explain-1",
+    prompt: "Explain ownership.",
+    text: "Each value has one owner.",
+    savedAt: 5,
+  };
   const normalize = (prompt: string) =>
     prompt.replace(
       /This notification was delivered automatically; nothing was polled\.|It arrived as the result of your `wait_for_learner` call\./,
@@ -150,6 +164,14 @@ describe("delivery parity", () => {
     ["question", (delivery: "push" | "wait") => askPrompt(card, delivery)],
     ["follow-up", (delivery: "push" | "wait") => followUpPrompt(card, followUp, delivery)],
     ["quiz", (delivery: "push" | "wait") => gradePrompt(submission, delivery)],
+    [
+      "reflection",
+      (delivery: "push" | "wait") =>
+        reflectPrompt(reflection, delivery).replace(
+          /Then (continue what you were doing|call `wait_for_learner` again)\./,
+          "(next)",
+        ),
+    ],
   ] as const)("changes only the arrival note for a %s", (_name, prompt) => {
     expect(normalize(prompt("wait"))).toBe(normalize(prompt("push")));
   });
@@ -204,5 +226,95 @@ describe("resolveClassroom", () => {
     seedClassroom(fixture, { classroom: "rust" });
     seedClassroom(fixture, { classroom: "yoga" });
     expect(resolveClassroom("")).toBeNull();
+  });
+});
+
+describe("gradePrompt", () => {
+  const base: QuizSubmission = {
+    id: "s1",
+    classroom: "rust",
+    lesson: "001-ownership",
+    quizId: "check-1",
+    quizTitle: "Ownership",
+    kind: "check",
+    attempt: 1,
+    answers: [
+      {
+        questionId: "q1",
+        type: "cloze",
+        prompt: "Fill in the blank.",
+        passage: "A value has one [[b1]].",
+        parts: [{ id: "b1", value: "owner" }],
+        confidence: "sure",
+      },
+    ],
+    submittedAt: 4,
+  };
+
+  it("shows typed answers and confidence, and says what confidence means", () => {
+    const prompt = gradePrompt(base, "push");
+    expect(prompt).toContain("[q1] (cloze) Fill in the blank.");
+    expect(prompt).toContain("A value has one [b1: «owner»].");
+    expect(prompt).toContain("Their confidence: Sure");
+    expect(prompt).toContain(CONFIDENT_WRONG);
+  });
+
+  it("tells the teacher a pretest is diagnostic, with no retrieval check", () => {
+    const prompt = gradePrompt({ ...base, kind: "pretest" }, "push");
+    expect(prompt).toContain("**pretest**");
+    expect(prompt).toContain(PRETEST_FOLLOW_UP);
+    expect(prompt).not.toContain(QUIZ_FOLLOW_UP);
+  });
+
+  it("names the attempt and the previous score on a retake", () => {
+    const previous = { score: 40 } as QuizGrade;
+    const prompt = gradePrompt({ ...base, attempt: 2 }, "push", previous);
+    expect(prompt).toContain("Attempt 2 at this quiz. The previous attempt scored 40%.");
+  });
+
+  it("still reads submissions written before question types existed", () => {
+    const prompt = gradePrompt(
+      {
+        ...base,
+        kind: undefined,
+        answers: [
+          { questionId: "q1", value: "a", label: "First", prompt: "Pick all." },
+          { questionId: "q1", value: "c", label: "Third", prompt: "Pick all." },
+        ],
+      },
+      "push",
+    );
+    expect(prompt).toContain("1. [q1] Pick all.");
+    expect(prompt).toContain("Their answer: First; Third");
+    expect(prompt).not.toContain("2. [q1]");
+  });
+});
+
+describe("reviewStatusText", () => {
+  const now = Date.UTC(2026, 0, 10);
+
+  it("asks for a review before new material when questions are due", () => {
+    const text = reviewStatusText(
+      { total: 5, due: 2, dueSoon: 1, mastered: 1, nextDueAt: now + DAY_MS },
+      now,
+    );
+    expect(text).toContain("2 are due for review now");
+    expect(text).toContain("scaffold_review");
+  });
+
+  it("says when the next review is due when none are due now", () => {
+    const text = reviewStatusText(
+      { total: 5, due: 0, dueSoon: 1, mastered: 1, nextDueAt: now + DAY_MS },
+      now,
+    );
+    expect(text).toContain("The next one is due tomorrow.");
+    expect(text).not.toContain("scaffold_review");
+  });
+
+  it("goes into the teaching brief for an existing classroom", () => {
+    seedClassroom(fixture);
+    const prompt = teachingPrompt("", "rust", "## Spaced review\n\nSomething due.");
+    expect(prompt).toContain("Something due.");
+    expect(prompt).toContain("lesson_health");
   });
 });

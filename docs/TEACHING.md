@@ -24,6 +24,7 @@ directory. The layout is canonical, because the classroom server reads it:
     lesson.html           the lesson itself
     lesson.json           title and summary
     annotations.json      questions they asked (managed for you — do not edit)
+    reflections.json      their self-explanations (managed for you, do not edit)
     quiz/                 submissions and grades (managed for you — do not edit)
 ```
 
@@ -108,12 +109,50 @@ Two rules that matter more than they look:
 Prefer retrieval over recognition. A question answered by spotting a familiar phrase
 builds fluency, not storage.
 
+Every question has a `data-type`. The type names what the learner produces. What they
+look at goes in a `.cl-q-stimulus` block, which can hold a passage, code, a table, or
+an image. "Predict the output" is a stimulus of code and a `short` answer. These types
+work for any topic:
+
+- **Retrieval types. Use these by default.** `term` (a word), `short` (an
+  explanation), `numeric` (a number, and a unit if you want one), `cloze` (blanks in a
+  passage), `order` (put items in sequence), `locate` (select the wrong line, the
+  error in a proof, the grammar mistake).
+- **Recognition types. Use these for quick checks.** `choice`, `multi`, `match`.
+
+A quiz that breaks the contract shows its errors on the page and cannot be submitted.
+Open the lesson after you write it, to make sure that the quiz works.
+
+Each question has a "How sure are you?" row: Guessing, Unsure, or Sure. Read it when
+you grade. A wrong answer marked Sure is the strongest sign of a misconception: deal
+with it first. A right answer marked Guessing is not evidence of learning.
+
+After a grade, the learner can take the same quiz again. Each attempt is kept. An
+attempt right after feedback shows fluency, not storage strength. Do not treat it as
+proof of learning.
+
 After grading, check missed ideas before moving to another lesson. Explain the idea
 briefly. Ask one new retrieval question in chat with a different example. Wait for
 the learner's reply before giving the answer. Repeat until they show understanding.
 Do not treat a score or an explanation as proof that they learned the idea. If they
 ask to skip the check, record the unresolved gap in notes. Ask for their agreement
 before starting another lesson.
+
+### Pretests
+
+A pretest is a quiz with `data-kind="pretest"` at the top of a lesson, before the
+teaching. Use two or three retrieval questions. Wrong answers are expected. A pretest
+does two things: the attempt to answer prepares the learner to notice the answer in
+the lesson, and the result tells you what to stress and what to skip. A pretest never
+sets the lesson score and never enters the review schedule. Do not run the retrieval
+check after a pretest.
+
+### Self-explanations
+
+A `form.cl-reflect` asks the learner to explain an idea in their own words. It is saved
+and shown to you, but never graded: explaining is the exercise. Put one after the idea
+that matters most. Read what they write. Record a gap in notes. Write a learning record
+when it shows real understanding.
 
 ## Questions from the page
 
@@ -133,6 +172,28 @@ worth fixing, or a prerequisite worth teaching. A long follow-up thread is loude
 still: that passage did not land, and the lesson probably needs the explanation the thread
 ended up producing.
 
+## Spaced review
+
+Every graded question in a check or a review enters a review schedule. A correct answer
+moves the question to a longer interval: 1, 3, 7, 21, then 60 days. A wrong answer moves
+it back to one day. A correct answer marked Guessing does not move it. The schedule is
+calculated from the grades on disk, so you never edit it.
+
+`begin_teaching` and `/teach` tell you how many questions are due. When questions are
+due, offer the learner a review before new material. If they agree, call
+`scaffold_review`. It creates a review lesson and returns the due questions, mixed
+across lessons. For each one, write a new question that tests the same idea with a new
+example. Put the given key on it as `data-review-of`. A new example makes the learner
+recall the idea, not a remembered answer.
+
+## Lesson health
+
+Call `lesson_health` before you plan the next lesson. It reports long question threads,
+quiz questions missed more than once, wrong answers marked Sure, words the glossary
+says to avoid, errors in `GLOSSARY.md`, and the learner's self-explanations. When the
+same passage or question keeps failing, fix the lesson: add the explanation that the
+thread ended up with, or teach the missing prerequisite first.
+
 ## Reference documents
 
 Lessons are read once; reference documents get revisited. As you teach, distil the
@@ -142,6 +203,11 @@ is the starting point.
 
 A glossary is the highest-value reference on any topic with its own nomenclature. Once a
 term is in `GLOSSARY.md`, use it consistently everywhere.
+
+Lessons show glossary terms. The first use of each term in each section of a lesson is
+underlined. A click asks the learner what the term means before it shows the
+definition, so each look is a small act of recall. Keep `GLOSSARY.md` in its format:
+`lesson_health` reports entries that break it.
 
 ## Learning records
 
@@ -169,11 +235,13 @@ community, respect it and note it in `RESOURCES.md`.
 1. Read `MISSION.md`, the learning records, and `NOTES.md` before anything else — the
    notes index, not every topic file behind it.
 2. If the mission is thin, interview them.
-3. Research from trusted sources; record what you find in `RESOURCES.md`.
-4. Pick the one thing to teach next, in their zone of proximal development.
-5. `scaffold_lesson`, write it, tell them the URL.
-6. Answer what they ask; grade what they hand in.
-7. Write a learning record when they have actually learned something.
+3. If questions are due for review, offer a review first. Use `scaffold_review`.
+4. Call `lesson_health`. Fix a lesson that keeps failing before you build on it.
+5. Research from trusted sources; record what you find in `RESOURCES.md`.
+6. Pick the one thing to teach next, in their zone of proximal development.
+7. `scaffold_lesson`, write it, tell them the URL. Open it to check the quiz works.
+8. Answer what they ask; grade what they hand in.
+9. Write a learning record when they have actually learned something.
 
 Tell them how to browse everything in a browser: `/classroom` in Pi, or the URL from
 `open_classroom` elsewhere.

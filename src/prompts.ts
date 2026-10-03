@@ -12,7 +12,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { classroomDir, docsDir, lessonDir } from "./paths.ts";
-import type { Annotation, FollowUp, QuizSubmission } from "./store.ts";
+import { answerDetail, answersByQuestion, kindOf } from "./quiz.ts";
+import { relativeDay, type ReviewSummary } from "./review.ts";
+import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
 
 /** Read a bundled doc, returning "" when it is missing rather than throwing. */
 function readDoc(name: string): string {
@@ -39,13 +41,54 @@ function arrivalNote(delivery: Delivery): string {
 export const QUIZ_FOLLOW_UP =
   "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
 
+/** What to do after grading a pretest. Wrong answers are expected before teaching. */
+export const PRETEST_FOLLOW_UP =
+  "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to decide what the lesson stresses and what it can skip. Tell the learner briefly what the lesson will focus on. Write a learning record only for prior knowledge the pretest shows.";
+
+/** What a confident wrong answer means, and what to do about it. */
+export const CONFIDENT_WRONG =
+  'An answer marked "Sure" that is wrong is the strongest sign of a misconception. Address it first. After the learner corrects it, write a learning record about the corrected misconception.';
+
+/** What a correct guess means for the review schedule. */
+export const CORRECT_GUESS =
+  'An answer marked "Guessing" that is correct is not evidence of memory. It does not move the item to a longer review interval.';
+
+/**
+ * The review status of a classroom, as a section of the teaching brief.
+ *
+ * Without it the teacher would only see due reviews if it went looking, and new
+ * material would always win over spacing.
+ */
+export function reviewStatusText(summary: ReviewSummary, now: number): string {
+  if (summary.total === 0) {
+    return "## Spaced review\n\nNo graded questions yet, so nothing is scheduled for review.";
+  }
+  const lines = [
+    "## Spaced review",
+    "",
+    `${summary.total} graded questions are on the review schedule. ${summary.mastered} are mastered.`,
+  ];
+  if (summary.due > 0) {
+    lines.push(
+      `${summary.due} are due for review now. Before you teach new material, offer the learner a review. If they agree, call \`scaffold_review\`.`,
+    );
+  } else if (summary.nextDueAt !== null) {
+    lines.push(`None are due now. The next one is due ${relativeDay(summary.nextDueAt, now)}.`);
+  }
+  return lines.join("\n");
+}
+
 /**
  * The teaching brief sent by /teach.
  *
  * TEACHING.md carries the methodology; the format docs are referenced by path rather
  * than inlined, so the model reads them only when it needs one.
  */
-export function teachingPrompt(topic: string, classroom: string | null): string {
+export function teachingPrompt(
+  topic: string,
+  classroom: string | null,
+  review: string | null = null,
+): string {
   const parts: string[] = [];
 
   parts.push(
@@ -57,8 +100,10 @@ export function teachingPrompt(topic: string, classroom: string | null): string 
   if (classroom) {
     parts.push(
       `Their classroom is \`${classroom}\`, at \`${classroomDir(classroom)}\`.\n` +
-        `Read \`MISSION.md\` and the existing lessons and learning records there before deciding what to teach next.`,
+        `Read \`MISSION.md\` and the existing lessons and learning records there before deciding what to teach next. ` +
+        `Call \`lesson_health\` to see which passages and questions did not land.`,
     );
+    if (review) parts.push(review);
   }
 
   parts.push(readDoc("TEACHING.md"));
@@ -158,34 +203,87 @@ export function followUpPrompt(
  *
  * The answers are inlined because they are short and grading should not require a
  * file read; the submission path is given for the cases where it would help.
+ * `previous` is the grade of the attempt before this one, for a retake.
  */
-export function gradePrompt(submission: QuizSubmission, delivery: Delivery): string {
-  const answers = submission.answers
-    .map((answer, i) => {
-      const lines = [
-        `${i + 1}. [${answer.questionId}] ${answer.prompt ?? "(question text unavailable)"}`,
-      ];
-      lines.push(`   Their answer: ${answer.label || answer.value || "(blank)"}`);
-      return lines.join("\n");
+export function gradePrompt(
+  submission: QuizSubmission,
+  delivery: Delivery,
+  previous: QuizGrade | null = null,
+): string {
+  const kind = kindOf(submission);
+  const answers = answersByQuestion(submission.answers)
+    .map(([questionId, group], i) => {
+      const type = group[0].type ? ` (${group[0].type})` : "";
+      const prompt = group[0].prompt ?? "(question text unavailable)";
+      return [
+        `${i + 1}. [${questionId}]${type} ${prompt}`,
+        ...answerDetail(group).map((line) => `   ${line}`),
+      ].join("\n");
     })
     .join("\n\n");
+
+  const attempt = submission.attempt ?? 1;
+  const attemptLine =
+    attempt > 1
+      ? `Attempt ${attempt} at this quiz.${previous ? ` The previous attempt scored ${Math.round(previous.score)}%.` : ""} An attempt right after feedback shows fluency, not long-term memory.`
+      : null;
+
+  const kindLine = {
+    check: null,
+    pretest:
+      "This is a **pretest**. The learner answered before the lesson taught the material. Grade it honestly, so they see where they stand.",
+    review:
+      "This is a **spaced review**. Each question reviews an earlier question, named by `Reviews:`. Your grade moves that item to a longer interval, or back to one day.",
+  }[kind];
+
+  const confidenceUsed = submission.answers.some((answer) => answer.confidence);
 
   return [
     `📝 A quiz was just submitted from the classroom web page and is waiting on you to grade it. ${arrivalNote(delivery)}`,
     "",
     `Classroom: \`${submission.classroom}\``,
     `Lesson: \`${submission.lesson}\` (${path.join(lessonDir(submission.classroom, submission.lesson), "lesson.html")})`,
-    `Quiz: ${submission.quizTitle} (\`${submission.quizId}\`)`,
+    `Quiz: ${submission.quizTitle} (\`${submission.quizId}\`, ${kind})`,
+    ...(attemptLine ? [attemptLine] : []),
+    ...(kindLine ? ["", kindLine] : []),
     "",
     "Their answers:",
     "",
     answers,
     "",
     "Read the lesson to see what each question was actually testing, then grade it. Be honest — a passing grade the learner did not earn costs them the thing they came for. For a wrong answer, say what is wrong and point at the idea they have missed, rather than just restating the correct answer.",
+    ...(confidenceUsed ? ["", CONFIDENT_WRONG, CORRECT_GUESS] : []),
     "",
     `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. That is what renders the grade on their page.`,
     "",
-    QUIZ_FOLLOW_UP,
+    kind === "pretest" ? PRETEST_FOLLOW_UP : QUIZ_FOLLOW_UP,
+  ].join("\n");
+}
+
+/**
+ * Sent when a learner saves a self-explanation. It is signal, not work to grade, so
+ * the teacher reads it and records what it shows.
+ */
+export function reflectPrompt(reflection: Reflection, delivery: Delivery): string {
+  const next =
+    delivery === "push"
+      ? "Then continue what you were doing."
+      : "Then call `wait_for_learner` again.";
+  return [
+    `💭 The learner saved a self-explanation in a lesson. ${arrivalNote(delivery)}`,
+    "",
+    `Classroom: \`${reflection.classroom}\``,
+    `Lesson: \`${reflection.lesson}\` (${path.join(lessonDir(reflection.classroom, reflection.lesson), "lesson.html")})`,
+    "",
+    "The prompt:",
+    "",
+    quote(reflection.prompt || "(prompt unavailable)"),
+    "",
+    "What they wrote:",
+    "",
+    quote(reflection.text),
+    "",
+    `Do not grade it, and do not reply on the page. Read it for what it shows about their understanding. If it shows a gap or a misconception, record it in the classroom notes, and address it in the next lesson or check. If it shows real understanding of something non-trivial, write a learning record. ${next}`,
   ].join("\n");
 }
 

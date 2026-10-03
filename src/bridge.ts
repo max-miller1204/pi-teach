@@ -16,7 +16,7 @@
 
 import { findLastAssistantText } from "./assistant-text.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { askPrompt, followUpPrompt, gradePrompt } from "./prompts.ts";
+import { askPrompt, followUpPrompt, gradePrompt, reflectPrompt } from "./prompts.ts";
 import * as server from "./server.ts";
 import * as store from "./store.ts";
 
@@ -70,7 +70,13 @@ export class ClassroomBridge {
     // Grading has no fallback path — a half-graded quiz would be worse than none —
     // so the origin is recorded as foreign and only the tool writes a grade.
     this.pending.push({ kind: "other" });
-    this.send(gradePrompt(submission, "push"));
+    this.send(gradePrompt(submission, "push", store.previousGrade(submission)));
+  }
+
+  /** Show the agent a self-explanation the learner saved. Nothing is written back. */
+  reflect(reflection: store.Reflection): void {
+    this.pending.push({ kind: "other" });
+    this.send(reflectPrompt(reflection, "push"));
   }
 
   /**

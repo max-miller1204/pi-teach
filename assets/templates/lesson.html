@@ -32,6 +32,11 @@
         <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
       </header>
 
+      <!--
+        Optional pretest, before the teaching: a form.cl-quiz with data-kind="pretest".
+        Wrong answers are expected. It tells you what to stress. See quiz.html.
+      -->
+
       <section>
         <h2>The idea</h2>
         <p>
@@ -49,30 +54,27 @@
       </section>
 
       <!--
-        Check on learning. See quiz.html for the full markup contract, including
-        multiple choice, short answer, and multi-select questions.
+        Self-explanation: saved and shown to you, never graded. Put one after the idea
+        that matters most. See quiz.html for the contract.
+      -->
+      <form class="cl-reflect" data-reflect-id="explain-1">
+        <p class="cl-reflect-prompt">Explain the idea in your own words, as if to a friend.</p>
+        <textarea rows="3"></textarea>
+      </form>
+
+      <!--
+        Check on learning. See quiz.html for the full markup contract and every
+        question type: choice, multi, term, short, numeric, cloze, order, match, locate.
+        Every question needs data-type. Prefer the retrieval types.
       -->
       <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
         <ol class="cl-questions">
-          <li class="cl-q" data-question-id="q1" data-type="choice">
+          <li class="cl-q" data-question-id="q1" data-type="cloze">
             <p class="cl-q-prompt">Ask something that requires retrieval, not recognition.</p>
-            <ul class="cl-options">
-              <li>
-                <label
-                  ><input type="radio" name="q1" value="a" /> First candidate answer here</label
-                >
-              </li>
-              <li>
-                <label
-                  ><input type="radio" name="q1" value="b" /> Second candidate answer here</label
-                >
-              </li>
-              <li>
-                <label
-                  ><input type="radio" name="q1" value="c" /> Third candidate answer here</label
-                >
-              </li>
-            </ul>
+            <p class="cl-cloze">
+              A sentence from the lesson with its key word as a
+              <input type="text" data-blank="b1" />.
+            </p>
           </li>
 
           <li class="cl-q" data-question-id="q2" data-type="short">

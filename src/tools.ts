@@ -13,9 +13,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { reviewKey } from "../assets/runtime/quiz.mjs";
 import { applyAnswer, applyGrade } from "./bridge.ts";
+import { avoidedUses, htmlText } from "./glossary.ts";
+import { healthReport, type LessonHealthInput } from "./health.ts";
 import { classroomDir, isValidSlug, lessonDir, slugify, templatesDir } from "./paths.ts";
-import { missionStub, notesStub, QUIZ_FOLLOW_UP } from "./prompts.ts";
+import {
+  CONFIDENT_WRONG,
+  CORRECT_GUESS,
+  missionStub,
+  notesStub,
+  PRETEST_FOLLOW_UP,
+  QUIZ_FOLLOW_UP,
+} from "./prompts.ts";
+import { answersByQuestion, kindOf } from "./quiz.ts";
+import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
 import * as server from "./server.ts";
 import * as store from "./store.ts";
 
@@ -187,6 +199,13 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             { missing },
           );
         }
+        const unknown = [...graded].filter((id) => !submitted.has(id));
+        if (unknown.length > 0) {
+          return fail(
+            `No such question in the submission: ${unknown.join(", ")}. Use the question ids from the notification.`,
+            { unknown },
+          );
+        }
 
         const grade = applyGrade(submission, {
           score: params.score,
@@ -198,17 +217,46 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           })),
         });
 
+        const kind = kindOf(submission);
         const incorrectQuestionIds = grade.questions
           .filter((question) => !question.correct)
           .map((question) => question.questionId);
-        const followUp =
-          incorrectQuestionIds.length > 0
-            ? `Missed questions: ${incorrectQuestionIds.join(", ")}.\n\n${QUIZ_FOLLOW_UP}`
-            : "Every answer is correct. Ask whether the learner is ready to continue before starting the next lesson.";
+
+        const answers = new Map(answersByQuestion(submission.answers));
+        const confidence = (id: string) => answers.get(id)?.[0].confidence;
+        const confidentlyWrong = incorrectQuestionIds.filter((id) => confidence(id) === "sure");
+        const correctGuesses = grade.questions
+          .filter((q) => q.correct && confidence(q.questionId) === "guess")
+          .map((q) => q.questionId);
+
+        const notes: string[] = [];
+        if (kind === "pretest") {
+          notes.push(PRETEST_FOLLOW_UP);
+        } else {
+          if (confidentlyWrong.length > 0) {
+            notes.push(`Wrong while "Sure": ${confidentlyWrong.join(", ")}. ${CONFIDENT_WRONG}`);
+          }
+          if (correctGuesses.length > 0) {
+            notes.push(`Correct but guessed: ${correctGuesses.join(", ")}. ${CORRECT_GUESS}`);
+          }
+          notes.push(
+            incorrectQuestionIds.length > 0
+              ? `Missed questions: ${incorrectQuestionIds.join(", ")}.\n\n${QUIZ_FOLLOW_UP}`
+              : "Every answer is correct. Ask whether the learner is ready to continue before starting the next lesson.",
+          );
+          notes.push(reviewScheduleLine(submission));
+        }
 
         return ok(
-          `Graded ${submission.quizTitle} in ${submission.classroom}/${submission.lesson}: ${Math.round(grade.score)}%. The learner can see it now.\n\n${followUp}`,
-          { submissionId: submission.id, score: grade.score, incorrectQuestionIds },
+          `Graded ${submission.quizTitle} in ${submission.classroom}/${submission.lesson}: ${Math.round(grade.score)}%. The learner can see it now.\n\n${notes.join("\n\n")}`,
+          {
+            submissionId: submission.id,
+            score: grade.score,
+            kind,
+            incorrectQuestionIds,
+            confidentlyWrong,
+            correctGuesses,
+          },
         );
       },
     },
@@ -320,7 +368,165 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         );
       },
     },
+
+    // ── scaffold_review ─────────────────────────────────────────────────────────
+
+    {
+      name: "scaffold_review",
+      label: "Scaffold Review",
+      description:
+        "Create a spaced review session from the questions that are due for review, and return them. " +
+        "Each graded question has a review schedule: a correct answer moves it to a longer interval, a wrong answer moves it back to one day. " +
+        "Write one new question for each returned item in the review lesson, and mark it with the given data-review-of key. " +
+        "Fails when nothing is due.",
+      parameters: object(
+        {
+          classroom: str("Classroom directory name."),
+          limit: {
+            type: "number",
+            description: `How many due questions to include. Default ${DEFAULT_REVIEW_SIZE}, maximum ${MAX_REVIEW_SIZE}.`,
+          },
+        },
+        ["limit"],
+      ),
+      async execute(params: { classroom: string; limit?: number }) {
+        if (!isValidSlug(params.classroom) || !fs.existsSync(classroomDir(params.classroom))) {
+          return fail(`No such classroom: ${params.classroom}.`);
+        }
+        const limit = params.limit ?? DEFAULT_REVIEW_SIZE;
+        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_REVIEW_SIZE) {
+          return fail(`limit must be a whole number from 1 to ${MAX_REVIEW_SIZE}.`);
+        }
+
+        const now = Date.now();
+        const items = store.reviewItems(params.classroom);
+        const picked = pickReviewItems(items, now, limit);
+        if (picked.length === 0) {
+          const summary = summarize(items, now);
+          return fail(
+            summary.nextDueAt === null
+              ? "Nothing is due for review: no question has been graded yet."
+              : `Nothing is due for review. The next question is due ${relativeDay(summary.nextDueAt, now)}.`,
+          );
+        }
+
+        const date = new Date(now).toISOString().slice(0, 10);
+        const slug = `${String(nextLessonNumber(params.classroom)).padStart(3, "0")}-review-${date}`;
+        const dir = lessonDir(params.classroom, slug);
+        if (fs.existsSync(dir)) return fail(`Lesson directory already exists: ${dir}`);
+        fs.mkdirSync(dir, { recursive: true });
+
+        const title = `Review: ${date}`;
+        const summaryLine = `Spaced review of ${picked.length} earlier question${picked.length === 1 ? "" : "s"}.`;
+        const template = fs.readFileSync(path.join(templatesDir(), "review.html"), "utf8");
+        const htmlPath = path.join(dir, "lesson.html");
+        fs.writeFileSync(
+          htmlPath,
+          template
+            .replace(/\{\{LESSON_TITLE\}\}/g, title)
+            .replace(/\{\{ONE_LINE_SUMMARY\}\}/g, summaryLine),
+          "utf8",
+        );
+        store.writeLessonMeta(params.classroom, slug, {
+          title,
+          summary: summaryLine,
+          createdAt: now,
+          kind: "review",
+        });
+
+        const listing = picked.map((item, i) =>
+          [
+            `${i + 1}. data-review-of="${item.key}"`,
+            `   Interval: box ${item.box + 1} of ${REVIEW_INTERVALS_DAYS.length}, due ${relativeDay(item.dueAt, now)}, ${item.attempts} graded attempt${item.attempts === 1 ? "" : "s"}.`,
+            `   Original question: ${item.prompt || "(question text unavailable)"}`,
+            `   Their last answer (${item.lastCorrect ? "correct" : "wrong"}${item.lastConfidence ? `, ${item.lastConfidence}` : ""}): ${item.lastAnswer || "(blank)"}`,
+            `   Your last feedback: ${item.lastFeedback}`,
+          ].join("\n"),
+        );
+
+        const url = server.urlFor(params.classroom, slug);
+        return ok(
+          [
+            `Created review session ${slug} in ${params.classroom}.`,
+            `Edit: ${htmlPath}`,
+            `Quiz markup contract: ${path.join(templatesDir(), "quiz.html")}`,
+            url ? `URL: ${url}` : host.browseHint,
+            "",
+            "Write one new question for each item below, in the review quiz in the lesson. Test the same idea with a new example, so the learner retrieves the idea and not a remembered answer. Put the given data-review-of on the question exactly. Mix question types, and prefer retrieval types. Keep items from different lessons mixed, in the order given.",
+            "",
+            ...listing,
+          ].join("\n"),
+          {
+            classroom: params.classroom,
+            lesson: slug,
+            path: htmlPath,
+            url,
+            items: picked.map((item) => item.key),
+          },
+        );
+      },
+    },
+
+    // ── lesson_health ───────────────────────────────────────────────────────────
+
+    {
+      name: "lesson_health",
+      label: "Lesson Health",
+      description:
+        "Report where lessons did not land: long question threads, quiz questions missed more than once, wrong answers marked Sure, glossary words to avoid, GLOSSARY.md errors, and the learner's self-explanations. " +
+        "Call it before you plan the next lesson, and fix a lesson that keeps failing.",
+      parameters: object(
+        {
+          classroom: str("Classroom directory name."),
+          lesson: str("Lesson directory name. Omit it for every lesson in the classroom."),
+        },
+        ["lesson"],
+      ),
+      async execute(params: { classroom: string; lesson?: string }) {
+        const classroom = store.readClassroom(params.classroom);
+        if (!classroom) return fail(`No such classroom: ${params.classroom}.`);
+
+        const lessons = store.listLessons(params.classroom);
+        const chosen = params.lesson ? lessons.filter((l) => l.name === params.lesson) : lessons;
+        if (params.lesson && chosen.length === 0) {
+          return fail(`No such lesson in ${params.classroom}: ${params.lesson}.`);
+        }
+
+        const glossary = store.readGlossary(params.classroom);
+        const inputs: LessonHealthInput[] = chosen.map((lesson) => ({
+          lesson: lesson.name,
+          title: lesson.title,
+          annotations: store.listAnnotations(params.classroom, lesson.name),
+          submissions: store.listSubmissions(params.classroom, lesson.name),
+          grades: store.listGrades(params.classroom, lesson.name),
+          reflections: store.listReflections(params.classroom, lesson.name),
+          avoided: avoidedUses(htmlText(fs.readFileSync(lesson.htmlPath, "utf8")), glossary),
+        }));
+
+        return ok(healthReport(params.classroom, inputs, glossary.errors), {
+          classroom: params.classroom,
+          lessons: chosen.map((l) => l.name),
+          glossaryErrors: glossary.errors,
+        });
+      },
+    },
   ];
+}
+
+export const DEFAULT_REVIEW_SIZE = 5;
+export const MAX_REVIEW_SIZE = 12;
+
+/** When each question in a graded submission comes up for review next. */
+function reviewScheduleLine(submission: store.QuizSubmission): string {
+  const now = Date.now();
+  const items = new Map(store.reviewItems(submission.classroom).map((item) => [item.key, item]));
+  const parts = answersByQuestion(submission.answers).map(([questionId, group]) => {
+    const key = group[0].reviewOf ?? reviewKey(submission.lesson, submission.quizId, questionId);
+    const item = items.get(key);
+    if (!item) throw new Error(`No review item for ${key} after grading it.`);
+    return `${questionId} ${relativeDay(item.dueAt, now)}`;
+  });
+  return `Next review: ${parts.join(", ")}.`;
 }
 
 /** One past the highest numeric prefix already used in the classroom. */

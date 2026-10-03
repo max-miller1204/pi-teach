@@ -1,0 +1,50 @@
+<!doctype html>
+<!--
+  Spaced review template. scaffold_review copies this into a new lesson directory.
+
+  Write one new question for each item that scaffold_review returned. Test the same
+  idea with a new example, so the learner recalls the idea and not a remembered
+  answer. Put the given key on each question as data-review-of, exactly. Keep the
+  items in the order given: they are mixed across lessons on purpose.
+
+  Prefer retrieval types (term, short, numeric, cloze, order, locate). See quiz.html
+  for the full contract. Delete the example question.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{LESSON_TITLE}}</title>
+  </head>
+  <body>
+    <main class="cl-lesson-shell" data-cl-content>
+      <header>
+        <h1>{{LESSON_TITLE}}</h1>
+        <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
+      </header>
+
+      <p>
+        These questions come back to ideas from earlier lessons. Recall each answer before you look
+        anything up. Recall after a gap is what makes an idea stay.
+      </p>
+
+      <form class="cl-quiz" data-quiz-id="review" data-kind="review" data-title="Review">
+        <ol class="cl-questions">
+          <li
+            class="cl-q"
+            data-question-id="r1"
+            data-type="short"
+            data-review-of="REPLACE-lesson/quiz-id/question-id"
+          >
+            <p class="cl-q-prompt">Ask about the same idea, with a new example.</p>
+            <textarea name="r1" rows="3"></textarea>
+          </li>
+        </ol>
+      </form>
+
+      <footer>
+        <p><a href="./">Back to the classroom</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

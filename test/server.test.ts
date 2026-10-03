@@ -8,13 +8,22 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { applyAnswer, applyGrade } from "../src/bridge.ts";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
+import { DAY_MS } from "../src/review.ts";
+import {
+  lessonHtml,
+  makeFixture,
+  seedClassroom,
+  termAnswer,
+  writeGradedAttempt,
+  type Fixture,
+} from "./helpers.ts";
 
 let fixture: Fixture;
 let baseUrl: string;
 const asked: store.Annotation[] = [];
 const followedUp: Array<{ annotation: store.Annotation; followUp: store.FollowUp }> = [];
 const submitted: store.QuizSubmission[] = [];
+const reflected: store.Reflection[] = [];
 
 beforeAll(async () => {
   fixture = makeFixture();
@@ -23,6 +32,7 @@ beforeAll(async () => {
     onAsk: (annotation) => asked.push(annotation),
     onFollowUp: (annotation, followUp) => followedUp.push({ annotation, followUp }),
     onQuizSubmit: (submission) => submitted.push(submission),
+    onReflect: (reflection) => reflected.push(reflection),
   });
   baseUrl = await server.start();
 });
@@ -36,6 +46,7 @@ beforeEach(() => {
   asked.length = 0;
   followedUp.length = 0;
   submitted.length = 0;
+  reflected.length = 0;
 });
 
 const get = (path: string) => fetch(`${baseUrl}${path}`);
@@ -367,7 +378,16 @@ describe("submitting a quiz", () => {
       lesson: "001-ownership",
       quizId: "check-1",
       quizTitle: "Check on learning",
-      answers: [{ questionId: "q1", value: "a", label: "First answer", prompt: "Who owns it?" }],
+      kind: "check",
+      answers: [
+        {
+          questionId: "q1",
+          type: "choice",
+          value: "a",
+          label: "First answer",
+          prompt: "Who owns it?",
+        },
+      ],
     });
 
     expect(res.status).toBe(201);
@@ -418,9 +438,10 @@ describe("live updates", () => {
       await post("/api/quiz/submit", {
         classroom: "rust",
         lesson: "001-ownership",
-        quizId: "check-1",
+        quizId: "live-1",
         quizTitle: "Check on learning",
-        answers: [{ questionId: "q1", value: "a", prompt: "Who owns it?" }],
+        kind: "check",
+        answers: [{ questionId: "q1", type: "term", value: "a", prompt: "Who owns it?" }],
       })
     ).json()) as store.QuizSubmission;
 
@@ -439,8 +460,10 @@ describe("live updates", () => {
     expect(payload.grade.score).toBe(100);
 
     // The grade is on disk and is the one the classroom page reports.
-    const state = store.latestQuizState("rust", "001-ownership");
-    expect(state.submission!.id).toBe(submission.id);
+    const state = store
+      .latestQuizStates("rust", "001-ownership")
+      .find((quiz) => quiz.quizId === "live-1")!;
+    expect(state.submission.id).toBe(submission.id);
     expect(state.grade!.score).toBe(100);
     expect(store.readLesson("rust", "001-ownership")!.latestScore).toBe(100);
   });
@@ -448,5 +471,146 @@ describe("live updates", () => {
   it("requires a classroom and lesson to subscribe", async () => {
     expect((await get("/api/events")).status).toBe(400);
     expect((await get("/api/state")).status).toBe(400);
+  });
+});
+
+describe("the quiz contract on the server", () => {
+  const typed = (quizId: string, answers: unknown[], kind = "check") =>
+    post("/api/quiz/submit", {
+      classroom: "rust",
+      lesson: "002-typed",
+      quizId,
+      quizTitle: "Typed",
+      kind,
+      answers,
+    });
+
+  beforeAll(() => {
+    fixture.write("rust/002-typed/lesson.html", lessonHtml("Typed"));
+  });
+
+  it("refuses a missing kind, an unknown type, and an answer with no type", async () => {
+    const missingKind = await post("/api/quiz/submit", {
+      classroom: "rust",
+      lesson: "002-typed",
+      quizId: "check-1",
+      answers: [{ questionId: "q1", type: "term", value: "x" }],
+    });
+    expect(missingKind.status).toBe(400);
+    expect(((await missingKind.json()) as { error: string }).error).toContain("quiz kind");
+
+    const unknownType = await typed("check-1", [{ questionId: "q1", type: "essay", value: "x" }]);
+    expect(unknownType.status).toBe(400);
+    const untyped = await typed("check-1", [{ questionId: "q1", value: "x" }]);
+    expect(((await untyped.json()) as { error: string }).error).toContain("unknown type");
+    expect(submitted).toHaveLength(0);
+  });
+
+  it("accepts a retake only after the last attempt is graded, and numbers it", async () => {
+    const first = (await (
+      await typed("retake", [termAnswer("q1", "owner")])
+    ).json()) as store.QuizSubmission;
+    expect(first.attempt).toBe(1);
+
+    const early = await typed("retake", [termAnswer("q1", "again")]);
+    expect(early.status).toBe(409);
+
+    applyGrade(first, {
+      score: 0,
+      feedbackMarkdown: "No.",
+      questions: [{ questionId: "q1", correct: false, feedback: "No." }],
+    });
+    const second = await typed("retake", [termAnswer("q1", "again")]);
+    expect(second.status).toBe(201);
+    expect(((await second.json()) as store.QuizSubmission).attempt).toBe(2);
+  });
+
+  it("accepts a review question only for an item that was graded before", async () => {
+    const unknown = await typed(
+      "review",
+      [termAnswer("r1", "x", { reviewOf: "002-typed/nope/q9" })],
+      "review",
+    );
+    expect(unknown.status).toBe(400);
+    expect(((await unknown.json()) as { error: string }).error).toContain("002-typed/nope/q9");
+
+    const known = await typed(
+      "review",
+      [termAnswer("r1", "x", { reviewOf: "002-typed/retake/q1" })],
+      "review",
+    );
+    expect(known.status).toBe(201);
+  });
+
+  it("returns the latest attempt at each quiz from /api/state", async () => {
+    const state = (await (await get("/api/state?classroom=rust&lesson=002-typed")).json()) as {
+      quizzes: store.QuizState[];
+      reflections: store.Reflection[];
+    };
+    expect(state.quizzes.map((q) => [q.quizId, q.attempts])).toEqual([
+      ["retake", 2],
+      ["review", 1],
+    ]);
+    expect(state.reflections).toEqual([]);
+  });
+});
+
+describe("self-explanations", () => {
+  it("saves a reflection, tells the teacher, and returns it from /api/state", async () => {
+    const res = await post("/api/reflect", {
+      classroom: "rust",
+      lesson: "001-ownership",
+      reflectId: "explain-1",
+      prompt: "Explain ownership.",
+      text: "  Each value has one owner.  ",
+    });
+    expect(res.status).toBe(201);
+    expect(reflected).toHaveLength(1);
+    expect(reflected[0].text).toBe("Each value has one owner.");
+
+    const state = (await (await get("/api/state?classroom=rust&lesson=001-ownership")).json()) as {
+      reflections: store.Reflection[];
+    };
+    expect(state.reflections.map((r) => r.reflectId)).toEqual(["explain-1"]);
+  });
+
+  it("refuses a reflection with no id or no text", async () => {
+    const base = { classroom: "rust", lesson: "001-ownership", prompt: "Explain." };
+    expect((await post("/api/reflect", { ...base, text: "x" })).status).toBe(400);
+    expect((await post("/api/reflect", { ...base, reflectId: "a", text: " " })).status).toBe(400);
+    expect(reflected).toHaveLength(0);
+  });
+});
+
+describe("glossary and progress", () => {
+  it("serves the parsed glossary, errors included", async () => {
+    fixture.write(
+      "rust/GLOSSARY.md",
+      "**Owner**:\nThe variable a value belongs to.\n_Avoid_: holder\n\n**Empty**:\n",
+    );
+    const glossary = (await (await get("/api/glossary?classroom=rust")).json()) as {
+      terms: Array<{ term: string; avoid: string[] }>;
+      errors: string[];
+    };
+    expect(glossary.terms).toMatchObject([{ term: "Owner", avoid: ["holder"] }]);
+    expect(glossary.errors).toHaveLength(1);
+    expect((await get("/api/glossary?classroom=nope")).status).toBe(404);
+  });
+
+  it("shows what is due on the classroom and landing pages", async () => {
+    writeGradedAttempt({
+      lesson: "001-ownership",
+      quizId: "old",
+      at: Date.now() - 10 * DAY_MS,
+      answers: [termAnswer("q1", "x")],
+      correct: { q1: true },
+    });
+    const page = await (await get("/c/rust")).text();
+    expect(page).toContain("Progress");
+    expect(page).toContain("cl-badge-due");
+    expect(page).toContain(
+      '<span class="cl-stat-value">1</span><span class="cl-stat-label">glossary term</span>',
+    );
+    expect(await (await get("/")).text()).toContain("due for review");
   });
 });

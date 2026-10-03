@@ -71,7 +71,7 @@ Extension side (`.ts`):
   `<classroom>/<lesson>`.
 - `src/bridge.ts` — waking the agent, and the origin FIFO that keeps `agent_end`
   attribution honest.
-- `src/tools.ts` — the four shared tools, as plain JSON Schema. Pi's validator compiles
+- `src/tools.ts`: the six shared tools, as plain JSON Schema. Pi's validator compiles
   JSON Schema as-is, so there is no `typebox` import. `ToolHost` holds the one string
   that differs between hosts.
 - `src/mcp.ts` — the MCP server for Claude Code and Codex: a pure JSON-RPC dispatcher
@@ -85,6 +85,11 @@ Extension side (`.ts`):
 - `src/status-widget.ts` — the "classroom server running on port N" widget below the
   editor.
 - `src/prompts.ts` — every string sent to the model.
+- `src/quiz.ts`: quiz answers on the server: their typed shape, their validation, and
+  the text the teacher grades from.
+- `src/review.ts`: the spaced-review schedule, derived from grade history. Pure.
+- `src/glossary.ts`: parses `GLOSSARY.md` and finds words the glossary says to avoid.
+- `src/health.ts`: the `lesson_health` report. Pure.
 - `src/pages.ts`, `src/lesson-html.ts`, `src/markdown.ts`, `src/config.ts` — pure-ish
   helpers, all tested.
 
@@ -92,6 +97,10 @@ Browser side (`assets/runtime/`):
 
 - `classroom.js` — the lesson runtime: highlight-to-ask, card threads, quiz harness.
 - `anchor.mjs` (+ `.d.mts`) — pure text-quote anchoring.
+- `quiz.mjs` (+ `.d.mts`): the quiz contract: question types, kinds, and markup checks.
+  The server imports it too, so the page and the server enforce the same rules.
+- `glossary.mjs` (+ `.d.mts`): pure glossary term matching. The server imports it for
+  the avoided-word check.
 - `theme.mjs` — the light/dark toggle.
 - `shell.js` — the landing/classroom/document pages (just the toggle).
 - `classroom.css` — one stylesheet for every page and every lesson.
@@ -136,6 +145,17 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   `[data-theme]` beating both so the toggle works in either direction. The inline
   bootstrap in `<head>` exists to stop a dark-mode reader seeing a white flash — keep it
   inline and keep it first.
+- **The quiz contract fails loudly.** Every question needs a `data-type`. A quiz that
+  breaks `quiz.mjs` shows its errors on the page and in the console, and it cannot be
+  submitted. The server checks each answer against its type with `parseAnswer`. Only
+  submissions written before types existed have answers with no `type`; read them
+  through `answersByQuestion`, which groups their one-entry-per-box `multi` answers.
+- **One state per quiz.** A lesson can hold several quizzes, so `/api/state` returns the
+  latest attempt at each `quizId`. A new attempt is refused (409) until the last one is
+  graded.
+- **The review schedule is derived, never stored.** `store.reviewItems()` rebuilds it
+  from every graded answer. Pretests are left out. A review question names its item
+  with `data-review-of`, and the server refuses a key that was never graded.
 - **`quiz/` is never a static route.** It holds submissions and any answer key. Adding a
   route that serves lesson directories wholesale would leak it; the media route is
   deliberately narrow (`<lesson>/media/*` only).
