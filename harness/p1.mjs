@@ -1,0 +1,62 @@
+import { open, shot, check, section, selectText, BASE, L } from "./lib.mjs";
+const { ctx, page } = await open();
+
+section("Browsing: landing, classroom, lesson");
+await page.goto(BASE + "/");
+check("Landing page lists the classroom", await page.getByText(/HTTP caching/i).first().isVisible());
+await shot(page, "01-landing");
+await page.goto(BASE + "/c/http-caching-headers");
+check("Classroom page lists lesson 001", await page.getByText("Why your CSS survives a deploy").first().isVisible());
+check("Classroom page links MISSION and NOTES", (await page.locator('a[href*="MISSION.md"]').count()) > 0 && (await page.locator('a[href*="NOTES.md"]').count()) > 0);
+check("Classroom page shows learning records", (await page.locator('a[href*="learning-records"]').count()) > 0);
+await shot(page, "02-classroom", { fullPage: true });
+await page.goto(BASE + L);
+await page.waitForSelector(".cl-header");
+check("Runtime adds breadcrumb header + theme toggle", (await page.locator(".cl-header .cl-crumb").count()) >= 2 && (await page.locator("[data-cl-theme-toggle]").count()) === 1);
+const ext = await page.locator('a[href^="https://www.rfc-editor.org"]').first().getAttribute("target");
+check("External source links open in a new tab", ext === "_blank", `target=${ext}`);
+await shot(page, "03-lesson-light");
+
+section("Pretest (ungraded diagnostic) and predict-then-reveal");
+const pre = page.locator('form[data-quiz-id="pretest"]');
+check("Pretest has no confidence ratings", (await pre.locator(".cl-confidence").count()) === 0);
+await pre.locator('textarea[name="p1"]').fill("The browser or CDN has a cached copy that is still considered fresh, so it doesn't ask the server.");
+await pre.locator('textarea[name="p2"]').fill("I think no-cache means don't cache at all.");
+await pre.locator(".cl-submit").click();
+await page.waitForSelector('form[data-quiz-id="pretest"] .cl-quiz-status');
+await page.waitForTimeout(500);
+check("Pretest submitted and locked", await pre.locator('textarea[name="p1"]').isDisabled());
+
+const predict = page.locator(".cl-predict").first();
+check("Predict answer hidden before a guess", !(await predict.locator(".cl-predict-answer").isVisible()));
+await predict.locator(".cl-predict-attempt").fill("Yes — it's still fresh for 50 more minutes, so it never asks the app and can't see the new ETag.");
+await predict.getByRole("button", { name: /reveal/i }).click();
+check("Predict answer revealed after committing a guess", await predict.locator(".cl-predict-answer").isVisible());
+await predict.scrollIntoViewIfNeeded();
+await shot(page, "04-predict-revealed");
+
+section("Highlight to ask (sent while the pretest is being graded)");
+await selectText(page, "td", "Allows storage, but requires successful validation before reuse.");
+await page.waitForSelector(".cl-ask-pill:not([hidden])");
+check("Selecting lesson text shows the Ask pill", true);
+await shot(page, "05-ask-pill");
+await page.locator(".cl-ask-pill").click();
+await page.locator("[data-cl-question]").fill("If no-cache still sends a request every time, how is it any faster than not caching at all?");
+await shot(page, "06-composer");
+await page.locator("[data-cl-ask-form] button[type=submit]").click();
+await page.waitForSelector(".cl-card-inline");
+check("Card inserted in the document flow with a pending spinner", (await page.locator(".cl-card-inline .cl-spinner").count()) > 0);
+await page.locator(".cl-card-inline").scrollIntoViewIfNeeded();
+await shot(page, "07-card-pending");
+
+console.log("waiting for pretest grade and answer from the live agent…");
+await page.waitForSelector('form[data-quiz-id="pretest"] [data-cl-grade]', { timeout: 600000 });
+check("Pretest graded by the agent via grade_lesson_quiz", true, (await pre.locator(".cl-grade-score").innerText()).trim());
+await pre.scrollIntoViewIfNeeded();
+await shot(page, "08-pretest-graded");
+await page.waitForSelector(".cl-card-inline .cl-card-answer:not(:has(.cl-spinner))", { timeout: 600000 });
+const answer = (await page.locator(".cl-card-inline .cl-card-answer").first().innerText()).trim();
+check("Question answered into its card over SSE (answer_lesson_question)", answer.length > 40, `${answer.slice(0, 90).replace(/\n/g, " ")}…`);
+await page.locator(".cl-card-inline").scrollIntoViewIfNeeded();
+await shot(page, "09-card-answered");
+await ctx.close();

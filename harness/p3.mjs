@@ -1,0 +1,68 @@
+import { open, shot, check, section, selectText, BASE, L } from "./lib.mjs";
+const { ctx, page } = await open();
+await page.goto(BASE + L);
+const quiz = page.locator('form[data-quiz-id="check-1"]');
+await quiz.locator("[data-cl-grade]").waitFor();
+
+section("Retake (spaced retrieval) — a confident mistake");
+await quiz.locator("[data-cl-retake]").click();
+check("Retake clears answers and grade", (await quiz.locator("[data-cl-grade]").count()) === 0 && !(await quiz.locator('input[name="q1"][value="a"]').isChecked()));
+await quiz.locator('input[name="q1"][value="b"]').check();
+await quiz.locator('.cl-q[data-question-id="q1"] input[data-cl-confidence][value="sure"]').check();
+await quiz.locator('textarea[name="q2"]').fill("no-store, and the cache sends If-Modified-Since.");
+await quiz.locator('.cl-q[data-question-id="q2"] input[data-cl-confidence][value="guess"]').check();
+await quiz.locator(".cl-submit").click();
+console.log("waiting for retake grade…");
+await page.waitForSelector('form[data-quiz-id="check-1"] [data-cl-grade]', { timeout: 600000 });
+const score = (await quiz.locator(".cl-grade-score").innerText()).trim();
+check("Retake graded as a separate attempt", score !== "100%", score);
+await quiz.screenshot({ path: "/tmp/pi-teach-e2e/shots/14-retake-graded.png" });
+await page.reload(); await quiz.locator("[data-cl-grade]").waitFor();
+check("Reload restores the latest attempt for this quiz id", (await quiz.locator(".cl-grade-score").innerText()).trim() === score && await quiz.locator('input[name="q1"][value="b"]').isChecked());
+
+section("Keyboard asking (Alt+A) and deleting a card");
+await page.evaluate(() => {
+  const p = [...document.querySelectorAll("main p")].find((e) => e.textContent.includes("A deploy does not") === false && e.textContent.includes("Merely supplying an ETag"));
+  p.scrollIntoView({ block: "center" });
+  const t = [...p.childNodes].find((n) => n.nodeType === 3 && n.data.includes("Merely supplying"));
+  const i = t.data.indexOf("Merely supplying");
+  const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + "Merely supplying an ETag".length);
+  getSelection().removeAllRanges(); getSelection().addRange(r);
+});
+await page.keyboard.down("Shift"); await page.keyboard.press("ArrowRight"); await page.keyboard.up("Shift");
+await page.waitForSelector(".cl-ask-pill:not([hidden])");
+await page.keyboard.press("Alt+KeyA");
+check("Alt+A opens the composer for a keyboard selection", await page.locator("[data-cl-question]").isVisible());
+await page.keyboard.press("Escape");
+check("Escape closes the composer", !(await page.locator("[data-cl-question]").isVisible()));
+
+section("Dark theme");
+await page.locator("[data-cl-theme-toggle]").click();
+check("Theme toggle sets data-theme=dark", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+await page.locator(".cl-card-inline").first().scrollIntoViewIfNeeded();
+await shot(page, "15-lesson-dark");
+await page.goto(BASE + "/c/http-caching-headers");
+check("Theme persists across pages (localStorage bootstrap)", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+const body = await page.locator("body").innerText();
+check("Classroom page shows the lesson's score and question count", /\d+%/.test(body) && /question/i.test(body), (body.match(/\d+%[^\n]*/) || [""])[0]);
+await shot(page, "16-classroom-dark", { fullPage: true });
+await page.locator("[data-cl-theme-toggle]").click();
+
+section("Search, records, and documents");
+await page.goto(BASE + "/c/http-caching-headers");
+await page.locator('input[name="q"]').fill("ETag");
+await page.locator('input[name="q"]').press("Enter");
+await page.waitForURL(/\/search\?/);
+const hits = await page.locator("main a").count();
+check("Header search finds ETag across lesson/notes/threads", hits > 0, `${hits} links on results page`);
+await shot(page, "17-search", { fullPage: true });
+await page.goto(BASE + "/search?q=hashed+filenames");
+check("Search indexes question threads (follow-up text)", /hashed/i.test(await page.locator("body").innerText()));
+await page.goto(BASE + "/doc/http-caching-headers/learning-records");
+check("Learning records page renders", (await page.locator("main a").count()) > 0);
+await shot(page, "18-learning-records", { fullPage: true });
+const r = await page.goto(BASE + "/doc/http-caching-headers/NOTES.md");
+check("NOTES.md renders as a document", r.status() === 200);
+const r2 = await page.goto(BASE + "/doc/http-caching-headers/MISSION.md");
+check("MISSION.md renders as a document", r2.status() === 200);
+await ctx.close();
