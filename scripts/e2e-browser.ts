@@ -1,5 +1,6 @@
 /** Check browser state against the real HTTP server and grading tool. */
 import * as http from "node:http";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +14,8 @@ import { playwright } from "./playwright.ts";
 const fixture = makeFixture();
 const session = `pi-teach-browser-${process.pid}`;
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const artifacts = process.argv[2] ? path.resolve(process.argv[2]) : null;
+if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
 seedClassroom(fixture);
 fixture.write("rust/GLOSSARY.md", "**Borrow checker**:\nChecks that borrows are valid.\n");
 fixture.write(
@@ -40,7 +43,7 @@ fixture.write(
       <p class="cl-q-prompt">Name the owner.</p><input type="text">
     </li></ol>
   </form>`,
-  ),
+  ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
 );
 
 server.setHooks({
@@ -92,7 +95,7 @@ try {
   await new Promise<void>((resolve) => control.listen(0, "127.0.0.1", resolve));
   const address = control.address();
   if (!address || typeof address === "string") throw new Error("No control server address");
-  const url = `${base}/c/rust/001-ownership?control=${address.port}`;
+  const url = `${base}/c/rust/001-ownership?control=${address.port}${artifacts ? `&artifacts=${encodeURIComponent(artifacts)}` : ""}`;
   await playwright(session, fixture.root, "open", url);
   browserOpen = true;
   console.log(

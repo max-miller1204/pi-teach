@@ -1,6 +1,13 @@
 /** Playwright CLI function. Run with node scripts/e2e-browser.ts. */
 async function browserRegression(page) {
   const control = `http://127.0.0.1:${new URL(page.url()).searchParams.get("control")}`;
+  const artifacts = new URL(page.url()).searchParams.get("artifacts");
+  const screenshot = async (name) => {
+    if (artifacts) {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true });
+    }
+  };
   const observer = await page.context().newPage();
   const errors = [];
   for (const tab of [page, observer]) tab.on("pageerror", (error) => errors.push(error.message));
@@ -65,7 +72,9 @@ async function browserRegression(page) {
     (await page.locator("[data-cl-definition]").innerText()) === "Checks that borrows are valid.",
     "Wrong glossary definition",
   );
+  await screenshot("glossary-definition");
   await page.keyboard.press("Escape");
+  await screenshot("glossary-marker");
 
   await answer(["a", "b"], "s1");
   const first = await submit();
@@ -91,6 +100,7 @@ async function browserRegression(page) {
     current.state === "submitted" && current.multi.join() === "c" && current.locate.join() === "s3",
     "An earlier grade replaced the pending retake",
   );
+  await screenshot("pending-retake");
 
   await grade(second.id, "Second grade");
   await waitGrade(page, "Second grade");
@@ -111,6 +121,7 @@ async function browserRegression(page) {
     current.multi.join() === "c" && current.locate.join() === "s3" && current.attempts === "2",
     "A stale revision replaced the graded retake",
   );
+  await screenshot("graded-retake");
   await page.reload();
   await waitGrade(page, "Second grade");
   current = await selections(page);
