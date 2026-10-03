@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
 
-import { classroomPage, landingPage, missionWhy, prettyFileName } from "../src/pages.js";
+import {
+  RECENT_RECORDS,
+  classroomPage,
+  documentPage,
+  landingPage,
+  learningRecordsPage,
+  missionWhy,
+  prettyFileName,
+  summarizeRecord,
+} from "../src/pages.js";
 import type { Classroom, Lesson } from "../src/store.js";
 
 const classroom: Classroom = {
@@ -90,6 +99,77 @@ describe("classroomPage", () => {
 
   it("says so when a classroom has no lessons yet", () => {
     expect(classroomPage({ ...data, lessons: [] })).toContain("No lessons yet");
+  });
+
+  it("lists only the newest learning records and links the rest", () => {
+    const records = Array.from(
+      { length: 12 },
+      (_, i) => `${String(i + 1).padStart(4, "0")}-record.md`,
+    );
+    const html = classroomPage({ ...data, learningRecords: records });
+    expect(html).toContain('href="/doc/rust/learning-records/0012-record.md"');
+    expect(html).toContain(
+      `href="/doc/rust/learning-records/${String(12 - RECENT_RECORDS + 1).padStart(4, "0")}-record.md"`,
+    );
+    expect(html).not.toContain('href="/doc/rust/learning-records/0001-record.md"');
+    expect(html).toContain('href="/doc/rust/learning-records">All 12 records');
+  });
+});
+
+describe("summarizeRecord", () => {
+  it("takes the heading as the title and the first paragraph as the summary", () => {
+    const record = summarizeRecord(
+      "0003-closures.md",
+      "# Closures capture by **reference**\n\nThey reasoned through `move` unprompted, see [the book](https://x).\n\n## Evidence\n\nQuiz 3.",
+    );
+    expect(record).toEqual({
+      file: "0003-closures.md",
+      number: 3,
+      title: "Closures capture by reference",
+      summary: "They reasoned through move unprompted, see the book.",
+      superseded: false,
+    });
+  });
+
+  it("reads superseded status from frontmatter", () => {
+    const record = summarizeRecord(
+      "0001-owns.md",
+      "---\nstatus: superseded by LR-0004\n---\n# Owns\n\nOld view.",
+    );
+    expect(record.superseded).toBe(true);
+    expect(record.title).toBe("Owns");
+    expect(record.summary).toBe("Old view.");
+  });
+
+  it("falls back to the file name when there is no heading", () => {
+    expect(summarizeRecord("0002-moves-are-cheap.md", "").title).toBe("Moves are cheap");
+  });
+});
+
+describe("learningRecordsPage", () => {
+  it("lists every record newest first, with its summary", () => {
+    const html = learningRecordsPage(classroom, [
+      { file: "0001-first.md", markdown: "# First\n\nThe floor." },
+      { file: "0002-second.md", markdown: "# Second\n\nThe <b>next</b> step." },
+    ]);
+    expect(html.indexOf("Second")).toBeLessThan(html.indexOf("First"));
+    expect(html).toContain('href="/doc/rust/learning-records/0001-first.md"');
+    expect(html).toContain("The &lt;b&gt;next&lt;/b&gt; step.");
+    expect(html).toContain('href="/c/rust"');
+  });
+
+  it("says so when there are none", () => {
+    expect(learningRecordsPage(classroom, [])).toContain("No learning records yet");
+  });
+});
+
+describe("documentPage", () => {
+  it("adds a parent crumb for documents under an index", () => {
+    const html = documentPage(classroom, "0001-owns.md", "# Owns", {
+      label: "Learning records",
+      href: "/doc/rust/learning-records",
+    });
+    expect(html).toContain('<a class="cl-crumb" href="/doc/rust/learning-records">');
   });
 });
 

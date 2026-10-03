@@ -8,3 +8,4 @@ Author: Matt Pocock. Licensed MIT — see `LICENSE.upstream`.
 the canonical `~/.pi/agent/classrooms/` layout, the scaffold tools, and the interactive
 lesson runtime this extension provides. `MISSION-FORMAT.md`, `RESOURCES-FORMAT.md`,
 `GLOSSARY-FORMAT.md`, and `LEARNING-RECORD-FORMAT.md` are carried over unchanged.
+`NOTES-FORMAT.md` is original to this extension.

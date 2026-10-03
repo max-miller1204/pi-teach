@@ -1,19 +1,19 @@
 # pi-teach — extension guidance
 
-This repository is a standalone, publishable Pi package containing one extension. A local
-web UI for teaching material, wired back into the live Pi session so a learner can ask
-questions from inside a lesson and hand in quizzes to be graded. The pedagogy comes from
+This repository is a standalone Pi package containing one extension, installed from
+git. A local web UI for teaching material, wired back into the live Pi session so a
+learner can ask questions from inside a lesson and hand in quizzes to be graded. The pedagogy comes from
 Matt Pocock's `teach` skill; the attribution lives in `docs/ATTRIBUTION.md` and must
 travel with any copy of `docs/`.
 
 The package root _is_ the extension root: `package.json` declares `pi.extensions:
-["./index.ts"]`, so `pi install git:github.com/joshrnoll/pi-teach` and
+["./index.ts"]`, so `pi install git:github.com/max-miller1204/pi-teach` and
 `pi install /path/to/pi-teach` both work. Nothing may depend on files outside this
 directory.
 
-A copy of this extension also lives in Josh's private `my-pi-packages` repo as
-`extensions/classroom`. They are independent forks — a change here does not propagate
-there.
+This is a fork of `joshrnoll/pi-teach` (the `upstream` remote), which is published to
+npm; this fork is not. A copy also lives in Josh's private `my-pi-packages` repo as
+`extensions/classroom`. They are all independent — a change here does not propagate.
 
 ## The three rules that shape everything
 
@@ -118,12 +118,15 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   route changes there, and keep the traversal cases green.
 - After changes: `npm run check` and `npm test` from the repo root.
 - Commit `package-lock.json` with any dependency change — Pi runs `npm install` after
-  cloning a git target, and publishing to npm relies on the same lockfile.
+  cloning a git target.
 - **Never commit a lockfile produced by a bare `npm install` on macOS.** The Pi dev
   dependency pulls optional platform-gated packages (`@mariozechner/clipboard-*`), and
   installing on one platform prunes the others from the lockfile — roughly 440 lines of
-  churn that flips back and forth between macOS and the Ubuntu CI runners. Use
-  `npm install --package-lock-only` for lockfile edits, and `npm ci` to install.
-- Bump `version` in `package.json` for anything user-visible; the package is published.
+  churn that flips back and forth between macOS and the Ubuntu CI runners. Even
+  `npm install --package-lock-only` does it on macOS, so a version bump means editing the
+  two root `version` fields by hand; real dependency changes are best made on Linux. Use
+  `npm ci` to install.
+- There is no npm release. `pi install git:` and `pi update` take whatever is on `main`,
+  so keep `main` green.
 - Update `assets/templates/quiz.html` when the quiz contract changes — the model reads
   that file, so it is documentation and API at once.

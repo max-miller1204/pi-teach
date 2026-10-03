@@ -19,6 +19,7 @@
  */
 
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
+import { initLinks } from "./links.mjs";
 import { initTheme } from "./theme.mjs";
 
 const config = readConfig();
@@ -73,7 +74,7 @@ function init() {
   buildHeader();
   // After buildHeader: the toggle it wires up is the button the header just created.
   initTheme();
-  document.addEventListener("click", openPdfInNewTab);
+  initLinks();
 
   buildAskPill();
   buildComposer();
@@ -91,17 +92,6 @@ function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeComposer();
   });
-}
-
-/** Open PDF sources in a new tab. Keep lesson navigation in the current tab. */
-function openPdfInNewTab(event) {
-  const link = event.target.closest("a[href]");
-  if (!link || link.hasAttribute("download")) return;
-  const url = new URL(link.href);
-  if (!["http:", "https:"].includes(url.protocol) || !url.pathname.toLowerCase().endsWith(".pdf"))
-    return;
-  link.target = "_blank";
-  link.relList.add("noopener");
 }
 
 /**

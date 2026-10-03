@@ -5,6 +5,8 @@
  * inside a lesson (see classroom.js).
  */
 
+import { initLinks } from "./links.mjs";
 import { initTheme } from "./theme.mjs";
 
 initTheme();
+initLinks();

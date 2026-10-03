@@ -23,38 +23,9 @@ jobs:
       - run: npm run check
       - run: npm test
 
-      # Reason: the published tarball is not the repo. `files` in package.json decides
-      # what npm consumers get, and a missing asset only shows up at runtime, long after
-      # publish. Install the packed tarball the way pi installs an npm source
-      # (--omit=dev --legacy-peer-deps) and assert every file the code reads at runtime.
-      - name: Verify packed tarball
-        run: npm run test:pack
-
       # Reason: `npm audit` walks the dev tree too, which here means auditing the Pi CLI
       # we depend on only for `import type`. That code never runs and never ships, so it
       # produces permanent noise that hides the one thing worth failing on: a problem in
       # the runtime dependencies that actually reach users.
       - name: Audit production dependencies
         run: npm run audit
-
-  version-guard:
-    # Reason: main publishes whatever version the PR merged. If that version already
-    # exists on the registry the release job would fail after merge, so fail here instead
-    # where it is cheap to fix.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - name: Version must be unpublished
-        run: |
-          name=$(node -p "require('./package.json').name")
-          version=$(node -p "require('./package.json').version")
-          echo "package: $name@$version"
-          if npm view "$name@$version" version >/dev/null 2>&1; then
-            echo "::error::$name@$version is already published. Bump the version in package.json."
-            exit 1
-          fi
-          echo "$name@$version is free."

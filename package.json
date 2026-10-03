@@ -1,17 +1,18 @@
 {
   "name": "pi-teach",
-  "version": "0.1.5",
+  "version": "0.2.0",
+  "private": true,
   "description": "A teacher you can interrupt — interactive HTML lessons for Pi, wired back into the live session for highlight-to-ask questions and graded quizzes.",
   "type": "module",
   "license": "MIT",
   "author": "Josh Noll",
-  "homepage": "https://github.com/joshrnoll/pi-teach#readme",
+  "homepage": "https://github.com/max-miller1204/pi-teach#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/joshrnoll/pi-teach.git"
+    "url": "git+https://github.com/max-miller1204/pi-teach.git"
   },
   "bugs": {
-    "url": "https://github.com/joshrnoll/pi-teach/issues"
+    "url": "https://github.com/max-miller1204/pi-teach/issues"
   },
   "keywords": [
     "pi-package",
@@ -25,23 +26,12 @@
     "extensions": [
       "./index.ts"
     ],
-    "image": "https://raw.githubusercontent.com/joshrnoll/pi-teach/main/screenshots/answer.png"
+    "image": "https://raw.githubusercontent.com/max-miller1204/pi-teach/main/screenshots/answer.png"
   },
-  "files": [
-    "index.ts",
-    "src",
-    "assets",
-    "docs",
-    "examples",
-    "tsconfig.json",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "tsc --noEmit",
-    "test:pack": "bash scripts/test-pack.sh",
     "audit": "npm audit --omit=dev --audit-level=moderate",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -67,9 +57,6 @@
     "prettier": "^3.8.4",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "engines": {
     "node": ">=20"

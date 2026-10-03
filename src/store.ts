@@ -262,9 +262,9 @@ export function titleFromSlug(slug: string): string {
 export function listLessonDirs(classroom: string): string[] {
   const dir = classroomDir(classroom);
   if (!isDir(dir)) return [];
-  // Reason: these four are classroom-level, never lessons — skip them before the
-  // (more expensive) HTML lookup.
-  const reserved = new Set(["reference", "assets", "learning-records", "quiz"]);
+  // Reason: these are classroom-level, never lessons — skip them before the (more
+  // expensive) HTML lookup.
+  const reserved = new Set(["reference", "assets", "learning-records", "notes", "quiz"]);
   return fs
     .readdirSync(dir)
     .filter(
@@ -581,6 +581,15 @@ export function listLearningRecords(classroom: string): string[] {
     .readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .sort();
+}
+
+/** Every learning record with its contents, oldest first. */
+export function readLearningRecords(classroom: string): Array<{ file: string; markdown: string }> {
+  const dir = path.join(classroomDir(classroom), "learning-records");
+  return listLearningRecords(classroom).map((file) => ({
+    file,
+    markdown: fs.readFileSync(path.join(dir, file), "utf8"),
+  }));
 }
 
 export function listReferenceDocs(classroom: string): string[] {
