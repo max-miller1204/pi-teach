@@ -11,7 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { classroomDir, docsDir, lessonDir } from "./paths.ts";
+import { classroomDir, docsDir, lessonDir, templatesDir } from "./paths.ts";
 import { answerDetail, answersByQuestion, kindOf } from "./quiz.ts";
 import { relativeDay, type ReviewSummary } from "./review.ts";
 import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
@@ -40,6 +40,38 @@ export const QUIZ_FOLLOW_UP =
 /** What to do after grading a pretest. Wrong answers are expected before teaching. */
 export const PRETEST_FOLLOW_UP =
   "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to decide what the lesson stresses and what it can skip. Tell the learner briefly what the lesson will focus on. Write a learning record only for prior knowledge the pretest shows.";
+
+/**
+ * The steps a scaffold tool returns. They repeat the method at the point of use,
+ * because a long session can remember an older quiz contract.
+ */
+export function authoringSteps(
+  kind: "lesson" | "review",
+  lessonPath: string,
+  checkPage: string,
+): string {
+  const contract = path.join(templatesDir(), "quiz.html");
+  const rubric = path.join(path.dirname(lessonPath), "quiz", "key.json");
+  const middle =
+    kind === "lesson"
+      ? [
+          "2. State one learning objective: what the learner can do at the end.",
+          "3. Choose the lesson experience and the response types that fit the objective and this learner. The sections in lesson.html are optional examples. Change, reorder, or replace them. Use earlier answers, questions, and self-explanations. Vary the approach from recent lessons when that helps.",
+          "4. Write the lesson and its questions. Give each interaction one purpose: predict, retrieve, explain, practise, or diagnose. Replace the unfinished CHOOSE-A-TYPE question.",
+        ]
+      : [
+          "2. For each item below, state the idea it tests.",
+          "3. Write one new question for each item, with a new example. Choose the response type that fits the idea. It does not have to match the original type.",
+          "4. Put the given data-review-of on each question exactly. Keep the items in the order given. Replace the unfinished CHOOSE-A-TYPE question.",
+        ];
+  return [
+    "Authoring steps:",
+    `1. Read the current quiz contract: ${contract}. Read it for each ${kind}. It can change between sessions.`,
+    ...middle,
+    `5. Write the private rubric in ${rubric} before the learner submits. For each question, give the expected answer, the points possible, and the full and partial credit criteria.`,
+    `6. Check the page: each control must work, and no contract error may show. ${checkPage}`,
+  ].join("\n");
+}
 
 /**
  * The review status of a classroom, as a section of the teaching brief.
@@ -95,6 +127,9 @@ export function teachingPrompt(
   }
 
   parts.push(readDoc("TEACHING.md"));
+  parts.push(
+    `The templates are in the extension's \`assets/templates/\` directory (${templatesDir()}). The quiz contract is ${path.join(templatesDir(), "quiz.html")}.`,
+  );
   parts.push(`## After grading a quiz\n\n${QUIZ_FOLLOW_UP}`);
   parts.push(
     "Reference documents you can read when you need them, in the extension's `docs/` directory " +

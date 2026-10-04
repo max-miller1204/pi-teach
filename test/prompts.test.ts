@@ -39,6 +39,9 @@ describe("teachingPrompt", () => {
     expect(prompt).toContain("zone of proximal development");
     expect(prompt).toContain("~/.pi/agent/classrooms/");
     expect(prompt).toContain(QUIZ_FOLLOW_UP);
+    expect(prompt).toContain(`${paths.templatesDir()}/quiz.html`);
+    expect(prompt).toContain("Read the current quiz contract");
+    expect(prompt).toContain("Designing a lesson");
   });
 
   it("points at an existing classroom when continuing one", () => {

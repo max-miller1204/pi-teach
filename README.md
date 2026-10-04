@@ -31,6 +31,11 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
   `match`, and `locate`. A `.cl-q-stimulus` block holds what they look at: a passage,
   code, a table, or an image. A quiz that breaks the contract shows its errors on the
   page and cannot be submitted.
+- **Lessons shaped by the objective.** The lesson template is a shell, not a fixed
+  script. The scaffold tools return the authoring steps: read the current quiz
+  contract, state the objective, choose the lesson experience and response types,
+  write the questions and a private rubric, and check the page. `docs/TEACHING.md`
+  lists optional lesson patterns and when to use each feature.
 - **Saved quizzes and pretests.** A graded quiz stays locked. Saved attempts and
   grades are kept. Missed ideas get a new question in chat and spaced review later.
   A pretest (`data-kind="pretest"`) comes before the teaching. It never counts toward
@@ -267,10 +272,10 @@ ephemeral port. Get the current URL from `open_classroom` or `/classroom`.
 | `answer_lesson_question` | Answer a highlighted-text question or a follow-up. The only thing that puts an answer on the learner's page. |
 | `grade_lesson_quiz`      | Grade a submitted quiz. Writes to `quiz/grades/` and renders inline.                                         |
 | `scaffold_classroom`     | Create a classroom in the canonical location with a `MISSION.md` stub.                                       |
-| `scaffold_lesson`        | Create a numbered lesson directory from the template.                                                        |
-| `scaffold_review`        | Create a spaced review lesson from the questions that are due, and return them with their review keys.       |
+| `scaffold_lesson`        | Create a numbered lesson shell, and return the authoring steps.                                              |
+| `scaffold_review`        | Create a spaced review lesson from the due questions, and return them with their keys and authoring steps.   |
 | `record_retrieval_check` | Link successful chat evidence to a review item without changing scores.                                      |
-| `lesson_health`          | Report long question threads, repeated misses, glossary problems, and self-explanations.                     |
+| `lesson_health`          | Report threads, misses, glossary problems, unfinished questions, missing rubrics, and recent response types. |
 
 Grades support per-question points. Partial credit appears separately from fully
 correct answers. Health distinguishes incomplete answers and resolved gaps.
@@ -329,7 +334,15 @@ npm run e2e:claude      # a real Claude Code session: answer a question, grade a
 npm run e2e:codex       # the same, through Codex
 npm run e2e:browser     # browser state tests with the real server
 npm run e2e:pi          # a real Pi session: question, quiz, and chat follow-up
+npm run e2e:authoring -- claude   # a real agent writes lessons; the script submits them
+npm run e2e:authoring -- codex
 ```
+
+`e2e:authoring` gives the agent learning objectives only. The agent writes the
+lessons from the scaffold. The script inspects them, submits every quiz in the
+browser, lets a second session grade them, and checks the page after a reload. It
+prints a report of each lesson's outline, quiz kinds, and response types. Model
+output varies between runs. Read the report as an evaluation, not as proof.
 
 All e2e scripts use the installed `playwright-cli` to drive the lesson page.
 The Pi, Claude Code, and Codex tests call a real model. They need a logged-in harness and

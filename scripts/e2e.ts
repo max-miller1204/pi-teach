@@ -20,26 +20,31 @@
  * your auth.json only. Both are deleted at the end.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  CLAUDE_PREFIX,
+  codexHome,
+  harnessCommand,
+  parseHarness,
+  readJsonWhenReady as readJson,
+  toolCalls as harnessToolCalls,
+  until as untilWithin,
+} from "./harness.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 
-type Harness = "claude" | "codex";
-
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STEP_TIMEOUT_MS = 180_000;
 const CLASSROOM = "rust";
 const LESSON = "001-ownership";
 
 const artifacts = process.argv[3] ? path.resolve(process.argv[3]) : null;
 if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
-const harness = process.argv[2];
-if (harness !== "claude" && harness !== "codex") {
-  throw new Error("Usage: node scripts/e2e.ts <claude|codex> [artifacts]");
-}
+const harness = parseHarness(
+  process.argv[2],
+  "Usage: node scripts/e2e.ts <claude|codex> [artifacts]",
+);
 
 const PROMPT = [
   `Call begin_teaching with topic "${CLASSROOM}" to get the teaching method.`,
@@ -90,21 +95,6 @@ function seedClassroom(root: string): void {
   );
 }
 
-/** A temporary CODEX_HOME with this checkout installed as a plugin. */
-function codexHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "pi-teach-e2e-codex-"));
-  const realHome = process.env["CODEX_HOME"] ?? path.join(os.homedir(), ".codex");
-  fs.copyFileSync(path.join(realHome, "auth.json"), path.join(home, "auth.json"));
-  for (const args of [
-    ["plugin", "marketplace", "add", ROOT],
-    ["plugin", "add", "pi-teach@pi-teach"],
-  ]) {
-    const run = spawnSync("codex", args, { env: { ...process.env, CODEX_HOME: home } });
-    if (run.status !== 0) throw new Error(`codex ${args.join(" ")} failed:\n${run.stderr}`);
-  }
-  return home;
-}
-
 const REQUIRED_TOOLS = [
   "begin_teaching",
   "open_classroom",
@@ -113,52 +103,8 @@ const REQUIRED_TOOLS = [
   "grade_lesson_quiz",
 ];
 
-/** Claude Code prefixes plugin MCP tools with this. Codex reports the bare name. */
-const CLAUDE_PREFIX = "mcp__plugin_pi-teach_classroom__";
-
-function harnessCommand(): [string, string[]] {
-  if (harness === "claude") {
-    const tools = REQUIRED_TOOLS.map((tool) => `${CLAUDE_PREFIX}${tool}`);
-    return [
-      "claude",
-      [
-        "--plugin-dir",
-        ROOT,
-        "-p",
-        PROMPT,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--allowedTools",
-        [...tools, "Read"].join(","),
-      ],
-    ];
-  }
-  // Reason: `codex exec` cannot prompt for MCP tool approval, and has no per-tool
-  // allowlist. The run is confined to temporary directories and a fixed prompt.
-  return [
-    "codex",
-    [
-      "exec",
-      "--json",
-      "--skip-git-repo-check",
-      "--dangerously-bypass-approvals-and-sandbox",
-      PROMPT,
-    ],
-  ];
-}
-
-/**
- * The classroom tool calls in a harness's JSON event stream, in order. Claude Code
- * emits `"name":"mcp__plugin_pi-teach_classroom__<tool>"` on each tool use; Codex emits
- * `"server":"classroom","tool":"<tool>"` on each MCP call's start and end events.
- */
 function toolCalls(events: string): string[] {
-  const pattern =
-    harness === "claude"
-      ? new RegExp(`"name":"${CLAUDE_PREFIX}([a-z_]+)"`, "g")
-      : /"server":"classroom","tool":"([a-z_]+)"[^\n]*?"status":"in_progress"/g;
-  return [...events.matchAll(pattern)].map((match) => match[1]!);
+  return harnessToolCalls(harness, events);
 }
 
 /** Only chat text after grading can count as a retrieval question. */
@@ -187,22 +133,8 @@ function chatTextAfterGrade(events: string): string {
   return messages.join("\n");
 }
 
-async function until<T>(what: string, probe: () => T | null): Promise<T> {
-  const deadline = Date.now() + STEP_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const value = probe();
-    if (value !== null) return value;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(`Timed out waiting for ${what}`);
-}
-
-function readJson<T>(file: string): T | null {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as T;
-  } catch {
-    return null;
-  }
+function until<T>(what: string, probe: () => T | null): Promise<T> {
+  return untilWithin(what, STEP_TIMEOUT_MS, probe);
 }
 
 async function main(): Promise<void> {
@@ -219,7 +151,7 @@ async function main(): Promise<void> {
   };
   if (home) env["CODEX_HOME"] = home;
 
-  const [command, args] = harnessCommand();
+  const [command, args] = harnessCommand(harness, PROMPT, REQUIRED_TOOLS);
   log(`starting ${command} ${args.slice(0, 2).join(" ")} ...`);
   const child = spawn(command, args, { cwd: os.tmpdir(), env, stdio: ["ignore", "pipe", "pipe"] });
 

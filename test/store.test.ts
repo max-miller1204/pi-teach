@@ -443,6 +443,41 @@ describe("quiz states", () => {
     expect(states[1].submission.id).toBe(second.id);
     expect(store.previousGrade(second)!.questions[0].correct).toBe(false);
   });
+
+  it("uses the newest revision of a grade everywhere and keeps the older file", () => {
+    seedClassroom(fixture);
+    const T0 = Date.UTC(2026, 0, 1);
+    const first = writeGradedAttempt({
+      at: T0,
+      answers: [termAnswer("q1", "a")],
+      correct: { q1: false },
+    });
+    const original = store.listGrades("rust", "001-ownership")[0];
+    store.writeGrade({
+      ...original,
+      score: 100,
+      questions: [{ questionId: "q1", correct: true, feedback: "Revised." }],
+      gradedAt: original.gradedAt + 10,
+    });
+
+    expect(store.listGrades("rust", "001-ownership")).toHaveLength(2);
+    expect(store.latestGrades("rust", "001-ownership").map((g) => g.score)).toEqual([100]);
+    expect(store.readLesson("rust", "001-ownership")!.latestScore).toBe(100);
+    const [state] = store.latestQuizStates("rust", "001-ownership");
+    expect(state.grade!.score).toBe(100);
+    expect(state.attempts).toBe(1);
+
+    const [item] = store.reviewItems("rust");
+    expect(item).toMatchObject({ attempts: 1, lastCorrect: true, lastFeedback: "Revised." });
+
+    const second = writeGradedAttempt({
+      at: T0 + 100,
+      answers: [termAnswer("q1", "b")],
+      correct: { q1: true },
+    });
+    expect(second.id).not.toBe(first.id);
+    expect(store.previousGrade(second)!.score).toBe(100);
+  });
 });
 
 describe("reflections", () => {

@@ -37,12 +37,20 @@ export function termForms(term: string): string[] {
   return [...new Set(forms.filter(Boolean))];
 }
 
+/** A line that starts with bold text but is not `**Term**:`. */
+const BOLD_RE = /^\*\*([^*]+?):?\*\*/;
+
 export function parseGlossary(markdown: string): Glossary {
   const terms: GlossaryTerm[] = [];
   const errors: string[] = [];
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
 
   let current: { term: string; definition: string[]; avoid: string[]; line: number } | null = null;
+  // Reason: prose is allowed before the first entry and under a heading. Prose after a
+  // closed entry is a definition split by a blank line, so it is reported.
+  let afterEntry = false;
+  // The lines under a malformed term line belong to it. Its error already covers them.
+  let malformed = false;
 
   const finish = () => {
     if (!current) return;
@@ -61,6 +69,7 @@ export function parseGlossary(markdown: string): Glossary {
       });
     }
     current = null;
+    afterEntry = true;
   };
 
   for (const [i, raw] of lines.entries()) {
@@ -68,27 +77,57 @@ export function parseGlossary(markdown: string): Glossary {
     const termMatch = TERM_RE.exec(line);
     if (termMatch) {
       finish();
+      malformed = false;
       current = { term: termMatch[1].trim(), definition: [], avoid: [], line: i + 1 };
       if (termMatch[2].trim()) current.definition.push(termMatch[2].trim());
       continue;
     }
-    if (!current) continue;
+    const bold = BOLD_RE.exec(line);
+    if (bold) {
+      finish();
+      malformed = true;
+      const term = bold[1].trim();
+      errors.push(
+        `Line ${i + 1}: "${clip(line)}" is not a term entry. Write "**${term}**:" with the colon after the closing **, then the definition.`,
+      );
+      continue;
+    }
+
+    if (malformed) {
+      if (!line || line.startsWith("#")) malformed = false;
+      else continue;
+    }
 
     const avoidMatch = AVOID_RE.exec(line);
     if (avoidMatch) {
+      if (!current) {
+        errors.push(
+          `Line ${i + 1}: an _Avoid_ line has no term entry above it. Put it directly under a definition.`,
+        );
+        continue;
+      }
       current.avoid = avoidMatch[1]
         .split(",")
         .map((alias) => alias.trim())
         .filter(Boolean);
       continue;
     }
-    // A heading or a blank line after the avoid list closes the entry.
+    // A heading or a blank line after the definition closes the entry.
     if (line.startsWith("#")) {
       finish();
+      afterEntry = false;
       continue;
     }
     if (!line) {
-      if (current.definition.length > 0) finish();
+      if (current && current.definition.length > 0) finish();
+      continue;
+    }
+    if (!current) {
+      if (afterEntry) {
+        errors.push(
+          `Line ${i + 1}: "${clip(line)}" is outside every term entry. Join it to the definition above without a blank line, or put it under a heading.`,
+        );
+      }
       continue;
     }
     current.definition.push(line);
@@ -96,6 +135,10 @@ export function parseGlossary(markdown: string): Glossary {
   finish();
 
   return { terms, errors };
+}
+
+function clip(line: string): string {
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
 }
 
 /** A word the glossary says to avoid, found in a lesson. */

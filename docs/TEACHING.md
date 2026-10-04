@@ -82,60 +82,134 @@ returned `lesson.html`.
 - **Short.** Working memory is small. One tangible win they can build on, completable
   in a few minutes.
 - **Beautiful.** They will come back to these. The classroom stylesheet is injected
-  automatically, so plain semantic HTML already looks right — do not paste in your own
+  automatically, so plain semantic HTML already looks right. Do not paste in your own
   CSS framework, and do not link anything external.
 - **Cited.** Link out for every claim. Citations are what make a lesson trustworthy.
 - **One primary source.** Recommend the single best thing you found to read or watch.
 - **Linked.** Anchor to related lessons and reference documents.
 
 Teach the knowledge the skill requires, then have them practise it. For acquiring
-knowledge, difficulty is the enemy — it eats the working memory understanding needs. For
+knowledge, difficulty is the enemy: it eats the working memory understanding needs. For
 building skills, difficulty is the tool.
+
+### Designing a lesson
+
+`lesson.html` is a shell, not a lesson script. It keeps the parts that connect the
+page to the runtime. Its sections are optional examples. Design each lesson from its
+objective and from this learner. Do not give every lesson the same layout. Changing
+only the question types is not a new design.
+
+Follow these steps for each lesson:
+
+1. Read the current quiz contract in `assets/templates/quiz.html`. Read it before each
+   lesson or review. It can change between sessions, so do not rely on memory.
+2. State one learning objective: what the learner can do at the end.
+3. Choose the lesson experience and the response types that fit the objective.
+4. Write the lesson and its questions.
+5. Write the private rubric in `quiz/key.json`.
+6. Open the page. Check that each control works and that no contract error shows.
+
+Give each interaction one purpose: **predict**, **retrieve**, **explain**,
+**practise**, or **diagnose**. An interaction without a purpose is decoration. Cut it.
+
+These lesson patterns are optional. Combine them, or invent one that fits better:
+
+- **Predict and test.** The learner predicts a result, then sees the real result.
+- **Debugging challenge.** The learner finds the error in a short artifact.
+- **Guided experiment.** Change one input, observe the effect, explain it.
+- **Faded worked example.** A full example, then the same steps with parts removed.
+- **Comparison.** Two cases side by side, then a question about the difference.
+- **Simulation or trace.** Step through a process one event at a time.
+- **Decision exercise.** Given a situation, choose the next action and justify it.
+
+Adapt to what you know. Use the pretest, earlier grades, questions from the page,
+self-explanations, and learning records. Teach less of what they already show.
+Look at the recent lessons and at the response types that `lesson_health` lists.
+Vary the approach when the same structure stops helping. Reuse a structure when
+repetition helps the objective, for example a drill on one procedure. There is no
+quota for patterns or types, and no need to vary for its own sake.
+
+Some examples, from an operating systems course:
+
+- Fork counts: a stepped process tree the learner expands one `fork()` at a time, then
+  a `numeric` question for a new program.
+- Process states: a list of events, and an `order` or `choice` question for the next
+  state after each event.
+- Pipes: a short program with one incorrect `close()`, and a `locate` question.
+- `exec`: before and after diagrams of the address space, and a `short` question on
+  what survives.
+- Races: two possible orders of the same instructions, and a `numeric` or `short`
+  question on each outcome.
+
+A lesson can also hold a small local interaction: plain HTML, CSS, and an inline
+script, such as a stepper, a toggle, or a `<details>` reveal. Use
+`<button type="button">`. Make each control work with the keyboard, label it, and
+show its result visibly. Check it in the browser. Keep local controls outside
+`form.cl-quiz`. You do not need to change the runtime for a new lesson pattern.
+
+### Choosing what to use
+
+| Feature                         | Use it when                                                                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Pretest (`data-kind="pretest"`) | Before teaching, to find what to stress. Diagnostic only. It never sets the lesson score and never enters review.                         |
+| Check (the default quiz kind)   | After teaching, to test the objective. It sets the lesson score and enters review.                                                        |
+| Review (`scaffold_review`)      | Questions are due and the learner agrees. Write new examples for the returned items. Keep each `data-review-of` exactly.                  |
+| `.cl-q-stimulus`                | The question needs code, a passage, a table, an image, or a diagram. Give images useful alt text: grading receives the text and alt text. |
+| `form.cl-reflect`               | You want an ungraded self-explanation after a key idea. Read it and record what it shows.                                                 |
+| Glossary                        | The topic has its own terms. The page marks them and asks the learner to recall each one before it shows the definition.                  |
+| Questions from the page         | Always on. Answer them with `answer_lesson_question`, so the answer appears on the page.                                                  |
+| Reference document              | Compressed material the learner will look up again later.                                                                                 |
 
 ### Checks on learning
 
-Every lesson should close a feedback loop. The quiz markup contract is documented in the
-extension's `assets/templates/quiz.html`; read it before writing your first quiz.
+Every lesson should close a feedback loop. The quiz markup contract is
+`assets/templates/quiz.html`. It has a complete, copyable example of every type.
 
 Two rules that matter more than they look:
 
 - **Never put the answer key in the page.** They can read the source. Grading is your
-  job — the submission arrives as a notification and you answer it with
-  `grade_lesson_quiz`. If you want to record intended answers, write `quiz/key.json`;
-  the server never serves that directory.
+  job: the submission arrives as a notification and you answer it with
+  `grade_lesson_quiz`.
 - **Every option the same length**, in words and ideally characters. Formatting must not
   leak the answer.
 
-Prefer retrieval over recognition. A question answered by spotting a familiar phrase
-builds fluency, not storage.
-
 Every question has a `data-type`. The type names what the learner produces. What they
-look at goes in a `.cl-q-stimulus` block, which can hold a passage, code, a table, or
-an image. "Predict the output" is a stimulus of code and a `short` answer. These types
-work for any topic:
+look at goes in a `.cl-q-stimulus` block. "Predict the output" is a stimulus of code
+and a `short` answer. Choose the type from the skill the question tests:
 
-- **Retrieval types. Use these by default.** `term` (a word), `short` (an
-  explanation), `numeric` (a number, and a unit if you want one), `cloze` (blanks in a
-  passage), `order` (put items in sequence), `locate` (select the wrong line, the
-  error in a proof, the grammar mistake).
-- **Recognition types. Use these for quick checks.** `choice`, `multi`, `match`.
+| Type      | The learner                                        |
+| --------- | -------------------------------------------------- |
+| `term`    | recalls a name or a precise phrase                 |
+| `short`   | explains reasoning or a cause                      |
+| `numeric` | calculates a count or a quantity                   |
+| `cloze`   | supplies missing values in context                 |
+| `order`   | reconstructs a sequence                            |
+| `locate`  | identifies a specific error or segment             |
+| `choice`  | distinguishes one correct option from alternatives |
+| `multi`   | identifies each valid option in a set              |
+| `match`   | associates related items                           |
 
-Choose the response type for the skill each question tests. Mix suitable types within
-and across lessons. Do not replace every response with short text. Use numeric for
-counts, order for sequences, cloze for precise missing values, and locate for errors.
-Keep short for explanations. Do not force a type that does not fit the question.
-`lesson_health` reports a short-only lesson with at least three questions.
+Prefer retrieval (`term`, `short`, `numeric`, `cloze`, `order`, `locate`) when recall
+matters. A question answered by spotting a familiar phrase builds fluency, not
+storage. Recognition (`choice`, `multi`, `match`) fits distinguishing close
+alternatives. Keep `short` for explanations. Mix suitable types within and across
+lessons. Do not force all nine into one lesson, and do not force a type that does not
+fit the question. `lesson_health` reports a short-only lesson with at least three
+questions.
 
-Before submission, write the grading rubric in private `quiz/key.json`. State the
-maximum points and the criteria for full and partial credit for each question.
-Use the same rubric for all attempts at that quiz. Set `correct` to true only for
-full credit. Supply `points_earned` and `points_possible` for every question when
-using partial credit or weights. The overall score is the earned points divided
-by the possible points, times 100. Integer rounding is allowed. Without points,
-grading uses equal-weight binary results. Do not mix grading methods during a quiz.
+Before submission, write the grading rubric in private `quiz/key.json`. The server
+never serves that directory. For each question, state the expected answer, the
+maximum points, and the criteria for full and partial credit. Use the same rubric for
+all attempts at that quiz. Do not change a question id or a rubric after a learner
+submits. Set `correct` to true only for full credit. Supply `points_earned` and
+`points_possible` for every question when using partial credit or weights. The
+overall score is the earned points divided by the possible points, times 100.
+Integer rounding is allowed. Without points, grading uses equal-weight binary
+results. Do not mix grading methods during a quiz.
 
 A quiz that breaks the contract shows its errors on the page and cannot be submitted.
-Open the lesson after you write it, to make sure that the quiz works.
+The scaffolds leave an unfinished question on purpose, so an unwritten quiz fails
+loudly. Open the lesson after you write it, to make sure that the quiz works.
 
 After a grade, the browser quiz stays locked. Saved attempts and grades are kept.
 Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
@@ -161,8 +235,9 @@ check after a pretest.
 
 A `form.cl-reflect` asks the learner to explain an idea in their own words. It is saved
 and shown to you, but never graded: explaining is the exercise. Put one after the idea
-that matters most. Read what they write. Record a gap in notes. Write a learning record
-when it shows real understanding.
+that matters most. Read what they write. Record a gap in notes. A self-explanation, or
+your own explanation, does not by itself show mastery. Write a learning record only
+when the learner shows real understanding.
 
 ## Questions from the page
 
@@ -193,16 +268,22 @@ is kept in saved attempts but does not affect the schedule.
 `begin_teaching` and `/teach` tell you how many questions are due. When questions are
 due, offer the learner a review before new material. If they agree, call
 `scaffold_review`. It creates a review lesson and returns the due questions, mixed
-across lessons. For each one, write a new question that tests the same idea with a new
-example. Put the given key on it as `data-review-of`. A new example makes the learner
-recall the idea, not a remembered answer.
+across lessons, with the original question, the learner's last answer, and your last
+feedback. Read the current quiz contract first. For each item, write a new question
+that tests the same idea with a new example. Choose the type that fits the idea. It
+does not have to match the original type. Put the given key on it as
+`data-review-of`, exactly. A new example makes the learner recall the idea, not a
+remembered answer. Write the rubric in the review lesson's `quiz/key.json`.
 
 ## Lesson health
 
-Call `lesson_health` before you plan the next lesson. It reports long question threads,
-quiz questions missed more than once, words the glossary says to avoid, errors in `GLOSSARY.md`, and the learner's self-explanations. When the
-same passage or question keeps failing, fix the lesson: add the explanation that the
-thread ended up with, or teach the missing prerequisite first.
+Call `lesson_health` before you plan the next lesson. It reports long question
+threads, quiz questions missed more than once, words the glossary says to avoid,
+errors in `GLOSSARY.md`, and the learner's self-explanations. It also reports
+unfinished or invalid question types, a lesson with questions and no
+`quiz/key.json`, and the response types in recent lessons. When the same passage or
+question keeps failing, fix the lesson: add the explanation that the thread ended up
+with, or teach the missing prerequisite first.
 
 ## Reference documents
 
@@ -248,6 +329,26 @@ Attempt an answer, then point them at a community: a well-moderated forum, a loc
 group, a class. Look for high-reputation ones. If they say they do not want to join a
 community, respect it and note it in `RESOURCES.md`.
 
+## Tools
+
+| Tool                     | Use it to                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `begin_teaching`         | Start or continue teaching in Claude Code or Codex. It returns this method. In Pi, `/teach` does the same.         |
+| `list_classrooms`        | Find the existing classrooms and lessons, with scores, to resume work.                                             |
+| `lesson_health`          | See what did not land before you plan the next lesson.                                                             |
+| `scaffold_classroom`     | Create a classroom for a new topic.                                                                                |
+| `scaffold_lesson`        | Create a lesson shell. It returns the authoring steps.                                                             |
+| `scaffold_review`        | Create a review lesson from the due items. It returns the items and their keys.                                    |
+| `open_classroom`         | Start the server and get the URL in Claude Code or Codex. Call it before you share a URL. In Pi, use `/classroom`. |
+| `wait_for_learner`       | Receive browser requests in Claude Code or Codex: questions, follow-ups, quizzes, and self-explanations.           |
+| `answer_lesson_question` | Answer a question from the page. Only this tool puts the answer on the page.                                       |
+| `grade_lesson_quiz`      | Grade a submitted quiz from its private rubric.                                                                    |
+| `record_retrieval_check` | Link a successful chat retrieval check to its review item, with an active learning record.                         |
+
+Browser requests and chat replies are different channels. `wait_for_learner`
+receives browser requests only. When you need a chat reply, end your turn and do not
+wait.
+
 ## Working rhythm
 
 1. Read `MISSION.md`, the learning records, and `NOTES.md` before anything else — the
@@ -257,7 +358,8 @@ community, respect it and note it in `RESOURCES.md`.
 4. Call `lesson_health`. Fix a lesson that keeps failing before you build on it.
 5. Research from trusted sources; record what you find in `RESOURCES.md`.
 6. Pick the one thing to teach next, in their zone of proximal development.
-7. `scaffold_lesson`, write it, tell them the URL. Open it to check the quiz works.
+7. `scaffold_lesson`. Follow its authoring steps. Tell them the URL. Open it to check
+   that the controls work.
 8. Answer what they ask; grade what they hand in.
 9. Write a learning record when they have actually learned something.
 

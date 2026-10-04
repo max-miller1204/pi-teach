@@ -66,6 +66,23 @@ async function browserRegression(page) {
     !(await page.locator("body").innerText()).includes("How sure are you?"),
     "The page asks for confidence",
   );
+  const invalidOptions = page.locator('[data-quiz-id="invalid-options"]');
+  assert(
+    (await invalidOptions.getAttribute("data-state")) === "broken",
+    "A quiz with invalid option values is not broken",
+  );
+  const optionErrors = await invalidOptions.innerText();
+  assert(
+    optionErrors.includes("1 option with no value") &&
+      optionErrors.includes("repeats option values: a."),
+    `Option value errors are missing: ${optionErrors}`,
+  );
+  assert(
+    await invalidOptions
+      .getByRole("button", { name: "Submit for grading", exact: true })
+      .isDisabled(),
+    "A quiz with invalid option values can be submitted",
+  );
   await screenshot("fresh-quizzes");
   await page.locator("section .cl-term").waitFor();
   assert(
@@ -114,6 +131,13 @@ async function browserRegression(page) {
   assert(
     current.multi.join() === "a,b" && current.locate.join() === "s1",
     "A grade revision changed saved selections",
+  );
+  await page.reload();
+  await waitGrade(page, "Revised first grade");
+  current = await selections(page);
+  assert(
+    current.multi.join() === "a,b" && current.locate.join() === "s1" && current.attempts === "1",
+    "Reload lost the newest grade revision or counted it as an attempt",
   );
 
   // The API still accepts additional attempts from older clients. Test their history.
@@ -315,6 +339,8 @@ async function browserRegression(page) {
       "cross-tab selections",
       "stale grade",
       "reload",
+      "newest grade revision after reload",
+      "invalid option values block submission",
       "grade before response",
       "all nine response types submit and restore",
       "partial credit display and reload",

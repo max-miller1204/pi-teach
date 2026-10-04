@@ -24,6 +24,21 @@ A 1–10 self-rating of how hard a set felt, where 10 is failure and 8 means two
 _Avoid_: Effort score, intensity rating
 ```
 
+## Entry format
+
+- Start each entry with `**Term**:`. Put the colon after the closing `**`.
+- Put the definition on the same line or on the lines directly below. Do not leave a
+  blank line inside a definition.
+- Put the optional `_Avoid_:` line directly under the definition.
+- Leave a blank line between entries.
+- Put prose only before the first entry or directly under a heading. Do not start any
+  other line with bold text.
+
+`lesson_health` reports each entry that breaks this format: a bold term without the
+colon, an `_Avoid_` line with no entry above it, an entry with no definition, a term
+defined twice, and text after an entry that a blank line split from its definition. The
+lesson page does not show a broken entry.
+
 ## Rules
 
 - **Add a term only when the user understands it.** The glossary is a record of compressed knowledge, not a dictionary the user reads to learn. If the user has just been introduced to a concept, wait until they can use it correctly before promoting it here.

@@ -61,6 +61,55 @@ describe("parseGlossary", () => {
   });
 });
 
+describe("parseGlossary malformed entries", () => {
+  it("reports a bold term with no colon instead of dropping it", () => {
+    expect(parseGlossary("**Fork**\nCreates a child process.\n")).toEqual({
+      terms: [],
+      errors: [
+        'Line 1: "**Fork**" is not a term entry. Write "**Fork**:" with the colon after the closing **, then the definition.',
+      ],
+    });
+  });
+
+  it("reports a colon inside the bold and other bold lines", () => {
+    const { terms, errors } = parseGlossary(
+      "**Fork:** Creates a child process.\n\n**Exec** - replaces the program image.\n",
+    );
+    expect(terms).toEqual([]);
+    expect(errors).toEqual([
+      'Line 1: "**Fork:** Creates a child process." is not a term entry. Write "**Fork**:" with the colon after the closing **, then the definition.',
+      'Line 3: "**Exec** - replaces the program image." is not a term entry. Write "**Exec**:" with the colon after the closing **, then the definition.',
+    ]);
+  });
+
+  it("reports a bold line that would join the definition above", () => {
+    const { terms, errors } = parseGlossary(
+      "**Fork**:\nCreates a child.\n**Exec**\nReplaces it.\n",
+    );
+    expect(terms.map((t) => t.definition)).toEqual(["Creates a child."]);
+    expect(errors[0]).toContain('Line 3: "**Exec**" is not a term entry.');
+  });
+
+  it("reports text and avoid lines that belong to no entry", () => {
+    const { terms, errors } = parseGlossary(
+      "_Avoid_: Spawn\n\n**Fork**:\nCreates a child.\n\nReturns twice.\n",
+    );
+    expect(terms.map((t) => t.term)).toEqual(["Fork"]);
+    expect(errors).toEqual([
+      "Line 1: an _Avoid_ line has no term entry above it. Put it directly under a definition.",
+      'Line 6: "Returns twice." is outside every term entry. Join it to the definition above without a blank line, or put it under a heading.',
+    ]);
+  });
+
+  it("allows a preamble, headings, and a description under a heading", () => {
+    const { terms, errors } = parseGlossary(
+      "# Processes\n\nWords for this course.\n\n## Creation\n\nHow processes start.\n\n**Fork**:\nCreates a child.\n\n## Replacement\n\nHow a program changes.\n\n**Exec**:\nReplaces the program image.\n",
+    );
+    expect(errors).toEqual([]);
+    expect(terms.map((t) => t.term)).toEqual(["Fork", "Exec"]);
+  });
+});
+
 describe("findTerms", () => {
   const terms = [
     { forms: ["closure"] },

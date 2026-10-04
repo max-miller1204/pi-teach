@@ -1,5 +1,7 @@
 <!--
   Canonical quiz markup: the contract between a lesson and the classroom runtime.
+  Read this file before you write each lesson or review. It can change between
+  sessions, so do not rely on an earlier copy.
 
   Use this for quizzes, tests, pretests, reviews, and checks on learning. They are the
   same thing at different sizes. Put a <form class="cl-quiz"> anywhere in a lesson.
@@ -47,35 +49,67 @@
 
   ── Which type to use ─────────────────────────────────────────────────────────────
 
-    Retrieval types make the learner produce the answer. Use them by default:
-      term, short, numeric, cloze, order, locate.
-    Recognition types let the learner spot the answer. Use them for quick checks:
-      choice, multi, match.
-    A question the learner can answer by spotting a familiar phrase builds fluency,
-    not long-term memory. Prefer cloze or term to match when recall matters.
+    The type names what the learner produces. Choose it from the skill the question
+    tests:
+
+      term     recall a name or a precise phrase
+      short    explain reasoning or a cause
+      numeric  calculate a count or a quantity
+      cloze    supply missing values in context
+      order    reconstruct a sequence
+      locate   identify a specific error or segment
+      choice   distinguish one correct option from close alternatives
+      multi    identify each valid option in a set
+      match    associate related items
+
+    Retrieval types make the learner produce the answer: term, short, numeric,
+    cloze, order, locate. Use them when recall matters. Recognition types let the
+    learner spot the answer: choice, multi, match. Use them to distinguish
+    alternatives. A question the learner can answer by spotting a familiar phrase
+    builds fluency, not long-term memory. Choose suitable types within and across
+    lessons. Do not force all nine types into one lesson.
 
   ── Rules that matter for learning ────────────────────────────────────────────────
 
     * Never put the answer key in the HTML. The learner can read the page source, and
-      grading is the teacher's job. To record the intended answers, write them to
-      <lesson>/quiz/key.json. The server never serves that directory.
+      grading is the teacher's job.
     * Make every option the same length, in words and if possible in characters.
       Formatting must not show which answer is right.
     * Shuffle order items and match items yourself. Their position in the HTML must
       not show the answer. Do not mark the right segment of a locate question in any
       different way from the others.
-  Choose suitable response types. Use short for explanations. Mix other types
-  when the skill needs counts, sequences, precise values, or error location.
-  Before submission, write a private quiz/key.json rubric. State the points and
-  full and partial credit criteria for each question. Keep this rubric fixed.
-  grade_lesson_quiz accepts points_earned and points_possible per question.
-  Supply both for every question when using points. correct means full credit.
-  The overall score must match the total earned and possible points.
+
+  ── The private rubric ────────────────────────────────────────────────────────────
+
+    Before the learner submits, write <lesson>/quiz/key.json. The server never serves
+    the quiz/ directory. For each question, state the expected answer, the points
+    possible, and the criteria for full and partial credit. For example:
+
+      {
+        "check-1": {
+          "q1": {
+            "expected": "a",
+            "points": 1,
+            "full": "Chooses a.",
+            "partial": "None."
+          }
+        }
+      }
+
+    Keep the rubric fixed for every attempt at a quiz. Do not change a question id
+    or a rubric after a learner submits. grade_lesson_quiz accepts points_earned and
+    points_possible per question. Supply both for every question when you use
+    points. correct means full credit. The overall score must match the total
+    earned and possible points.
 -->
 
 <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
   <ol class="cl-questions">
-    <!-- choice: exactly one correct option. Two or more radios. -->
+    <!--
+      choice: exactly one correct option. Two or more radios. Each radio needs a
+      value that is unique in the question, such as "a". Values use letters, digits,
+      "_", ".", and "-". The answer stores the value.
+    -->
     <li class="cl-q" data-question-id="q1" data-type="choice">
       <p class="cl-q-prompt">Which of these describes a borrow that outlives its owner?</p>
       <ul class="cl-options">
@@ -91,7 +125,10 @@
       </ul>
     </li>
 
-    <!-- multi: any number of correct options. Two or more checkboxes. -->
+    <!--
+      multi: any number of correct options. Two or more checkboxes. Each checkbox
+      needs a unique value, as for choice.
+    -->
     <li class="cl-q" data-question-id="q2" data-type="multi">
       <p class="cl-q-prompt">Select every statement that holds for an immutable borrow.</p>
       <ul class="cl-options">

@@ -1,14 +1,35 @@
 <!doctype html>
 <!--
-  Spaced review template. scaffold_review copies this into a new lesson directory.
+  Spaced review shell. scaffold_review copies this into a new lesson directory.
 
-  Write one new question for each item that scaffold_review returned. Test the same
-  idea with a new example, so the learner recalls the idea and not a remembered
-  answer. Put the given key on each question as data-review-of, exactly. Keep the
-  items in the order given: they are mixed across lessons on purpose.
+  ── Steps ────────────────────────────────────────────────────────────────────────
 
-  Prefer retrieval types (term, short, numeric, cloze, order, locate). See quiz.html
-  for the full contract. Delete the example question.
+    1. Read the current quiz contract: assets/templates/quiz.html. Read it before
+       each review. It can change between sessions.
+    2. For each item that scaffold_review returned, state the idea it tests.
+    3. Write one new question for that idea, with a new example, so the learner
+       recalls the idea and not a remembered answer. Choose the response type that
+       fits the idea. It does not have to match the original type.
+    4. Put the given key on the question as data-review-of, exactly. Keep the items
+       in the order given: they are mixed across lessons on purpose.
+    5. Write the private rubric in quiz/key.json before the learner submits.
+    6. Open the page. Check that each control works and that no contract error shows.
+
+  ── Response type chooser ────────────────────────────────────────────────────────
+
+    term     recall a name or a precise phrase
+    short    explain reasoning or a cause
+    numeric  calculate a count or a quantity
+    cloze    supply missing values in context
+    order    reconstruct a sequence
+    locate   identify a specific error or segment
+    choice   distinguish one correct option from close alternatives
+    multi    identify each valid option in a set
+    match    associate related items
+
+    A review tests recall after a gap, so prefer retrieval types: term, short,
+    numeric, cloze, order, locate. quiz.html has a complete example of each type.
+    Use a .cl-q-stimulus for code, a passage, a table, or a diagram.
 -->
 <html lang="en">
   <head>
@@ -30,14 +51,18 @@
 
       <form class="cl-quiz" data-quiz-id="review" data-kind="review" data-title="Review">
         <ol class="cl-questions">
+          <!--
+            REPLACE: this question is unfinished on purpose. Its data-type and its
+            data-review-of are not valid, so the page shows a contract error until
+            you write the question. Write one question for each returned item.
+          -->
           <li
             class="cl-q"
             data-question-id="r1"
-            data-type="short"
+            data-type="CHOOSE-A-TYPE"
             data-review-of="REPLACE-lesson/quiz-id/question-id"
           >
             <p class="cl-q-prompt">Ask about the same idea, with a new example.</p>
-            <textarea name="r1" rows="3"></textarea>
           </li>
         </ol>
       </form>
