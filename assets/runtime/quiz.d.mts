@@ -8,19 +8,14 @@ export type QuestionType =
 
 export type QuizKind = "check" | "pretest" | "review";
 
-export type Confidence = "guess" | "unsure" | "sure";
-
 export declare const QUESTION_TYPES: readonly QuestionType[];
 export declare const RETRIEVAL_TYPES: readonly QuestionType[];
 export declare const RECOGNITION_TYPES: readonly QuestionType[];
 export declare const QUIZ_KINDS: readonly QuizKind[];
-export declare const CONFIDENCE_LEVELS: readonly Confidence[];
-export declare const CONFIDENCE_LABELS: Readonly<Record<Confidence, string>>;
 export declare const LOCATE_SELECT: readonly string[];
 
 export declare function isQuestionType(value: unknown): value is QuestionType;
 export declare function isQuizKind(value: unknown): value is QuizKind;
-export declare function isConfidence(value: unknown): value is Confidence;
 export declare function parseNumber(text: unknown): number | null;
 export declare function isContractId(value: unknown): value is string;
 export declare function reviewKey(lesson: string, quizId: string, questionId: string): string;

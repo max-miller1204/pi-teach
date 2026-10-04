@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import * as fs from "node:fs";
 
-import { CONFIDENT_WRONG, PRETEST_FOLLOW_UP, QUIZ_FOLLOW_UP } from "../src/prompts.ts";
+import { PRETEST_FOLLOW_UP, QUIZ_FOLLOW_UP } from "../src/prompts.ts";
 import { DAY_MS } from "../src/review.ts";
 import * as store from "../src/store.ts";
 import { classroomTools, PI_HOST } from "../src/tools.ts";
@@ -103,7 +103,7 @@ describe("grade_lesson_quiz", () => {
     expect(result.content[0].text).toContain("q9");
   });
 
-  it("names confident misses and correct guesses, and when each comes back", async () => {
+  it("ignores legacy confidence metadata when grading and scheduling review", async () => {
     const submission = submit("check", [
       termAnswer("q1", "x", { confidence: "sure" }),
       termAnswer("q2", "y", { confidence: "guess" }),
@@ -118,11 +118,12 @@ describe("grade_lesson_quiz", () => {
       ],
     });
     const text = result.content[0].text;
-    expect(text).toContain(`Wrong while "Sure": q1. ${CONFIDENT_WRONG}`);
-    expect(text).toContain("Correct but guessed: q2.");
-    // A miss comes back tomorrow; a guess stays in the first box, so also tomorrow.
-    expect(text).toContain("Next review: q1 tomorrow, q2 tomorrow.");
-    expect(result.details["confidentlyWrong"]).toEqual(["q1"]);
+    expect(text).not.toContain("Wrong while");
+    expect(text).not.toContain("Correct but guessed");
+    // A wrong answer returns tomorrow. A correct answer moves to three days.
+    expect(text).toContain("Next review: q1 tomorrow, q2 in 3 days.");
+    expect(result.details).not.toHaveProperty("confidentlyWrong");
+    expect(result.details).not.toHaveProperty("correctGuesses");
   });
 
   it("treats a pretest as diagnostic", async () => {
@@ -160,7 +161,7 @@ describe("scaffold_review", () => {
     expect(result.details["error"]).toBeUndefined();
     const text = result.content[0].text;
     expect(text).toContain('data-review-of="001-ownership/check-1/q1"');
-    expect(text).toContain("Their last answer (wrong, sure): the stack");
+    expect(text).toContain("Their last answer (wrong): the stack");
 
     const lesson = result.details["lesson"] as string;
     expect(lesson).toMatch(/^002-review-\d{4}-\d{2}-\d{2}$/);

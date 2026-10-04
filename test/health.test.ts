@@ -97,7 +97,7 @@ describe("lessonHealthLines", () => {
     expect(lines.join("\n")).toMatch(/"dropped": 5 turns\n.*"one owner": 3 turns/);
   });
 
-  it("separates repeated misses, confident misses, and a single last miss", () => {
+  it("separates repeated misses and a single last miss, ignoring old confidence", () => {
     const attempts = [
       attempt("1", { q1: false, q2: true, q3: true }),
       attempt("2", { q1: false, q2: false, q3: true }, "sure"),
@@ -109,7 +109,7 @@ describe("lessonHealthLines", () => {
       }),
     ).join("\n");
     expect(text).toContain('`check-1/q1` "What is q1?": missed 2 of 2');
-    expect(text).toMatch(/Wrong while "Sure".*\n.*check-1\/q1.*\n.*check-1\/q2/);
+    expect(text).not.toContain("Wrong while");
     expect(text).toContain("Missed on the last attempt:** `check-1/q2`");
     expect(text).not.toContain("q3");
   });
@@ -158,7 +158,7 @@ describe("healthReport", () => {
     for (const selected of [undefined, "001-ownership"]) {
       const report = healthReport("rust", lessons, [], selected);
       expect(report).toContain('`check-1/q1` "What is q1?": missed 2 of 3');
-      expect(report).toContain('Wrong while "Sure"');
+      expect(report).not.toContain("Wrong while");
       expect(report).not.toContain("`review/r1`");
     }
   });

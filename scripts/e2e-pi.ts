@@ -1,4 +1,4 @@
-/** Test browser questions, quiz grading, and retakes in a real Pi session. */
+/** Test browser questions, quiz grading, and chat follow-up in a real Pi session. */
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -131,6 +131,15 @@ try {
     session,
     fixture.root,
     `async page => {
+    if (await page.locator('.cl-confidence').count()) throw new Error('The page has confidence controls');
+    ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, "pi-fresh-lesson.png"))},fullPage:true});` : ""}
+    return true;
+  }`,
+  );
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
     await page.evaluate(() => {
       const text = document.querySelector('main > p').firstChild;
       const start = text.textContent.indexOf('one owner');
@@ -163,19 +172,17 @@ try {
   );
   console.log("[e2e:pi] browser question answered through answer_lesson_question");
 
-  for (const [attempt, option, expected] of [
-    [1, "b", false],
-    [2, "a", true],
-  ] as const) {
+  const attempt = 1;
+  const option = "b";
+  const expected = false;
+  {
     const start = events.length;
     const submitted = await playwrightCode<{ id: string }>(
       session,
       fixture.root,
       `async page => {
       const form = page.locator('form.cl-quiz');
-      ${attempt === 2 ? "await form.getByRole('button', {name:'Try again', exact:true}).click();" : ""}
       await form.locator('input[value="${option}"]').check();
-      await form.locator('.cl-confidence input[value=sure]').check();
       const response = page.waitForResponse(r => r.url().endsWith('/api/quiz/submit') && r.request().method() === 'POST');
       await form.getByRole('button', {name:'Submit for grading', exact:true}).click();
       const result = await response;
@@ -183,6 +190,9 @@ try {
       return await result.json();
     }`,
     );
+    const saved = store.findSubmission(submitted.id);
+    if (!saved || saved.answers.some((answer) => answer.confidence !== undefined))
+      throw new Error("The browser submission contains confidence metadata");
     const grade = await until(
       "quiz grade",
       () =>
@@ -203,8 +213,7 @@ try {
         e.message.content.filter((c: any) => c.type === "text").map((c: any) => c.text),
       )
       .join("\n");
-    if (attempt === 1 && !chat.includes("?"))
-      throw new Error("Pi did not ask a retrieval question in chat");
+    if (!chat.includes("?")) throw new Error("Pi did not ask a retrieval question in chat");
     await playwrightCode(
       session,
       fixture.root,
@@ -213,6 +222,9 @@ try {
         const form = document.querySelector('form.cl-quiz');
         return form.dataset.state === 'graded' && form.dataset.attempts === '${attempt}';
       });
+      if (await page.locator('.cl-confidence').count()) throw new Error('The graded page has confidence controls');
+      if (await page.getByRole('button', {name:'Try again', exact:true}).count()) throw new Error('The page has a retry button');
+      if (!await page.getByRole('button', {name:'Graded', exact:true}).isDisabled()) throw new Error('The graded quiz is unlocked');
       if (!await page.locator('input[value="${option}"]').isChecked()) throw new Error('The page shows the wrong answer');
       ${artifacts ? `await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({path:${JSON.stringify(path.join(artifacts, `pi-attempt-${attempt}.png`))},fullPage:true});` : ""}
       return true;
@@ -222,6 +234,35 @@ try {
       `[e2e:pi] attempt ${attempt}: ${grade.score}%, ${expected ? "correct" : "wrong"}; chat: ${JSON.stringify(chat)}`,
     );
   }
+  const replyStart = events.length;
+  send({
+    id: "chat-reply",
+    type: "prompt",
+    message:
+      "My answer: When the owner of a value leaves scope, Rust drops that value and frees its resources. If ownership moved to another variable, that new owner controls when the value is dropped. Please check my answer to your question. Stay on this lesson.",
+  });
+  const replyRun = await until("chat answer check", () => {
+    const next = events.slice(replyStart);
+    return next.some((e) => e.type === "agent_settled") ? next : null;
+  });
+  const checkedReply = replyRun
+    .filter((e) => e.type === "message_end" && e.message.role === "assistant")
+    .flatMap((e) => e.message.content.filter((c: any) => c.type === "text").map((c: any) => c.text))
+    .join("\n");
+  if (!checkedReply.trim()) throw new Error("Pi did not check the learner's chat reply");
+  if (store.listSubmissions("rust", "001-ownership").length !== 1)
+    throw new Error("The chat check created another quiz attempt");
+  const review = store.reviewItems("rust");
+  if (
+    review.length !== 1 ||
+    review[0]!.attempts !== 1 ||
+    review[0]!.lastCorrect ||
+    review[0]!.box !== 0
+  )
+    throw new Error("The chat check changed the missed idea's review history");
+  console.log(`[e2e:pi] chat answer check: ${JSON.stringify(checkedReply)}`);
+  if (artifacts)
+    fs.writeFileSync(path.join(artifacts, "pi-events.json"), JSON.stringify(events, null, 2));
   if (store.listLessons("rust").length !== 1)
     throw new Error("Pi created another lesson without agreement");
   send({ id: "stop", type: "prompt", message: "/classroom stop" });
@@ -235,7 +276,7 @@ try {
     if (!(error instanceof TypeError)) throw error;
   }
   console.log(
-    "[e2e:pi] PASS: browser question, wrong-answer chat check, retake, widget, and server stop",
+    "[e2e:pi] PASS: browser question, wrong-answer chat check, locked quiz, spaced review, widget, and server stop",
   );
 } finally {
   if (browserOpen) await playwright(session, fixture.root, "close");

@@ -18,14 +18,7 @@ import { applyAnswer, applyGrade } from "./bridge.ts";
 import { avoidedUses, htmlText } from "./glossary.ts";
 import { healthReport, type LessonHealthInput } from "./health.ts";
 import { classroomDir, isValidSlug, lessonDir, slugify, templatesDir } from "./paths.ts";
-import {
-  CONFIDENT_WRONG,
-  CORRECT_GUESS,
-  missionStub,
-  notesStub,
-  PRETEST_FOLLOW_UP,
-  QUIZ_FOLLOW_UP,
-} from "./prompts.ts";
+import { missionStub, notesStub, PRETEST_FOLLOW_UP, QUIZ_FOLLOW_UP } from "./prompts.ts";
 import { answersByQuestion, kindOf } from "./quiz.ts";
 import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
 import * as server from "./server.ts";
@@ -222,23 +215,10 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           .filter((question) => !question.correct)
           .map((question) => question.questionId);
 
-        const answers = new Map(answersByQuestion(submission.answers));
-        const confidence = (id: string) => answers.get(id)?.[0].confidence;
-        const confidentlyWrong = incorrectQuestionIds.filter((id) => confidence(id) === "sure");
-        const correctGuesses = grade.questions
-          .filter((q) => q.correct && confidence(q.questionId) === "guess")
-          .map((q) => q.questionId);
-
         const notes: string[] = [];
         if (kind === "pretest") {
           notes.push(PRETEST_FOLLOW_UP);
         } else {
-          if (confidentlyWrong.length > 0) {
-            notes.push(`Wrong while "Sure": ${confidentlyWrong.join(", ")}. ${CONFIDENT_WRONG}`);
-          }
-          if (correctGuesses.length > 0) {
-            notes.push(`Correct but guessed: ${correctGuesses.join(", ")}. ${CORRECT_GUESS}`);
-          }
           notes.push(
             incorrectQuestionIds.length > 0
               ? `Missed questions: ${incorrectQuestionIds.join(", ")}.\n\n${QUIZ_FOLLOW_UP}`
@@ -254,8 +234,6 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             score: grade.score,
             kind,
             incorrectQuestionIds,
-            confidentlyWrong,
-            correctGuesses,
           },
         );
       },
@@ -439,7 +417,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             `${i + 1}. data-review-of="${item.key}"`,
             `   Interval: box ${item.box + 1} of ${REVIEW_INTERVALS_DAYS.length}, due ${relativeDay(item.dueAt, now)}, ${item.attempts} graded attempt${item.attempts === 1 ? "" : "s"}.`,
             `   Original question: ${item.prompt || "(question text unavailable)"}`,
-            `   Their last answer (${item.lastCorrect ? "correct" : "wrong"}${item.lastConfidence ? `, ${item.lastConfidence}` : ""}): ${item.lastAnswer || "(blank)"}`,
+            `   Their last answer (${item.lastCorrect ? "correct" : "wrong"}): ${item.lastAnswer || "(blank)"}`,
             `   Your last feedback: ${item.lastFeedback}`,
           ].join("\n"),
         );
@@ -473,7 +451,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       name: "lesson_health",
       label: "Lesson Health",
       description:
-        "Report where lessons did not land: long question threads, quiz questions missed more than once, wrong answers marked Sure, glossary words to avoid, GLOSSARY.md errors, and the learner's self-explanations. " +
+        "Report where lessons did not land: long question threads, quiz questions missed more than once, glossary words to avoid, GLOSSARY.md errors, and the learner's self-explanations. " +
         "Call it before you plan the next lesson, and fix a lesson that keeps failing.",
       parameters: object(
         {
