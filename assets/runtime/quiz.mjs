@@ -122,6 +122,27 @@ function duplicates(ids) {
   return [...repeated];
 }
 
+/**
+ * Each radio or checkbox needs its own value. The answer stores the value, and the
+ * page restores a saved answer by it. A missing value reads as "on" in the browser.
+ */
+function checkOptionValues(errors, values) {
+  const missing = values.filter((value) => value === null || value === "").length;
+  if (missing > 0) {
+    errors.push(
+      `has ${missing} option${missing === 1 ? "" : "s"} with no value. Give each option a unique value, such as value="a".`,
+    );
+  }
+  const invalid = values.filter((value) => value && !isContractId(value));
+  if (invalid.length > 0) {
+    errors.push(
+      `has option values that are not valid ids: ${invalid.join(", ")}. Use letters, digits, "_", ".", and "-".`,
+    );
+  }
+  const repeated = duplicates(values.filter(Boolean));
+  if (repeated.length > 0) errors.push(`repeats option values: ${repeated.join(", ")}.`);
+}
+
 function checkIds(errors, ids, what, min) {
   if (ids.length < min) errors.push(`needs at least ${min} ${what}, found ${ids.length}.`);
   const invalid = ids.filter((id) => !isContractId(id));
@@ -140,6 +161,7 @@ function checkIds(errors, ids, what, min) {
  * shape: {
  *   id, type, kind, reviewOf, select, hasStimulus, hasCloze,
  *   radios, checkboxes, textInputs, textareas, numbers, units,   (counts)
+ *   options,                     (the value attribute of each radio and checkbox)
  *   blanks, orderItems, matchLeft, matchRight, segments,         (id lists)
  * }
  */
@@ -183,11 +205,13 @@ export function questionErrors(shape) {
   switch (shape.type) {
     case "choice":
       if (shape.radios < 2) errors.push(`needs at least 2 radio options, found ${shape.radios}.`);
+      checkOptionValues(errors, shape.options);
       break;
     case "multi":
       if (shape.checkboxes < 2) {
         errors.push(`needs at least 2 checkbox options, found ${shape.checkboxes}.`);
       }
+      checkOptionValues(errors, shape.options);
       break;
     case "term":
       if (shape.textInputs !== 1) {

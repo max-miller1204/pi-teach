@@ -883,6 +883,9 @@ function questionShape(question, kind) {
     textareas: count("textarea"),
     numbers: count("input.cl-number"),
     units: count(".cl-unit"),
+    options: own(question, "input[type=radio], input[type=checkbox]").map((input) =>
+      input.getAttribute("value"),
+    ),
     blanks: ids("input[data-blank]", "data-blank"),
     orderItems: ids(".cl-order > li", "data-item"),
     matchLeft: ids(".cl-match-left > li", "data-item"),

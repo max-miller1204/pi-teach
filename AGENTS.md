@@ -88,6 +88,9 @@ Extension side (`.ts`):
 - `src/prompts.ts` — every string sent to the model.
 - `src/quiz.ts`: quiz answers on the server: their typed shape, their validation, and
   the text the teacher grades from.
+- `src/quiz-authoring.ts`: reads the questions a lesson document declares, for the
+  `lesson_health` authoring diagnostics. Pure. The browser still owns the contract
+  check.
 - `src/review.ts`: the spaced-review schedule, derived from grade history. Pure.
 - `src/glossary.ts`: parses `GLOSSARY.md` and finds words the glossary says to avoid.
 - `src/health.ts`: the `lesson_health` report. Pure.
@@ -150,6 +153,16 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   submitted. The server checks each answer against its type with `parseAnswer`. Only
   submissions written before types existed have answers with no `type`; read them
   through `answersByQuestion`, which groups their one-entry-per-box `multi` answers.
+- **A regrade is a revision, not an attempt.** `grade_lesson_quiz` can grade a
+  submission again. Each grade is a new file, so the history is kept. Read grades
+  through `store.latestGrades()`, which keeps the newest grade for each submission.
+  Scores, quiz state, health, and review must all agree on that revision. Attempts
+  count submissions, never grade files.
+- **The lesson template is a shell.** `lesson.html` and `review.html` keep the runtime
+  parts and leave one question with `data-type="CHOOSE-A-TYPE"`, so an unwritten quiz
+  fails loudly. Do not add a fixed section order or a default question type back.
+  `quiz.html` stays the one complete contract. `authoringSteps()` in `prompts.ts` is
+  what the scaffold tools return.
 - **One state per quiz.** A lesson can hold several quizzes, so `/api/state` returns the
   latest attempt at each `quizId`. A new attempt is refused (409) until the last one is
   graded.
@@ -170,6 +183,11 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   manifest change, also run `claude plugin validate .`.
 - After a change to the MCP server, the skills, or the prompts, run `npm run e2e:claude`
   and `npm run e2e:codex`. They drive a real session through a question and a quiz.
+- After a change to the templates or the authoring guidance, run
+  `npm run e2e:authoring -- claude` and `npm run e2e:authoring -- codex`. They let a
+  real agent write lessons from the scaffold, then submit its own questions. Read
+  the report it prints. Model output varies between runs, so it is an evaluation,
+  not a CI gate.
 - `test/mcp.test.ts` drives `McpSession` against the real server. `test/plugin.test.ts`
   checks the manifests against the package.
 - Keep `.codex-plugin/plugin.json` `version` equal to `package.json`. Codex caches the

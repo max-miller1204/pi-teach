@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { PRETEST_FOLLOW_UP, QUIZ_FOLLOW_UP } from "../src/prompts.ts";
 import { DAY_MS } from "../src/review.ts";
 import * as store from "../src/store.ts";
+import { templatesDir } from "../src/paths.ts";
 import { classroomTools, PI_HOST } from "../src/tools.ts";
 import {
   makeFixture,
@@ -25,7 +27,7 @@ afterEach(() => fixture.cleanup());
 
 describe.each([
   ["Pi", PI_HOST],
-  ["MCP", { browseHint: "Call open_classroom." }],
+  ["MCP", { browseHint: "Call open_classroom.", checkPage: "Call open_classroom." }],
 ] as const)("%s quiz follow-up", (_name, host) => {
   async function grade(correct: boolean, score: number) {
     const submission = store.createSubmission({
@@ -148,6 +150,54 @@ describe("grade_lesson_quiz", () => {
   });
 });
 
+describe("scaffold_lesson", () => {
+  it("creates a shell that fails loudly until a question is written", async () => {
+    const result = await tool("scaffold_lesson").execute({
+      classroom: "rust",
+      name: "borrowing",
+      title: "Borrowing",
+      summary: "Lend a value without moving it.",
+    });
+    expect(result.details["error"]).toBeUndefined();
+    const text = result.content[0].text;
+    const htmlPath = result.details["path"] as string;
+    expect(text).toContain(
+      `Read the current quiz contract: ${path.join(templatesDir(), "quiz.html")}`,
+    );
+    expect(text).toContain("State one learning objective");
+    expect(text).toContain("predict, retrieve, explain, practise, or diagnose");
+    expect(text).toContain(path.join(path.dirname(htmlPath), "quiz", "key.json"));
+    expect(text).toContain("Call lesson_health for this lesson");
+    expect(text).toContain("Open the lesson URL in your browser tool.");
+    expect(text).not.toContain("if you have one");
+
+    const html = fs.readFileSync(htmlPath, "utf8");
+    expect(html).toContain("data-cl-content");
+    expect(html).toContain("<h1>Borrowing</h1>");
+    expect(html).toContain('data-type="CHOOSE-A-TYPE"');
+    expect(html).not.toContain("{{");
+
+    const health = await tool("lesson_health").execute({
+      classroom: "rust",
+      lesson: "002-borrowing",
+    });
+    expect(health.content[0].text).toContain('**Unfinished questions:** `q1` ("CHOOSE-A-TYPE")');
+    expect(health.content[0].text).toContain("**No private rubric:**");
+
+    fs.writeFileSync(
+      htmlPath,
+      html.replace('data-type="CHOOSE-A-TYPE"', 'data-type="numeric"'),
+      "utf8",
+    );
+    fixture.write("rust/002-borrowing/quiz/key.json", "{}");
+    const fixed = await tool("lesson_health").execute({ classroom: "rust" });
+    expect(fixed.content[0].text).not.toContain("Unfinished questions");
+    expect(fixed.content[0].text).not.toContain("No private rubric");
+    expect(fixed.content[0].text).toContain("## Response types in recent lessons");
+    expect(fixed.content[0].text).toContain("- `002-borrowing`: 1 numeric");
+  });
+});
+
 describe("scaffold_review", () => {
   it("fails loudly when nothing is due", async () => {
     const empty = await tool("scaffold_review").execute({ classroom: "rust" });
@@ -170,13 +220,16 @@ describe("scaffold_review", () => {
     const text = result.content[0].text;
     expect(text).toContain('data-review-of="001-ownership/check-1/q1"');
     expect(text).toContain("Their last answer (wrong): the stack");
+    expect(text).toContain("Read the current quiz contract");
+    expect(text).toContain("It does not have to match the original type.");
+    expect(text).toContain("quiz/key.json");
 
     const lesson = result.details["lesson"] as string;
     expect(lesson).toMatch(/^002-review-\d{4}-\d{2}-\d{2}$/);
     expect(store.readLesson("rust", lesson)).toMatchObject({ kind: "review" });
-    expect(fs.readFileSync(result.details["path"] as string, "utf8")).toContain(
-      'data-kind="review"',
-    );
+    const html = fs.readFileSync(result.details["path"] as string, "utf8");
+    expect(html).toContain('data-kind="review"');
+    expect(html).toContain('data-type="CHOOSE-A-TYPE"');
   });
 
   it("refuses a limit out of range", async () => {

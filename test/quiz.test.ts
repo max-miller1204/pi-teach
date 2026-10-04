@@ -35,6 +35,7 @@ function shape(overrides: Partial<QuestionShape>): QuestionShape {
     textareas: 0,
     numbers: 0,
     units: 0,
+    options: [],
     blanks: [],
     orderItems: [],
     matchLeft: [],
@@ -47,8 +48,8 @@ function shape(overrides: Partial<QuestionShape>): QuestionShape {
 describe("questionErrors", () => {
   it("accepts a well-formed question of every type", () => {
     const valid: Array<Partial<QuestionShape>> = [
-      { type: "choice", radios: 3 },
-      { type: "multi", checkboxes: 2 },
+      { type: "choice", radios: 3, options: ["a", "b", "c"] },
+      { type: "multi", checkboxes: 2, options: ["a", "b"] },
       { type: "term", textInputs: 1 },
       { type: "short", textareas: 1 },
       { type: "numeric", numbers: 1, units: 1 },
@@ -102,6 +103,24 @@ describe("questionErrors", () => {
     expect(questionErrors(shape({ textareas: 1, select: "one" })).join(" ")).toContain(
       'only a "locate" question',
     );
+  });
+
+  it("requires a unique, valid value on every choice and multi option", () => {
+    const missing = questionErrors(shape({ type: "multi", checkboxes: 2, options: ["a", null] }));
+    expect(missing).toEqual([
+      'has 1 option with no value. Give each option a unique value, such as value="a".',
+    ]);
+    expect(
+      questionErrors(shape({ type: "choice", radios: 2, options: ["", ""] })).join(" "),
+    ).toContain("has 2 options with no value");
+    expect(questionErrors(shape({ type: "choice", radios: 3, options: ["a", "b", "a"] }))).toEqual([
+      "repeats option values: a.",
+    ]);
+    expect(
+      questionErrors(shape({ type: "multi", checkboxes: 2, options: ["a", "two words"] })).join(
+        " ",
+      ),
+    ).toContain("not valid ids: two words");
   });
 
   it("requires data-review-of in a review quiz, and only there", () => {

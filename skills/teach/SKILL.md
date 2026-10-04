@@ -30,7 +30,10 @@ description: Teach the user a topic one short interactive lesson at a time, in a
 10. When `begin_teaching` reports questions due for review, offer a review before new
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.
-12. Choose response types that fit each skill. Mix suitable types across lessons.
+12. Create each lesson with `scaffold_lesson` and each review with `scaffold_review`.
+    Follow the authoring steps they return. Read the current quiz contract each time.
+    The lesson template is a shell. Design the lesson from its objective and the
+    learner. Choose response types that fit each skill.
 13. Write the private quiz rubric before submission. Use it for every attempt.
     For partial credit, supply points for every question. Keep the overall score
     consistent with those points.

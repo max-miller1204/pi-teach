@@ -38,6 +38,8 @@ export interface QuestionShape {
   textareas: number;
   numbers: number;
   units: number;
+  /** The `value` attribute of each radio and checkbox, or null when it is absent. */
+  options: Array<string | null>;
   blanks: string[];
   orderItems: string[];
   matchLeft: string[];

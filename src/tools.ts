@@ -18,8 +18,14 @@ import { applyAnswer, applyGrade } from "./bridge.ts";
 import { avoidedUses, htmlText } from "./glossary.ts";
 import { healthReport, type LessonHealthInput } from "./health.ts";
 import { classroomDir, isValidSlug, lessonDir, slugify, templatesDir } from "./paths.ts";
-import { missionStub, notesStub, PRETEST_FOLLOW_UP, QUIZ_FOLLOW_UP } from "./prompts.ts";
-import { authoredQuestionTypes } from "./quiz-authoring.ts";
+import {
+  authoringSteps,
+  missionStub,
+  notesStub,
+  PRETEST_FOLLOW_UP,
+  QUIZ_FOLLOW_UP,
+} from "./prompts.ts";
+import { authoredQuestions } from "./quiz-authoring.ts";
 import { answersByQuestion, kindOf } from "./quiz.ts";
 import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
 import * as server from "./server.ts";
@@ -45,9 +51,15 @@ export interface ClassroomTool {
 export interface ToolHost {
   /** Tells the model how to show a classroom when the server is not running. */
   browseHint: string;
+  /** Tells the model how to open a new page to check it. */
+  checkPage: string;
 }
 
-export const PI_HOST: ToolHost = { browseHint: "Run /classroom to open it in a browser." };
+export const PI_HOST: ToolHost = {
+  browseHint: "Run /classroom to open it in a browser.",
+  checkPage:
+    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Open the lesson URL in your browser tool. Look for contract errors, and press each local control. If the classroom server is not running, ask the learner to run /classroom. If you cannot open the page, tell the learner that it is not checked.",
+};
 
 function ok(text: string, details: Record<string, unknown> = {}): ToolResult {
   return { content: [{ type: "text", text }], details };
@@ -391,7 +403,8 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       label: "Scaffold Lesson",
       description:
         "Create a lesson directory from the canonical template and return its path. " +
-        "Write the lesson by editing the returned lesson.html. Read the quiz markup contract in its comments. Mix response types that fit the skill. Keep short for explanations. Write a private quiz rubric before submission. " +
+        "The template is a shell with optional example sections, not a fixed lesson script. " +
+        "The result lists the authoring steps: read the current quiz contract, state the objective, choose the lesson experience and response types, write the questions, write the private rubric, and check the page. " +
         "Lessons are numbered in the order they are created.",
       parameters: object(
         {
@@ -435,8 +448,9 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           [
             `Created lesson ${slug} in ${params.classroom}.`,
             `Edit: ${htmlPath}`,
-            `Quiz markup contract: ${path.join(templatesDir(), "quiz.html")}`,
             url ? `URL: ${url}` : host.browseHint,
+            "",
+            authoringSteps("lesson", htmlPath, host.checkPage),
           ].join("\n"),
           { classroom: params.classroom, lesson: slug, path: htmlPath, url },
         );
@@ -451,7 +465,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       description:
         "Create a spaced review session from the questions that are due for review, and return them. " +
         "Each graded question has a review schedule: a correct answer moves it to a longer interval, a wrong answer moves it back to one day. " +
-        "Write one new question for each returned item in the review lesson, and mark it with the given data-review-of key. " +
+        "Write one new question with a new example for each returned item, and mark it with the given data-review-of key. The result lists the authoring steps. " +
         "Fails when nothing is due.",
       parameters: object(
         {
@@ -523,11 +537,11 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           [
             `Created review session ${slug} in ${params.classroom}.`,
             `Edit: ${htmlPath}`,
-            `Quiz markup contract: ${path.join(templatesDir(), "quiz.html")}`,
             url ? `URL: ${url}` : host.browseHint,
             "",
-            "Write one new question for each item below, in the review quiz in the lesson. Test the same idea with a new example, so the learner retrieves the idea and not a remembered answer. Put the given data-review-of on the question exactly. Mix question types, and prefer retrieval types. Keep items from different lessons mixed, in the order given.",
+            authoringSteps("review", htmlPath, host.checkPage),
             "",
+            "Due items:",
             ...listing,
           ].join("\n"),
           {
@@ -569,17 +583,23 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         const glossary = store.readGlossary(params.classroom);
         // Review answers live in other lessons. Read them before selecting the report.
         const checks = store.listRetrievalChecks(params.classroom);
-        const inputs: LessonHealthInput[] = lessons.map((lesson) => ({
-          lesson: lesson.name,
-          title: lesson.title,
-          questionTypes: authoredQuestionTypes(fs.readFileSync(lesson.htmlPath, "utf8")),
-          annotations: store.listAnnotations(params.classroom, lesson.name),
-          submissions: store.listSubmissions(params.classroom, lesson.name),
-          grades: store.listGrades(params.classroom, lesson.name),
-          reflections: store.listReflections(params.classroom, lesson.name),
-          retrievalChecks: checks.filter((check) => check.key.split("/")[0] === lesson.name),
-          avoided: avoidedUses(htmlText(fs.readFileSync(lesson.htmlPath, "utf8")), glossary),
-        }));
+        const inputs: LessonHealthInput[] = lessons.map((lesson) => {
+          const html = fs.readFileSync(lesson.htmlPath, "utf8");
+          return {
+            lesson: lesson.name,
+            title: lesson.title,
+            questions: authoredQuestions(html),
+            hasRubric: fs.existsSync(
+              path.join(lessonDir(params.classroom, lesson.name), "quiz", "key.json"),
+            ),
+            annotations: store.listAnnotations(params.classroom, lesson.name),
+            submissions: store.listSubmissions(params.classroom, lesson.name),
+            grades: store.latestGrades(params.classroom, lesson.name),
+            reflections: store.listReflections(params.classroom, lesson.name),
+            retrievalChecks: checks.filter((check) => check.key.split("/")[0] === lesson.name),
+            avoided: avoidedUses(htmlText(html), glossary),
+          };
+        });
 
         return ok(healthReport(params.classroom, inputs, glossary.errors, params.lesson), {
           classroom: params.classroom,

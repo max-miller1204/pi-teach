@@ -8,8 +8,13 @@
  */
 
 import { questionOutcome } from "../assets/runtime/grade.mjs";
-import { parseReviewKey, reviewKey } from "../assets/runtime/quiz.mjs";
-import { quizDiversityLines } from "./quiz-authoring.ts";
+import { isQuestionType, parseReviewKey, reviewKey } from "../assets/runtime/quiz.mjs";
+import {
+  quizDiversityLines,
+  typeCounts,
+  unfinishedQuestionLines,
+  type AuthoredQuestion,
+} from "./quiz-authoring.ts";
 import { answersByQuestion, kindOf, type QuestionType } from "./quiz.ts";
 import type { AvoidedUse } from "./glossary.ts";
 import type { Annotation, QuizGrade, QuizSubmission, Reflection, RetrievalCheck } from "./store.ts";
@@ -20,11 +25,24 @@ export interface LessonHealthInput {
   annotations: Annotation[];
   /** Every submission in the lesson, oldest first. */
   submissions: QuizSubmission[];
+  /** The newest grade for each submission, from `store.latestGrades`. */
   grades: QuizGrade[];
   reflections: Reflection[];
   avoided: AvoidedUse[];
   retrievalChecks?: RetrievalCheck[];
-  questionTypes?: QuestionType[];
+  /** The `.cl-q` elements in the lesson document, as authored. */
+  questions?: AuthoredQuestion[];
+  /** Whether the lesson has a private `quiz/key.json` rubric. */
+  hasRubric?: boolean;
+}
+
+/** How many recent lessons the response type summary lists. */
+export const RECENT_LESSONS = 5;
+
+function questionTypes(input: LessonHealthInput): QuestionType[] {
+  return (input.questions ?? [])
+    .map((q) => q.type)
+    .filter((type): type is QuestionType => isQuestionType(type));
 }
 
 /** A card with this many turns or more is a hotspot: the passage did not land. */
@@ -104,7 +122,16 @@ export function lessonHealthLines(
   input: LessonHealthInput,
   stats = questionStats([input]).filter((s) => s.lesson === input.lesson),
 ): string[] {
-  const lines: string[] = quizDiversityLines(input.questionTypes ?? []);
+  const questions = input.questions ?? [];
+  const lines: string[] = [
+    ...unfinishedQuestionLines(questions),
+    ...quizDiversityLines(questionTypes(input)),
+  ];
+  if (questions.length > 0 && input.hasRubric === false) {
+    lines.push(
+      "- **No private rubric:** `quiz/key.json` is missing. Write the expected answers, points, and full and partial credit criteria before the learner submits.",
+    );
+  }
 
   const hotspots = input.annotations
     .map((a) => ({ annotation: a, turns: 1 + (a.followUps ?? []).length }))
@@ -201,6 +228,18 @@ export function healthReport(
     out.push("Nothing needs attention. No long threads, repeated misses, or glossary problems.");
   } else if (quiet > 0) {
     out.push(`${quiet} other lesson${quiet === 1 ? "" : "s"}: nothing needs attention.`);
+  }
+
+  const recent = lessons.filter((l) => questionTypes(l).length > 0).slice(-RECENT_LESSONS);
+  if (!selectedLesson && recent.length > 0) {
+    out.push(
+      "",
+      "## Response types in recent lessons",
+      "",
+      ...recent.map((l) => `- \`${l.lesson}\`: ${typeCounts(questionTypes(l))}`),
+      "",
+      "Use this to notice repetition. Vary the lesson experience when that helps. Repeat a type when it fits the objective.",
+    );
   }
 
   out.push(

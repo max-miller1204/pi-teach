@@ -1,19 +1,81 @@
 <!doctype html>
 <!--
-  Canonical lesson template.
+  Lesson shell. scaffold_lesson copies this into <classroom>/<lesson>/lesson.html.
 
-  Copy this into <classroom>/<lesson-name>/lesson.html and fill it in. Keep it
-  self-contained: no external scripts, no CDN links. The classroom server injects
-  the shared stylesheet and the interactive runtime when it serves the page, so
-  everything below is just content.
+  This is a shell, not a lesson script. Keep the parts marked KEEP. They connect the
+  page to the classroom runtime and tell the learner how to ask. Everything between
+  the header and the footer is yours to design. The blocks there are optional
+  examples. Change them, reorder them, replace them, or delete them. Do not give
+  every lesson the same layout only because this file shows one. Changing only the
+  question types is not a new design.
 
-  Served at /c/<classroom>/<lesson> without a trailing slash. Use ./ for the
-  classroom link. Use assets/<path> for shared assets and <other-lesson> for
-  sibling lessons. Use /r/<classroom>/<file>.html for reference documents.
-  Do not use ../assets: it resolves outside the classroom.
+  ── Steps ────────────────────────────────────────────────────────────────────────
 
-  Placeholders to replace: {{LESSON_TITLE}}, {{ONE_LINE_SUMMARY}}, and the marked
-  sections. Delete anything you do not use — a short lesson is the point.
+    1. Read the current quiz contract: assets/templates/quiz.html. Read it before
+       each lesson. It can change between sessions.
+    2. State one learning objective. Write it as what the learner can do at the end.
+    3. Choose the lesson experience and the response types that fit the objective
+       and this learner. Use the pretest, earlier answers, questions, and
+       self-explanations. Look at recent lessons. Vary the approach when that helps.
+       Repeat a structure when repetition helps the objective.
+    4. Write the lesson and its questions. Give each interaction one purpose:
+       predict, retrieve, explain, practise, or diagnose.
+    5. Write the private rubric in quiz/key.json before the learner submits.
+    6. Open the page in your browser tool. Check that each control works and that no
+       contract error shows.
+
+  ── Optional lesson patterns ─────────────────────────────────────────────────────
+
+    Combine them or invent your own. Keep the lesson short: a few minutes of work.
+
+    * Predict and test: the learner predicts a result, then sees the real result.
+    * Debugging challenge: the learner finds the error in a short artifact (locate).
+    * Guided experiment: change one input, observe the effect, explain it.
+    * Faded worked example: a full example, then the same steps with gaps (cloze).
+    * Comparison: two cases side by side, then a question about the difference.
+    * Simulation or trace: step through a process one event at a time.
+    * Decision exercise: given a situation, choose the next action and justify it.
+
+  ── Response type chooser ────────────────────────────────────────────────────────
+
+    term     recall a name or a precise phrase
+    short    explain reasoning or a cause
+    numeric  calculate a count or a quantity
+    cloze    supply missing values in context
+    order    reconstruct a sequence
+    locate   identify a specific error or segment
+    choice   distinguish one correct option from close alternatives
+    multi    identify each valid option in a set
+    match    associate related items
+
+    Use retrieval (term, short, numeric, cloze, order, locate) when recall matters.
+    Use recognition (choice, multi, match) to distinguish alternatives. Do not put
+    all nine types in one lesson. quiz.html has a complete example of each type.
+
+  ── Other features ───────────────────────────────────────────────────────────────
+
+    * Pretest: a quiz with data-kind="pretest" before the teaching. Diagnostic only.
+    * .cl-q-stimulus: code, a passage, a table, an image, or a diagram for a question.
+      Give images useful alt text. Grading receives the stimulus text and alt text.
+    * form.cl-reflect: an ungraded self-explanation. Read it. It is not proof of
+      mastery.
+    * Glossary terms from GLOSSARY.md are marked on the page automatically.
+    * Local interactions: plain HTML, CSS, and an inline script can show a concept
+      (a stepper, a toggle, a <details> reveal). Use <button type="button"
+      class="cl-button">, or add cl-button-quiet for a secondary control. Make each
+      control work with the keyboard, label it, and show its result visibly. Check it
+      in the browser. Do not put local controls inside a form.cl-quiz.
+
+  ── Links ────────────────────────────────────────────────────────────────────────
+
+    Served at /c/<classroom>/<lesson> without a trailing slash. Use ./ for the
+    classroom link. Use assets/<path> for shared assets and <other-lesson> for
+    sibling lessons. Use /r/<classroom>/<file>.html for reference documents. Do not
+    use ../assets: it resolves outside the classroom. Keep the file self-contained:
+    no external scripts and no CDN links. The server injects the stylesheet and the
+    runtime.
+
+  Replace {{LESSON_TITLE}} and {{ONE_LINE_SUMMARY}} if they are still present.
 -->
 <html lang="en">
   <head>
@@ -23,75 +85,48 @@
   </head>
   <body>
     <!--
-      data-cl-content marks the region a learner can highlight to ask a question.
-      Keep quizzes inside it too — the runtime excludes form controls itself.
+      KEEP: main.cl-lesson-shell with data-cl-content. The learner can highlight
+      any text inside it to ask a question. Put all content and quizzes inside it.
     -->
     <main class="cl-lesson-shell" data-cl-content>
+      <!-- KEEP: the title and the one-line summary. -->
       <header>
         <h1>{{LESSON_TITLE}}</h1>
         <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
       </header>
 
       <!--
-        Optional pretest, before the teaching: a form.cl-quiz with data-kind="pretest".
-        Wrong answers are expected. It tells you what to stress. See quiz.html.
+        Optional example: a short teaching block. Cite each claim inline, like
+        <a href="https://example.com">this</a>. Replace or delete it.
       -->
-
       <section>
-        <h2>The idea</h2>
-        <p>
-          Teach the one thing this lesson is about. Stay inside working memory: a learner should
-          finish this in a few minutes and come away with a single win they can build on. Cite
-          sources inline —
-          <a href="https://example.com">like this</a> — so every claim is checkable.
-        </p>
-      </section>
-
-      <section>
-        <h2>Worked example</h2>
-        <p>Show it concretely before asking the learner to do anything.</p>
-        <pre><code>// a small, complete, runnable example</code></pre>
+        <h2>Replace this heading</h2>
+        <p>Teach toward the objective. Show a concrete case before you ask for work.</p>
       </section>
 
       <!--
-        Self-explanation: saved and shown to you, never graded. Put one after the idea
-        that matters most. See quiz.html for the contract.
-      -->
-      <form class="cl-reflect" data-reflect-id="explain-1">
-        <p class="cl-reflect-prompt">Explain the idea in your own words, as if to a friend.</p>
-        <textarea rows="3"></textarea>
-      </form>
-
-      <!--
-        Check on learning. See quiz.html for the full markup contract and every
-        question type: choice, multi, term, short, numeric, cloze, order, match, locate.
-        Every question needs data-type. Prefer the retrieval types.
+        REPLACE: the question below is unfinished on purpose. Its data-type is not a
+        valid type, so the page shows a contract error until you choose a type and
+        write the question. Place quizzes where they serve the lesson. A lesson can
+        have a pretest, checks between steps, or one check at the end.
       -->
       <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
         <ol class="cl-questions">
-          <li class="cl-q" data-question-id="q1" data-type="cloze">
-            <p class="cl-q-prompt">Ask something that requires retrieval, not recognition.</p>
-            <p class="cl-cloze">
-              A sentence from the lesson with its key word as a
-              <input type="text" data-blank="b1" />.
-            </p>
-          </li>
-
-          <li class="cl-q" data-question-id="q2" data-type="short">
-            <p class="cl-q-prompt">Ask them to explain it back in their own words.</p>
-            <textarea name="q2" rows="3"></textarea>
+          <li class="cl-q" data-question-id="q1" data-type="CHOOSE-A-TYPE">
+            <p class="cl-q-prompt">Write a question that tests the objective.</p>
           </li>
         </ol>
       </form>
 
+      <!--
+        Optional example: one primary source, the best thing to read or watch next.
+      -->
       <section>
         <h2>Go deeper</h2>
-        <p>
-          Recommend exactly one primary source — the highest-quality thing you found on this topic:
-          <a href="https://example.com">Author, “Title”</a>.
-        </p>
+        <p><a href="https://example.com">Author, "Title"</a></p>
       </section>
 
+      <!-- KEEP: the ask hint and the link back to the classroom. -->
       <footer>
         <p>
           <strong>Stuck on something?</strong> Highlight any sentence on this page and hit

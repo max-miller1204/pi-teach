@@ -326,7 +326,7 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
   if (!htmlPath) return null;
 
   const meta = readJson<LessonMeta>(path.join(dir, "lesson.json"));
-  const grades = listGrades(classroom, lesson);
+  const grades = latestGrades(classroom, lesson);
   const submissions = listSubmissions(classroom, lesson);
   const gradedIds = new Set(grades.map((g) => g.submissionId));
 
@@ -535,11 +535,24 @@ export function listSubmissions(classroom: string, lesson: string): QuizSubmissi
   );
 }
 
+/** Every grade file in a lesson, oldest first. A regrade adds a file, so this is history. */
 export function listGrades(classroom: string, lesson: string): QuizGrade[] {
   if (!isValidSlug(classroom) || !isValidSlug(lesson)) return [];
   return listJsonFiles<QuizGrade>(gradesDir(classroom, lesson)).sort(
     (a, b) => a.gradedAt - b.gradedAt,
   );
+}
+
+/**
+ * The newest grade for each submission. Read grades through this.
+ *
+ * Reason: a regrade writes a new file and keeps the old one. Scores, quiz state, and
+ * review must all use the same revision. A revision is not a new learner attempt.
+ */
+export function latestGrades(classroom: string, lesson: string): QuizGrade[] {
+  const latest = new Map<string, QuizGrade>();
+  for (const grade of listGrades(classroom, lesson)) latest.set(grade.submissionId, grade);
+  return [...latest.values()];
 }
 
 export function createSubmission(
@@ -597,7 +610,7 @@ export interface QuizState {
  */
 export function latestQuizStates(classroom: string, lesson: string): QuizState[] {
   const submissions = listSubmissions(classroom, lesson);
-  const grades = listGrades(classroom, lesson);
+  const grades = latestGrades(classroom, lesson);
   const byQuiz = new Map<string, QuizSubmission[]>();
   for (const submission of submissions) {
     const list = byQuiz.get(submission.quizId);
@@ -623,8 +636,9 @@ export function previousGrade(submission: QuizSubmission): QuizGrade | null {
   const before = earlier[earlier.length - 1];
   if (!before) return null;
   return (
-    listGrades(submission.classroom, submission.lesson).find((g) => g.submissionId === before.id) ??
-    null
+    latestGrades(submission.classroom, submission.lesson).find(
+      (g) => g.submissionId === before.id,
+    ) ?? null
   );
 }
 
@@ -639,7 +653,7 @@ export function previousGrade(submission: QuizSubmission): QuizGrade | null {
 export function reviewEvents(classroom: string): ReviewEvent[] {
   const events: ReviewEvent[] = [];
   for (const lesson of listLessonDirs(classroom)) {
-    const grades = new Map(listGrades(classroom, lesson).map((g) => [g.submissionId, g]));
+    const grades = new Map(latestGrades(classroom, lesson).map((g) => [g.submissionId, g]));
     for (const submission of listSubmissions(classroom, lesson)) {
       const grade = grades.get(submission.id);
       if (!grade || kindOf(submission) === "pretest") continue;

@@ -27,6 +27,10 @@ const allTypes = contract
   .slice(contract.indexOf('<form class="cl-quiz"'), contract.indexOf("</form>") + 7)
   .replace('data-quiz-id="check-1"', 'data-quiz-id="all-types"');
 const partialQuiz = `<form class="cl-quiz" data-quiz-id="partial" data-title="Partial credit regression"><ol class="cl-questions">${[1, 2, 3].map((i) => `<li class="cl-q" data-question-id="q${i}" data-type="short"><p class="cl-q-prompt">Explain idea ${i}.</p><textarea></textarea></li>`).join("")}</ol></form>`;
+const invalidOptionsQuiz = `<form class="cl-quiz" data-quiz-id="invalid-options" data-title="Invalid option values"><ol class="cl-questions">
+  <li class="cl-q" data-question-id="q1" data-type="multi"><p class="cl-q-prompt">Select both.</p><label><input type="checkbox" value="a">First option</label><label><input type="checkbox">Second option</label></li>
+  <li class="cl-q" data-question-id="q2" data-type="choice"><p class="cl-q-prompt">Select one.</p><label><input type="radio" name="dup" value="a">First option</label><label><input type="radio" name="dup" value="a">Other option</label></li>
+</ol></form>`;
 fixture.write(
   "rust/001-ownership/lesson.html",
   lessonHtml(
@@ -51,7 +55,7 @@ fixture.write(
     <ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="term">
       <p class="cl-q-prompt">Name the owner.</p><input type="text">
     </li></ol>
-  </form>${allTypes}${partialQuiz}`,
+  </form>${allTypes}${partialQuiz}${invalidOptionsQuiz}`,
   ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
 );
 
