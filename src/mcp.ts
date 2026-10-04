@@ -196,7 +196,7 @@ export function connectInbox(inbox: LearnerInbox): void {
 const MCP_HOST = {
   browseHint: "Call open_classroom to start the server, then give the learner the URL.",
   checkPage:
-    "Call lesson_health for this lesson: it reports unfinished question types and a missing rubric. Call open_classroom before you share the URL. Open the lesson URL with a browser tool if you have one. If you have none, ask the learner to tell you about any contract error on the page.",
+    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Call open_classroom to get the URL. Open the lesson URL in your browser tool. Look for contract errors, and press each local control. If you cannot open the page, tell the learner that it is not checked.",
 };
 
 function ok(text: string, details: Record<string, unknown> = {}): ToolResult {

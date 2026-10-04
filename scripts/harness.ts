@@ -87,6 +87,36 @@ export function toolCalls(harness: Harness, events: string): string[] {
   return [...events.matchAll(pattern)].map((match) => match[1]!);
 }
 
+/**
+ * The browser commands an agent ran: `playwright-cli` shell commands, and calls to a
+ * browser MCP tool. The authoring evaluation uses this to see whether the agent
+ * opened its own pages.
+ */
+export function browserCommands(harness: Harness, events: string): string[] {
+  const browserTool = /browser|chrome|playwright|preview/i;
+  const commands: string[] = [];
+  for (const line of events.split("\n").filter(Boolean)) {
+    const event = JSON.parse(line);
+    if (harness === "claude" && event.type === "assistant") {
+      for (const block of event.message.content) {
+        if (block.type !== "tool_use") continue;
+        const command = typeof block.input?.command === "string" ? block.input.command : "";
+        if (block.name === "Bash" && command.includes("playwright-cli")) commands.push(command);
+        else if (browserTool.test(block.name)) commands.push(block.name);
+      }
+    }
+    if (harness === "codex" && event.type === "item.completed") {
+      const item = event.item ?? {};
+      if (item.type === "command_execution" && String(item.command).includes("playwright-cli")) {
+        commands.push(String(item.command));
+      } else if (item.type === "mcp_tool_call" && browserTool.test(`${item.server} ${item.tool}`)) {
+        commands.push(`${item.server}.${item.tool}`);
+      }
+    }
+  }
+  return commands;
+}
+
 export async function until<T>(what: string, timeoutMs: number, probe: () => T | null): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

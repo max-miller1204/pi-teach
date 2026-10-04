@@ -11,21 +11,23 @@
  *      lesson whose quiz uses only short answers.
  *   2. Authoring session: the agent writes one lesson for each objective with
  *      scaffold_lesson. The prompt names no response types and no lesson patterns.
- *   3. Inspect each lesson: its outline, quiz kinds, response types, stimuli,
+ *   3. Check that the agent opened its pages in a browser tool. Claude Code may run
+ *      playwright-cli. Codex runs without a sandbox in temporary directories.
+ *   4. Inspect each lesson: its outline, quiz kinds, response types, stimuli,
  *      self-explanations, local controls, and private rubric.
- *   4. Open each lesson in a real browser with this script's own classroom server.
+ *   5. Open each lesson in a real browser with this script's own classroom server.
  *      Check for contract errors and page errors. Press each local control. Answer
  *      every quiz and submit it.
- *   5. Grading session: a second agent session opens the classroom, which restores
+ *   6. Grading session: a second agent session opens the classroom, which restores
  *      the ungraded submissions from disk. It grades each one from its rubric.
- *   6. Reload each lesson. Check that every quiz shows its grade and its answers.
- *   7. Print a report. Save it, the lessons, and screenshots when an artifacts
+ *   7. Reload each lesson. Check that every quiz shows its grade and its answers.
+ *   8. Print a report. Save it, the lessons, and screenshots when an artifacts
  *      directory is given.
  *
- * Hard failures: a missing lesson, an unfinished question, a missing rubric, a
- * contract error, a page error, a refused submission, or a missing grade. Variety is
- * reported, not enforced: a model can author differently on every run, and suitable
- * repetition is valid. Read the report.
+ * Hard failures: a missing lesson, an unfinished question, a missing rubric, no
+ * browser check of the agent's own pages, a contract error, a page error, a refused
+ * submission, or a missing grade. Variety is reported, not enforced: a model can
+ * author differently on every run, and suitable repetition is valid. Read the report.
  *
  * This calls a real model, so it needs a logged-in harness and is not part of CI. The
  * classrooms root and any CODEX_HOME are temporary directories, deleted at the end.
@@ -42,6 +44,7 @@ import { isQuestionType, type QuestionType } from "../assets/runtime/quiz.mjs";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
 import {
+  browserCommands,
   codexHome,
   harnessCommand,
   parseHarness,
@@ -138,6 +141,9 @@ const AUTHORING_PROMPT = [
   ...OBJECTIVES.map((objective, i) => `${i + 1}. ${objective}`),
   "Create each lesson with scaffold_lesson and follow the authoring steps it returns. Write the files with your file tools.",
   "Do not call wait_for_learner and do not ask the learner anything. Nobody will reply during this run.",
+  // Reason: a real session knows its own browser tool. This run has only a shell
+  // command, so name it. This describes the environment and gives no authoring hint.
+  "Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
   "When all three lessons are written, end with one line per lesson that states why you chose its activities.",
 ].join("\n");
 
@@ -428,7 +434,9 @@ async function main(): Promise<void> {
     const authoring = startSession(
       AUTHORING_PROMPT,
       ["begin_teaching", "list_classrooms", "lesson_health", "scaffold_lesson", "open_classroom"],
-      ["Read", "Write", "Edit", "Glob", "Grep"],
+      // Reason: the scaffold tells the agent to check its pages in a browser tool.
+      // Claude Code runs with an allowlist, so allow the browser CLI explicitly.
+      ["Read", "Write", "Edit", "Glob", "Grep", "Bash(playwright-cli:*)"],
       env,
       root,
     );
@@ -437,6 +445,9 @@ async function main(): Promise<void> {
     if (code !== 0) throw new Error(`The authoring session exited with ${code}.`);
     const authoringCalls = toolCalls(harness, authoring.stream());
     log(`authoring tool calls: ${authoringCalls.join(" → ")}`);
+    const pageChecks = browserCommands(harness, authoring.stream());
+    log(`browser commands: ${pageChecks.length}`);
+    if (pageChecks.length === 0) failures.push("The agent never opened a lesson in a browser.");
     if (authoringCalls.filter((call) => call === "scaffold_lesson").length !== OBJECTIVES.length) {
       failures.push(
         `The agent called scaffold_lesson ${authoringCalls.filter((c) => c === "scaffold_lesson").length} times.`,
@@ -554,6 +565,7 @@ async function main(): Promise<void> {
     const summary = {
       harness,
       agentSummary: finalText(authoring.stream()),
+      browserCommands: pageChecks,
       lessons: reports.map((r) => ({ ...r, submitted: undefined })),
       variety: {
         distinctOutlines: new Set(reports.map((r) => r.outline.join(" > "))).size,

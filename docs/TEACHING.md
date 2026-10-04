@@ -107,7 +107,8 @@ Follow these steps for each lesson:
 3. Choose the lesson experience and the response types that fit the objective.
 4. Write the lesson and its questions.
 5. Write the private rubric in `quiz/key.json`.
-6. Open the page. Check that each control works and that no contract error shows.
+6. Open the page in your browser tool. Check that each control works and that no
+   contract error shows.
 
 Give each interaction one purpose: **predict**, **retrieve**, **explain**,
 **practise**, or **diagnose**. An interaction without a purpose is decoration. Cut it.
@@ -210,7 +211,9 @@ results. Do not mix grading methods during a quiz.
 
 A quiz that breaks the contract shows its errors on the page and cannot be submitted.
 The scaffolds leave an unfinished question on purpose, so an unwritten quiz fails
-loudly. Open the lesson after you write it, to make sure that the quiz works.
+loudly. After you write a lesson, open it in your browser tool to make sure that the
+quiz and each local control work. If you cannot open it, tell the learner that it is
+not checked.
 
 After a grade, the browser quiz stays locked. Saved attempts and grades are kept.
 Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
