@@ -1,10 +1,9 @@
 /**
  * review.ts: spaced review, derived from grade history.
  *
- * Each graded question is a review item. Its schedule is never stored: it is computed
- * from every graded answer to that item, oldest first, so it cannot drift from the
- * grades on disk. A retake of the original quiz and a question in a review quiz both
- * count as one more attempt at the same item.
+ * Each graded question is a review item. The schedule uses grades and linked chat
+ * checks, oldest first. A retake, a review question, and a successful chat check
+ * each count as another attempt at the original item.
  *
  * The schedule is a Leitner system. A correct answer moves the item up one box. A
  * wrong answer moves it back to the first box. The schedule uses correctness only.
@@ -18,13 +17,17 @@ export const MASTERED_BOX = 3;
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** One graded answer to one item. */
+/** One quiz answer or linked chat check for an item. */
 export interface ReviewEvent {
   /** `<lesson>/<quiz id>/<question id>` of the original question. */
   key: string;
   /** When the learner answered. */
   at: number;
   correct: boolean;
+  /** Fraction of credit. Absent on historical binary events. */
+  credit?: number;
+  source?: "chat";
+  learningRecord?: string;
   prompt: string;
   /** The learner's answer, as one line. */
   answer: string;
@@ -42,6 +45,9 @@ export interface ReviewItem {
   dueAt: number;
   lastAt: number;
   lastCorrect: boolean;
+  lastCredit: number;
+  lastSource?: "chat";
+  learningRecord?: string;
   lastAnswer: string;
   lastFeedback: string;
   attempts: number;
@@ -53,7 +59,7 @@ export function nextBox(box: number, correct: boolean): number {
   return Math.min(box + 1, REVIEW_INTERVALS_DAYS.length - 1);
 }
 
-/** Build every item's schedule from its graded answers. */
+/** Build each schedule from quiz answers and linked chat checks. */
 export function scheduleItems(events: ReviewEvent[]): ReviewItem[] {
   const byKey = new Map<string, ReviewEvent[]>();
   for (const event of [...events].sort((a, b) => a.at - b.at)) {
@@ -78,6 +84,9 @@ export function scheduleItems(events: ReviewEvent[]): ReviewItem[] {
       dueAt: last.at + REVIEW_INTERVALS_DAYS[box] * DAY_MS,
       lastAt: last.at,
       lastCorrect: last.correct,
+      lastCredit: last.credit ?? (last.correct ? 1 : 0),
+      lastSource: last.source,
+      learningRecord: last.learningRecord,
       lastAnswer: last.answer,
       lastFeedback: last.feedback,
       attempts: list.length,

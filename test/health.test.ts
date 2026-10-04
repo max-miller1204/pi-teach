@@ -114,6 +114,22 @@ describe("lessonHealthLines", () => {
     expect(text).not.toContain("q3");
   });
 
+  it("keeps repeated misses as history after a later correct answer", () => {
+    const attempts = [
+      attempt("1", { q1: false }),
+      attempt("2", { q1: false }),
+      attempt("3", { q1: true }),
+    ];
+    const text = lessonHealthLines(
+      input({
+        submissions: attempts.map((a) => a.submission),
+        grades: attempts.map((a) => a.grade),
+      }),
+    ).join("\n");
+    expect(text).toContain("Resolved quiz gaps");
+    expect(text).not.toContain("Quiz questions missed more than once");
+  });
+
   it("reports avoided words and the latest self-explanation", () => {
     const text = lessonHealthLines(
       input({

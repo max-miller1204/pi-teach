@@ -57,6 +57,7 @@ import * as store from "./store.ts";
 // ── Callbacks into the extension ──────────────────────────────────────────────
 
 export interface ServerHooks {
+  delivery?: "push" | "wait";
   /** Called after a question is persisted, to wake the agent. */
   onAsk(annotation: store.Annotation): void;
   /** Called after a follow-up is appended to an existing card. */
@@ -318,6 +319,7 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
       classroomTitle: classroom.title,
       lessonTitle: lesson.title,
       baseUrl: getBaseUrl() ?? "",
+      delivery: hooks?.delivery ?? "push",
     }),
   );
 }
@@ -646,19 +648,16 @@ function handleDeleteAnnotation(res: http.ServerResponse, id: string, url: URL):
 
 let server: http.Server | null = null;
 let serverPort: number | null = null;
+let starting: Promise<string> | null = null;
 
-/**
- * Start the server if it is not already running, returning the base URL.
- *
- * A configured port that is already taken (a second Pi session, most likely) falls
- * back to an ephemeral one rather than failing — /classroom should always work.
- */
-export function start(): Promise<string> {
+/** Start the session server. Reject an occupied configured port. */
+export async function start(): Promise<string> {
   if (server && serverPort) return Promise.resolve(`http://127.0.0.1:${serverPort}`);
 
+  if (starting) return starting;
   const preferredPort = resolveConfiguredPort(readConfig().port);
 
-  return new Promise((resolve, reject) => {
+  starting = new Promise((resolve, reject) => {
     const s = http.createServer((req, res) => {
       void handleRequest(req, res).catch((err) => {
         console.error("[classroom] request failed", err);
@@ -666,18 +665,16 @@ export function start(): Promise<string> {
         res.end("Internal error");
       });
     });
-    let attemptPort = preferredPort;
 
     s.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE" && attemptPort !== 0) {
-        attemptPort = 0;
-        s.listen(0, "127.0.0.1");
-        return;
-      }
-      reject(err);
+      reject(
+        new Error(`Cannot start classroom server on port ${preferredPort}: ${err.message}`, {
+          cause: err,
+        }),
+      );
     });
 
-    s.listen(attemptPort, "127.0.0.1", () => {
+    s.listen(preferredPort, "127.0.0.1", () => {
       const addr = s.address();
       if (!addr || typeof addr === "string") {
         s.close();
@@ -689,9 +686,15 @@ export function start(): Promise<string> {
       resolve(`http://127.0.0.1:${serverPort}`);
     });
   });
+  try {
+    return await starting;
+  } finally {
+    starting = null;
+  }
 }
 
-export function close(): Promise<void> {
+export async function close(): Promise<void> {
+  if (starting) await starting;
   return new Promise((resolve) => {
     if (!server) return resolve();
     const s = server;

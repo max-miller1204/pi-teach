@@ -11,7 +11,10 @@ description: Teach the user a topic one short interactive lesson at a time, in a
    `topic`, or omit it to continue.
 3. Follow the method that `begin_teaching` returns. It is the full teaching brief.
 4. Before you give the learner a lesson URL, call `open_classroom`.
-5. After you give the learner a lesson, call `wait_for_learner`.
+5. After you give the learner a lesson, call `wait_for_learner`. Use at most 60
+   seconds. If it times out, say that listening has paused and end your turn.
+   Resume when the learner asks to continue. Browser requests cannot wake an idle
+   MCP agent. Reopen the classroom after a restart to recover pending requests.
 6. Answer page questions with `answer_lesson_question`.
 7. Grade quizzes with `grade_lesson_quiz`. Treat a pretest as diagnostic. Follow
    the shared quiz follow-up rule from `begin_teaching` and the grading result.
@@ -19,12 +22,18 @@ description: Teach the user a topic one short interactive lesson at a time, in a
    in chat with a different example. Keep the graded browser quiz locked. Review
    the idea later through spaced review. End your turn and wait for the learner's
    chat reply. Do not call `wait_for_learner` while you need that reply. Check
-   understanding before moving on.
+   understanding before moving on. Write a learning record after a successful
+   check. Call `record_retrieval_check` to link that evidence to the original
+   review item. Keep historical scores and attempts.
 9. Resume `wait_for_learner` when the learner returns to the page. Do not start the
    next lesson without their agreement.
 10. When `begin_teaching` reports questions due for review, offer a review before new
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.
+12. Choose response types that fit each skill. Mix suitable types across lessons.
+13. Write the private quiz rubric before submission. Use it for every attempt.
+    For partial credit, supply points for every question. Keep the overall score
+    consistent with those points.
 
 Do not answer the learner's highlighted-passage questions only in chat. Only
 `answer_lesson_question` puts those answers on their page. Your retrieval questions

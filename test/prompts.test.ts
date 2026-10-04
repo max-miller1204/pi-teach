@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as paths from "../src/paths.ts";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { resolveClassroom } from "../src/commands.ts";
 import {
@@ -325,4 +326,13 @@ describe("reviewStatusText", () => {
     expect(prompt).toContain("Something due.");
     expect(prompt).toContain("lesson_health");
   });
+});
+
+it("fails loudly when the required teaching method is missing", () => {
+  const spy = vi.spyOn(paths, "docsDir").mockReturnValue(fixture.root);
+  try {
+    expect(() => teachingPrompt("rust", null)).toThrow(/TEACHING.md/);
+  } finally {
+    spy.mockRestore();
+  }
 });

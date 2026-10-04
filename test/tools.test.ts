@@ -41,7 +41,15 @@ describe.each([
       submission_id: submission.id,
       score,
       feedback_markdown: "Ownership check.",
-      questions: [{ question_id: "q1", correct, feedback: "Each value has one owner." }],
+      questions: [
+        {
+          question_id: "q1",
+          correct,
+          points_earned: score,
+          points_possible: 100,
+          feedback: "Each value has one owner.",
+        },
+      ],
     });
   }
 
@@ -218,4 +226,120 @@ describe("lesson_health", () => {
     const result = await tool("lesson_health").execute({ classroom: "rust", lesson: "999-nope" });
     expect(result.details["error"]).toBe(true);
   });
+});
+
+describe("record_retrieval_check", () => {
+  function missed() {
+    return writeGradedAttempt({
+      at: Date.now() - 1000,
+      answers: [termAnswer("q1", "wrong")],
+      correct: { q1: false },
+    });
+  }
+  function record() {
+    return tool("record_retrieval_check").execute({
+      classroom: "rust",
+      review_key: "001-ownership/check-1/q1",
+      learning_record: "0001-owner.md",
+      answer: "The value is dropped.",
+      evidence: "A new scope example. The learner identified when the value is dropped.",
+    });
+  }
+  it("resolves current health and schedules later review without changing the grade", async () => {
+    missed();
+    const grades = store.listGrades("rust", "001-ownership");
+    const submissions = store.listSubmissions("rust", "001-ownership");
+    fixture.write(
+      "rust/learning-records/0001-owner.md",
+      "# Ownership\nThe learner correctly applied the rule to a new scope.",
+    );
+    const result = await record();
+    expect(result.details["error"]).not.toBe(true);
+    expect(store.listGrades("rust", "001-ownership")).toEqual(grades);
+    expect(store.listSubmissions("rust", "001-ownership")).toEqual(submissions);
+    const [item] = store.reviewItems("rust");
+    expect(item).toMatchObject({
+      box: 1,
+      attempts: 2,
+      lastCorrect: true,
+      lastSource: "chat",
+      learningRecord: "0001-owner.md",
+    });
+    expect(item.dueAt).toBe(item.lastAt + 3 * DAY_MS);
+    const health = await tool("lesson_health").execute({ classroom: "rust" });
+    expect(health.content[0].text).toContain("Resolved quiz gaps");
+    expect(health.content[0].text).toContain("0001-owner.md");
+    expect(health.content[0].text).not.toContain("Missed on the last attempt");
+    expect((await record()).details["error"]).toBe(true);
+    expect(store.listRetrievalChecks("rust")).toHaveLength(1);
+    writeGradedAttempt({
+      at: item.lastAt + 1,
+      answers: [termAnswer("q1", "wrong again")],
+      correct: { q1: false },
+    });
+    expect(store.reviewItems("rust")[0].lastCorrect).toBe(false);
+    const later = await tool("lesson_health").execute({ classroom: "rust" });
+    expect(later.content[0].text).toContain("Quiz questions missed more than once");
+    expect(later.content[0].text).not.toContain("Resolved quiz gaps");
+  });
+  it("refuses unlinked, missing, or superseded evidence", async () => {
+    expect((await record()).details["error"]).toBe(true);
+    missed();
+    expect((await record()).content[0].text).toContain("No learning record");
+    fixture.write(
+      "rust/learning-records/0001-owner.md",
+      "---\nstatus: superseded by LR-0002\n---\n# Old claim",
+    );
+    expect((await record()).content[0].text).toContain("active learning record");
+    expect(store.listRetrievalChecks("rust")).toEqual([]);
+  });
+  it("does not infer correctness from an unrelated free-form learning record", async () => {
+    missed();
+    fixture.write(
+      "rust/learning-records/0001-owner.md",
+      "# Resolved\nThe learner understands ownership.",
+    );
+    const health = await tool("lesson_health").execute({ classroom: "rust" });
+    expect(health.content[0].text).toContain("Missed on the last attempt");
+    expect(store.reviewItems("rust")[0].lastCorrect).toBe(false);
+  });
+});
+
+it("stores explicit partial points and gives the original review keys", async () => {
+  const submission = store.createSubmission({
+    classroom: "rust",
+    lesson: "001-ownership",
+    quizId: "check-1",
+    quizTitle: "Check",
+    kind: "check",
+    answers: [termAnswer("q1", "incomplete")],
+  });
+  const result = await tool("grade_lesson_quiz").execute({
+    submission_id: submission.id,
+    score: 75,
+    feedback_markdown: "One part is missing.",
+    questions: [
+      {
+        question_id: "q1",
+        correct: false,
+        points_earned: 3,
+        points_possible: 4,
+        feedback: "Name when the scope ends.",
+      },
+    ],
+  });
+  expect(result.details["error"]).not.toBe(true);
+  expect(result.content[0].text).toContain("001-ownership/check-1/q1");
+  expect(store.listGrades("rust", "001-ownership")[0].questions[0]).toMatchObject({
+    pointsEarned: 3,
+    pointsPossible: 4,
+  });
+  expect(store.reviewItems("rust")[0]).toMatchObject({
+    box: 0,
+    lastCorrect: false,
+    lastCredit: 0.75,
+  });
+  const health = await tool("lesson_health").execute({ classroom: "rust" });
+  expect(health.content[0].text).toContain("Partial credit on the last attempt");
+  expect(health.content[0].text).not.toContain("Missed on the last attempt");
 });

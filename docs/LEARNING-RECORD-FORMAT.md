@@ -44,3 +44,14 @@ Write one when any of these is true:
 ## Supersession
 
 When a later record contradicts an earlier one (the user's understanding deepened or corrected), mark the old record `Status: superseded by LR-NNNN` rather than deleting it. The history of how understanding evolved is itself useful signal.
+
+## Link a quiz correction
+
+After a successful chat retrieval check, use `record_retrieval_check` to link an
+active record to the original review item. Include the learner's actual answer and
+the new question. Explain how that answer demonstrates the missed idea. Use the
+item key `<lesson>/<quiz id>/<question id>` from the grade or review tool.
+
+This link updates current health and the review schedule. It preserves the quiz
+score and attempt. The runtime does not infer mastery from free-form prose.
+Do not link superseded records or material that was merely covered.

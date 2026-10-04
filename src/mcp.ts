@@ -44,8 +44,8 @@ const SERVER_VERSION = (
 /** Newest first. A client asking for one of these gets it echoed back. */
 const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-export const DEFAULT_WAIT_SECONDS = 600;
-export const MAX_WAIT_SECONDS = 3000;
+export const DEFAULT_WAIT_SECONDS = 60;
+export const MAX_WAIT_SECONDS = 60;
 
 /**
  * Appended to the teaching brief. It replaces what Pi does for free: there is no
@@ -55,10 +55,10 @@ export const HOST_BRIEF = `## Classroom tools in this session
 
 This session has no \`/classroom\` command, and it cannot push the learner's questions to you. Use these tools instead:
 
-- \`open_classroom\` starts the classroom server and opens the browser. Call it before you give the learner a URL. Lesson URLs work only while this session runs.
+- \`open_classroom\` starts the classroom server and opens the browser. Call it before you give the learner a URL. Lesson URLs work only while this session runs. Always use the URL from this call. Reopening a classroom restores pending page requests from disk.
 - \`wait_for_learner\` blocks until the learner asks about a passage, asks a follow-up, submits a quiz, or saves a self-explanation. It returns the full request and names the tool that answers it.
 
-After you give the learner a lesson, call \`wait_for_learner\`. Answer page questions with \`answer_lesson_question\`. Grade quizzes with \`grade_lesson_quiz\` and follow the shared quiz follow-up rule. A teacher's retrieval question belongs in chat, not in a passage card. While you need a chat reply, end your turn. Do not call \`wait_for_learner\`: it receives browser requests, not chat replies. Resume listening when the chat check is complete and the learner returns to the page. Do not start another lesson without the learner's agreement. When a wait ends with nothing, call it again. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
+After you give the learner a lesson, call \`wait_for_learner\`. Answer page questions with \`answer_lesson_question\`. Grade quizzes with \`grade_lesson_quiz\` and follow the shared quiz follow-up rule. A teacher's retrieval question belongs in chat, not in a passage card. While you need a chat reply, end your turn. Do not call \`wait_for_learner\`: it receives browser requests, not chat replies. Resume listening when the chat check is complete and the learner returns to the page. Do not start another lesson without the learner's agreement. Use waits of at most 60 seconds. If a wait times out, tell the learner that listening has paused and end your turn. Resume listening when they ask to continue. Do not run a repeated wait loop. Tell the learner that browser events cannot wake an idle MCP agent. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
 
 // ── Learner inbox ─────────────────────────────────────────────────────────────
 
@@ -75,21 +75,26 @@ interface Waiter {
  * everything queued; a cancelled waiter gets nothing, so a cancel never loses a prompt.
  */
 export class LearnerInbox {
-  private readonly queue: string[] = [];
+  private readonly queue: Array<{ prompt: string; key?: string; pending?: () => boolean }> = [];
+  private readonly seen = new Set<string>();
   private readonly waiters = new Map<string | number, Waiter>();
 
   get size(): number {
     return this.queue.length;
   }
 
-  push(prompt: string): void {
-    this.queue.push(prompt);
+  push(prompt: string, key?: string, pending?: () => boolean): void {
+    if (key && this.seen.has(key)) return;
+    if (pending && !pending()) return;
+    if (key) this.seen.add(key);
+    this.queue.push({ prompt, key, pending });
     const oldest = this.waiters.entries().next();
     if (oldest.done) return;
-    const [key, waiter] = oldest.value;
-    this.waiters.delete(key);
+    const [waitKey, waiter] = oldest.value;
+    const prompts = this.take();
+    this.waiters.delete(waitKey);
     clearTimeout(waiter.timer);
-    waiter.resolve(this.queue.splice(0));
+    waiter.resolve(prompts);
   }
 
   /**
@@ -97,7 +102,8 @@ export class LearnerInbox {
    * `timeoutMs` passes first, and with `null` when `cancel(key)` is called.
    */
   wait(key: string | number, timeoutMs: number): Promise<string[] | null> {
-    if (this.queue.length > 0) return Promise.resolve(this.queue.splice(0));
+    const queued = this.take();
+    if (queued.length > 0) return Promise.resolve(queued);
     if (this.waiters.has(key)) throw new Error(`Already waiting for request ${key}`);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -106,6 +112,12 @@ export class LearnerInbox {
       }, timeoutMs);
       this.waiters.set(key, { resolve, timer });
     });
+  }
+
+  private take(): string[] {
+    const pending = this.queue.filter((entry) => !entry.pending || entry.pending());
+    this.queue.length = 0;
+    return pending.map((entry) => entry.prompt);
   }
 
   cancel(key: string | number): void {
@@ -120,16 +132,61 @@ export class LearnerInbox {
   reset(): void {
     for (const key of [...this.waiters.keys()]) this.cancel(key);
     this.queue.length = 0;
+    this.seen.clear();
   }
 }
 
-/** Route the server's browser events into the inbox as wake-up prompts. */
+function queueQuestion(inbox: LearnerInbox, annotation: store.Annotation): void {
+  if (annotation.status === "pending") {
+    inbox.push(
+      askPrompt(annotation, "wait"),
+      `ask:${annotation.id}`,
+      () => store.findAnnotation(annotation.id)?.status === "pending",
+    );
+  }
+  for (const followUp of annotation.followUps ?? []) {
+    if (followUp.status !== "pending") continue;
+    inbox.push(
+      followUpPrompt(annotation, followUp, "wait"),
+      `follow-up:${followUp.id}`,
+      () =>
+        store
+          .findAnnotation(annotation.id)
+          ?.followUps?.some((f) => f.id === followUp.id && f.status === "pending") === true,
+    );
+  }
+}
+
+function queueSubmission(inbox: LearnerInbox, submission: store.QuizSubmission): void {
+  inbox.push(
+    gradePrompt(submission, "wait", store.previousGrade(submission)),
+    `quiz:${submission.id}`,
+    () =>
+      !store
+        .listGrades(submission.classroom, submission.lesson)
+        .some((g) => g.submissionId === submission.id),
+  );
+}
+
+/** Restore pending requests without repeating requests delivered in this session. */
+export function recoverLearnerRequests(inbox: LearnerInbox, classrooms: string[]): void {
+  for (const classroom of classrooms) {
+    for (const lesson of store.listLessons(classroom)) {
+      for (const annotation of store.listAnnotations(classroom, lesson.name))
+        queueQuestion(inbox, annotation);
+      for (const submission of store.listSubmissions(classroom, lesson.name))
+        queueSubmission(inbox, submission);
+    }
+  }
+}
+
+/** Route browser events into the session inbox. */
 export function connectInbox(inbox: LearnerInbox): void {
   server.setHooks({
-    onAsk: (annotation) => inbox.push(askPrompt(annotation, "wait")),
-    onFollowUp: (annotation, followUp) => inbox.push(followUpPrompt(annotation, followUp, "wait")),
-    onQuizSubmit: (submission) =>
-      inbox.push(gradePrompt(submission, "wait", store.previousGrade(submission))),
+    delivery: "wait",
+    onAsk: (annotation) => queueQuestion(inbox, annotation),
+    onFollowUp: (annotation) => queueQuestion(inbox, annotation),
+    onQuizSubmit: (submission) => queueSubmission(inbox, submission),
     onReflect: (reflection) => inbox.push(reflectPrompt(reflection, "wait")),
   });
 }
@@ -148,7 +205,7 @@ function fail(text: string): ToolResult {
   return { content: [{ type: "text", text: `Error: ${text}` }], details: { error: true } };
 }
 
-function sessionTools(): ClassroomTool[] {
+function sessionTools(opened: (classroom: string | null) => void): ClassroomTool[] {
   return [
     {
       name: "begin_teaching",
@@ -195,6 +252,7 @@ function sessionTools(): ClassroomTool[] {
           return fail(`No such classroom: ${requested}. Call list_classrooms.`);
         }
         const baseUrl = await server.start();
+        opened(target);
         const url = target ? server.urlFor(target)! : baseUrl;
         if (shouldAutoOpen()) openUrl(url);
         return ok(`📚 ${url}`, { url });
@@ -247,11 +305,19 @@ export type JsonRpcResponse =
 export class McpSession {
   private readonly tools: Map<string, ClassroomTool>;
   private readonly inbox: LearnerInbox;
+  private readonly classrooms = new Set<string>();
 
   constructor(inbox: LearnerInbox) {
     this.inbox = inbox;
     this.tools = new Map(
-      [...classroomTools(MCP_HOST), ...sessionTools()].map((tool) => [tool.name, tool]),
+      [
+        ...classroomTools(MCP_HOST),
+        ...sessionTools((classroom) => {
+          for (const name of classroom ? [classroom] : store.listClassrooms().map((c) => c.name))
+            this.classrooms.add(name);
+          recoverLearnerRequests(inbox, [...this.classrooms]);
+        }),
+      ].map((tool) => [tool.name, tool]),
     );
   }
 
@@ -337,7 +403,13 @@ export class McpSession {
       );
     }
 
-    const seconds = waitSeconds(args["timeout_seconds"]);
+    let seconds: number;
+    try {
+      seconds = waitSeconds(args["timeout_seconds"]);
+      recoverLearnerRequests(this.inbox, [...this.classrooms]);
+    } catch (err) {
+      return result(id, toolResult(fail((err as Error).message)));
+    }
     const prompts = await this.inbox.wait(id, seconds * 1000);
     if (prompts === null) return null; // cancelled: the client expects no response
 
@@ -346,7 +418,7 @@ export class McpSession {
         id,
         toolResult(
           ok(
-            `Nothing from the learner in ${seconds} seconds. Call wait_for_learner again to keep listening, unless the learner said they are done.`,
+            `Nothing from the learner in ${seconds} seconds. Listening has paused. Tell the learner and end your turn. Call wait_for_learner when they ask to continue.`,
           ),
         ),
       );
@@ -360,10 +432,18 @@ export class McpSession {
   }
 }
 
-/** Clamp a requested wait to whole seconds in `[1, MAX_WAIT_SECONDS]`. */
+/** Reject waits outside the supported range. */
 export function waitSeconds(requested: unknown): number {
-  if (typeof requested !== "number" || !Number.isFinite(requested)) return DEFAULT_WAIT_SECONDS;
-  return Math.min(MAX_WAIT_SECONDS, Math.max(1, Math.round(requested)));
+  if (requested === undefined) return DEFAULT_WAIT_SECONDS;
+  if (
+    typeof requested !== "number" ||
+    !Number.isInteger(requested) ||
+    requested < 1 ||
+    requested > MAX_WAIT_SECONDS
+  ) {
+    throw new Error(`timeout_seconds must be an integer from 1 to ${MAX_WAIT_SECONDS}.`);
+  }
+  return requested;
 }
 
 function toolResult(value: ToolResult): { content: ToolResult["content"]; isError: boolean } {

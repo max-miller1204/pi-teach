@@ -19,6 +19,7 @@ import { avoidedUses, htmlText } from "./glossary.ts";
 import { healthReport, type LessonHealthInput } from "./health.ts";
 import { classroomDir, isValidSlug, lessonDir, slugify, templatesDir } from "./paths.ts";
 import { missionStub, notesStub, PRETEST_FOLLOW_UP, QUIZ_FOLLOW_UP } from "./prompts.ts";
+import { authoredQuestionTypes } from "./quiz-authoring.ts";
 import { answersByQuestion, kindOf } from "./quiz.ts";
 import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
 import * as server from "./server.ts";
@@ -143,6 +144,46 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       },
     },
 
+    {
+      name: "record_retrieval_check",
+      label: "Record Retrieval Check",
+      description:
+        "Record demonstrated understanding after a successful chat retrieval check. Link the original review item to an active learning record. Preserve quiz grades and schedule later review. Do not use for material merely covered or an unverified answer.",
+      parameters: object({
+        classroom: str("Classroom directory name."),
+        review_key: str(
+          "Original <lesson>/<quiz id>/<question id> from the grade or review schedule.",
+        ),
+        learning_record: str("Existing active learning record file name, such as 0002-exec.md."),
+        answer: str("The learner's actual answer to the new chat question."),
+        evidence: str("The new question and why the answer demonstrates the missed idea."),
+      }),
+      async execute(params: {
+        classroom: string;
+        review_key: string;
+        learning_record: string;
+        answer: string;
+        evidence: string;
+      }) {
+        if (!store.readClassroom(params.classroom))
+          return fail(`No such classroom: ${params.classroom}`);
+        try {
+          const check = store.recordRetrievalCheck(params.classroom, {
+            key: params.review_key,
+            learningRecord: params.learning_record,
+            answer: params.answer,
+            evidence: params.evidence,
+          });
+          return ok(
+            `Recorded chat evidence for ${check.key}. The quiz grade is preserved. Later review remains scheduled.`,
+            { check },
+          );
+        } catch (err) {
+          return fail((err as Error).message);
+        }
+      },
+    },
+
     // ── grade_lesson_quiz ───────────────────────────────────────────────────────
 
     {
@@ -154,27 +195,52 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         "After a wrong answer, check the missed idea with a new question in chat before moving to another lesson.",
       parameters: object({
         submission_id: str("The submission id from the notification."),
-        score: { type: "number", description: "Overall score out of 100." },
+        score: {
+          type: "number",
+          description:
+            "Overall score out of 100. Must equal 100 times total points earned divided by total points possible. Integer rounding is allowed.",
+        },
         feedback_markdown: str(
           "Short markdown feedback on the quiz as a whole — what they have, and what to work on.",
         ),
         questions: {
           type: "array",
           description: "One entry per question in the submission.",
-          items: object({
-            question_id: str("The question id, exactly as given in the notification."),
-            correct: { type: "boolean", description: "Whether the learner's answer was correct." },
-            feedback: str(
-              "One or two sentences on this answer. For a wrong answer, name the idea they missed rather than only restating the right answer.",
-            ),
-          }),
+          items: object(
+            {
+              question_id: str("The question id, exactly as given in the notification."),
+              correct: {
+                type: "boolean",
+                description: "True only for full credit. Partial credit is false.",
+              },
+              points_earned: {
+                type: "number",
+                description:
+                  "Points earned under the quiz rubric. Supply both point fields for every question when using points.",
+              },
+              points_possible: {
+                type: "number",
+                description: "Maximum points under the rubric. Must be greater than zero.",
+              },
+              feedback: str(
+                "One or two sentences on this answer. For a wrong answer, name the idea they missed rather than only restating the right answer.",
+              ),
+            },
+            ["points_earned", "points_possible"],
+          ),
         },
       }),
       async execute(params: {
         submission_id: string;
         score: number;
         feedback_markdown: string;
-        questions: Array<{ question_id: string; correct: boolean; feedback: string }>;
+        questions: Array<{
+          question_id: string;
+          correct: boolean;
+          feedback: string;
+          points_earned?: number;
+          points_possible?: number;
+        }>;
       }) {
         const submission = store.findSubmission(params.submission_id);
         if (!submission) {
@@ -200,22 +266,52 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           );
         }
 
-        const grade = applyGrade(submission, {
-          score: params.score,
-          feedbackMarkdown: params.feedback_markdown,
-          questions: params.questions.map((q) => ({
-            questionId: q.question_id,
-            correct: q.correct,
-            feedback: q.feedback,
-          })),
-        });
-
+        let grade: store.QuizGrade;
+        try {
+          const withPoints = params.questions.some(
+            (q) => q.points_earned !== undefined || q.points_possible !== undefined,
+          );
+          if (
+            withPoints &&
+            params.questions.some(
+              (q) => q.points_earned === undefined || q.points_possible === undefined,
+            )
+          ) {
+            throw new Error(
+              "Supply points_earned and points_possible for every question when using points.",
+            );
+          }
+          grade = applyGrade(submission, {
+            score: params.score,
+            feedbackMarkdown: params.feedback_markdown,
+            questions: params.questions.map((q) => ({
+              questionId: q.question_id,
+              correct: q.correct,
+              pointsEarned: q.points_earned,
+              pointsPossible: q.points_possible,
+              feedback: q.feedback,
+            })),
+          });
+        } catch (err) {
+          return fail((err as Error).message);
+        }
         const kind = kindOf(submission);
+        const reviewKeys =
+          kind === "pretest"
+            ? []
+            : answersByQuestion(submission.answers).map(
+                ([questionId, group]) =>
+                  group[0].reviewOf ?? reviewKey(submission.lesson, submission.quizId, questionId),
+              );
         const incorrectQuestionIds = grade.questions
           .filter((question) => !question.correct)
           .map((question) => question.questionId);
 
-        const notes: string[] = [];
+        const notes: string[] = reviewKeys.length
+          ? [
+              `Review item keys for later chat evidence: ${reviewKeys.join(", ")}. After a successful chat check, write a learning record and call record_retrieval_check for the resolved item.`,
+            ]
+          : [];
         if (kind === "pretest") {
           notes.push(PRETEST_FOLLOW_UP);
         } else {
@@ -295,7 +391,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       label: "Scaffold Lesson",
       description:
         "Create a lesson directory from the canonical template and return its path. " +
-        "Write the actual lesson by editing the returned lesson.html — it contains the quiz markup contract in comments. " +
+        "Write the lesson by editing the returned lesson.html. Read the quiz markup contract in its comments. Mix response types that fit the skill. Keep short for explanations. Write a private quiz rubric before submission. " +
         "Lessons are numbered in the order they are created.",
       parameters: object(
         {
@@ -415,9 +511,9 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         const listing = picked.map((item, i) =>
           [
             `${i + 1}. data-review-of="${item.key}"`,
-            `   Interval: box ${item.box + 1} of ${REVIEW_INTERVALS_DAYS.length}, due ${relativeDay(item.dueAt, now)}, ${item.attempts} graded attempt${item.attempts === 1 ? "" : "s"}.`,
+            `   Interval: box ${item.box + 1} of ${REVIEW_INTERVALS_DAYS.length}, due ${relativeDay(item.dueAt, now)}, ${item.attempts} recorded attempt${item.attempts === 1 ? "" : "s"}.`,
             `   Original question: ${item.prompt || "(question text unavailable)"}`,
-            `   Their last answer (${item.lastCorrect ? "correct" : "wrong"}): ${item.lastAnswer || "(blank)"}`,
+            `   Their last answer (${item.lastCorrect ? "correct" : item.lastCredit > 0 ? "partial credit" : "wrong"}): ${item.lastAnswer || "(blank)"}`,
             `   Your last feedback: ${item.lastFeedback}`,
           ].join("\n"),
         );
@@ -472,13 +568,16 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
 
         const glossary = store.readGlossary(params.classroom);
         // Review answers live in other lessons. Read them before selecting the report.
+        const checks = store.listRetrievalChecks(params.classroom);
         const inputs: LessonHealthInput[] = lessons.map((lesson) => ({
           lesson: lesson.name,
           title: lesson.title,
+          questionTypes: authoredQuestionTypes(fs.readFileSync(lesson.htmlPath, "utf8")),
           annotations: store.listAnnotations(params.classroom, lesson.name),
           submissions: store.listSubmissions(params.classroom, lesson.name),
           grades: store.listGrades(params.classroom, lesson.name),
           reflections: store.listReflections(params.classroom, lesson.name),
+          retrievalChecks: checks.filter((check) => check.key.split("/")[0] === lesson.name),
           avoided: avoidedUses(htmlText(fs.readFileSync(lesson.htmlPath, "utf8")), glossary),
         }));
 

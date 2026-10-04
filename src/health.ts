@@ -7,10 +7,12 @@
  * instead of only answering around it.
  */
 
+import { questionOutcome } from "../assets/runtime/grade.mjs";
 import { parseReviewKey, reviewKey } from "../assets/runtime/quiz.mjs";
-import { answersByQuestion, kindOf } from "./quiz.ts";
+import { quizDiversityLines } from "./quiz-authoring.ts";
+import { answersByQuestion, kindOf, type QuestionType } from "./quiz.ts";
 import type { AvoidedUse } from "./glossary.ts";
-import type { Annotation, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
+import type { Annotation, QuizGrade, QuizSubmission, Reflection, RetrievalCheck } from "./store.ts";
 
 export interface LessonHealthInput {
   lesson: string;
@@ -21,6 +23,8 @@ export interface LessonHealthInput {
   grades: QuizGrade[];
   reflections: Reflection[];
   avoided: AvoidedUse[];
+  retrievalChecks?: RetrievalCheck[];
+  questionTypes?: QuestionType[];
 }
 
 /** A card with this many turns or more is a hotspot: the passage did not land. */
@@ -37,6 +41,9 @@ interface QuestionStats {
   attempts: number;
   misses: number;
   lastCorrect: boolean;
+  lastOutcome: "correct" | "partial" | "incorrect";
+  lastAt: number;
+  learningRecord?: string;
 }
 
 function questionStats(inputs: LessonHealthInput[]): QuestionStats[] {
@@ -63,12 +70,26 @@ function questionStats(inputs: LessonHealthInput[]): QuestionStats[] {
         attempts: 0,
         misses: 0,
         lastCorrect: true,
+        lastOutcome: "correct",
+        lastAt: 0,
       };
       entry.attempts += 1;
       if (!verdict.correct) entry.misses += 1;
       entry.lastCorrect = verdict.correct;
+      entry.lastOutcome = questionOutcome(verdict);
+      entry.lastAt = submission.submittedAt;
       stats.set(key, entry);
     }
+  }
+  for (const check of inputs
+    .flatMap((input) => input.retrievalChecks ?? [])
+    .sort((a, b) => a.at - b.at)) {
+    const entry = stats.get(check.key);
+    if (!entry || check.at <= entry.lastAt) continue;
+    entry.lastCorrect = true;
+    entry.lastOutcome = "correct";
+    entry.lastAt = check.at;
+    entry.learningRecord = check.learningRecord;
   }
   return [...stats.values()];
 }
@@ -83,7 +104,7 @@ export function lessonHealthLines(
   input: LessonHealthInput,
   stats = questionStats([input]).filter((s) => s.lesson === input.lesson),
 ): string[] {
-  const lines: string[] = [];
+  const lines: string[] = quizDiversityLines(input.questionTypes ?? []);
 
   const hotspots = input.annotations
     .map((a) => ({ annotation: a, turns: 1 + (a.followUps ?? []).length }))
@@ -103,7 +124,20 @@ export function lessonHealthLines(
     lines.push(`- **Questions with no answer on the page:** ${failed.length}. Answer them again.`);
   }
 
-  const repeated = stats.filter((s) => s.misses >= REPEAT_MISS);
+  const resolved = stats.filter((s) => s.lastCorrect && s.misses > 0);
+  if (resolved.length > 0) {
+    lines.push("- **Resolved quiz gaps** (history kept; review remains scheduled):");
+    for (const s of resolved)
+      lines.push(
+        `  - \`${s.quizId}/${s.questionId}\`: ${s.misses} earlier misses.${s.learningRecord ? ` Later chat evidence: ${s.learningRecord}.` : " Correct on the latest attempt."}`,
+      );
+  }
+  const partial = stats.filter((s) => s.lastOutcome === "partial");
+  if (partial.length > 0)
+    lines.push(
+      `- **Partial credit on the last attempt:** ${partial.map((s) => `\`${s.quizId}/${s.questionId}\``).join(", ")}. Check the incomplete ideas.`,
+    );
+  const repeated = stats.filter((s) => !s.lastCorrect && s.misses >= REPEAT_MISS);
   if (repeated.length > 0) {
     lines.push("- **Quiz questions missed more than once:**");
     for (const s of repeated) {
@@ -112,7 +146,7 @@ export function lessonHealthLines(
       );
     }
   }
-  const open = stats.filter((s) => !s.lastCorrect && s.misses < REPEAT_MISS);
+  const open = stats.filter((s) => s.lastOutcome === "incorrect" && s.misses < REPEAT_MISS);
   if (open.length > 0) {
     lines.push(
       `- **Missed on the last attempt:** ${open.map((s) => `\`${s.quizId}/${s.questionId}\``).join(", ")}`,

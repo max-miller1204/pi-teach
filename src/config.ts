@@ -1,11 +1,4 @@
-/**
- * config.ts — optional ~/.pi/agent/classroom.json settings.
- *
- *   { "port": 4098, "autoOpen": true }
- *
- * Both keys are optional: an unset/invalid port means "pick an ephemeral one".
- */
-
+/** Optional settings in ~/.pi/agent/classroom.json. */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -19,22 +12,38 @@ export function configPath(): string {
   return path.join(os.homedir(), ".pi", "agent", "classroom.json");
 }
 
-export function readConfig(): ClassroomConfig {
+export function readConfig(file = configPath()): ClassroomConfig {
+  let source: string;
   try {
-    const parsed = JSON.parse(fs.readFileSync(configPath(), "utf8")) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as ClassroomConfig) : {};
-  } catch {
-    return {};
+    source = fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error(`Cannot read classroom config ${file}`, { cause: err });
+  }
+  try {
+    const parsed: unknown = JSON.parse(source);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Config must be an object.");
+    }
+    const config = parsed as ClassroomConfig;
+    resolveConfiguredPort(config.port);
+    if (config.autoOpen !== undefined && typeof config.autoOpen !== "boolean") {
+      throw new Error("autoOpen must be a boolean.");
+    }
+    return config;
+  } catch (err) {
+    throw new Error(`Invalid classroom config ${file}: ${(err as Error).message}`, { cause: err });
   }
 }
 
-/** Resolve a configured port, or 0 (ephemeral) when unset or out of range. */
+/** Use an ephemeral port only when no port is configured. */
 export function resolveConfiguredPort(port: unknown): number {
+  if (port === undefined) return 0;
   if (typeof port === "number" && Number.isInteger(port) && port >= 1 && port <= 65535) return port;
-  return 0;
+  throw new Error("Configured port must be an integer from 1 to 65535.");
 }
 
-/** Whether the browser should be opened automatically. Env var wins. */
+/** The environment setting takes priority. */
 export function shouldAutoOpen(config: ClassroomConfig = readConfig()): boolean {
   if (process.env["PI_CLASSROOM_AUTO_OPEN"] === "0") return false;
   return config.autoOpen !== false;

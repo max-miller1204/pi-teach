@@ -139,8 +139,7 @@ cards, and grades included.
 
 While it is running, the TUI carries a `📚 classroom server running on port <port>` widget
 below the editor. It appears when the server starts, clears when it stops or the session
-ends, and always reports the port actually in use — including when a preferred port was
-taken and an ephemeral one was used instead.
+ends, and always reports the port in use.
 
 The server binds to `127.0.0.1` on an ephemeral port and runs **inside your Pi session**.
 That is what makes questions and grading work: a detached daemon could serve the pages,
@@ -179,6 +178,10 @@ nobody listens stay in a queue. The next `wait_for_learner` call returns all of 
 The classroom server runs inside the MCP server process, so it is session-scoped, as in
 Pi. It stops when the session ends.
 
+Waits stop after at most 60 seconds. The agent reports the pause and ends its turn.
+Ask it to continue listening when needed. Pending questions and ungraded submissions
+are restored when a classroom reopens after a restart.
+
 ## Storage
 
 ```text
@@ -190,6 +193,7 @@ Pi. It stops when the session ends.
     GLOSSARY.md             canonical terminology
     NOTES.md                your preferences, and an index of the teacher's notes
     notes/                  slug.md — the topic files NOTES.md indexes
+    quiz/retrieval-checks/  successful chat checks linked to review items
     learning-records/       NNNN-slug.md — what you have actually learned
     reference/*.html        cheat sheets, built to be revisited and printed
     assets/                 shared components across lessons
@@ -243,12 +247,16 @@ Optional, at `~/.pi/agent/classroom.json`:
 }
 ```
 
-| Key        | Default   | Meaning                                                                           |
-| ---------- | --------- | --------------------------------------------------------------------------------- |
-| `port`     | ephemeral | Preferred port. If taken (another Pi session), an ephemeral port is used instead. |
-| `autoOpen` | `true`    | Whether `/classroom` opens your browser. `PI_CLASSROOM_AUTO_OPEN=0` overrides.    |
+| Key        | Default   | Meaning                                                                        |
+| ---------- | --------- | ------------------------------------------------------------------------------ |
+| `port`     | ephemeral | Fixed port. An occupied or invalid port causes an error.                       |
+| `autoOpen` | `true`    | Whether `/classroom` opens your browser. `PI_CLASSROOM_AUTO_OPEN=0` overrides. |
 
 Claude Code and Codex read the same file. `autoOpen` also controls `open_classroom`.
+
+Use a configured fixed port to keep URLs stable across session restarts. Only one
+session can use that port at a time. With no port configured, each session uses an
+ephemeral port. Get the current URL from `open_classroom` or `/classroom`.
 
 ## Tools
 
@@ -261,7 +269,13 @@ Claude Code and Codex read the same file. `autoOpen` also controls `open_classro
 | `scaffold_classroom`     | Create a classroom in the canonical location with a `MISSION.md` stub.                                       |
 | `scaffold_lesson`        | Create a numbered lesson directory from the template.                                                        |
 | `scaffold_review`        | Create a spaced review lesson from the questions that are due, and return them with their review keys.       |
+| `record_retrieval_check` | Link successful chat evidence to a review item without changing scores.                                      |
 | `lesson_health`          | Report long question threads, repeated misses, glossary problems, and self-explanations.                     |
+
+Grades support per-question points. Partial credit appears separately from fully
+correct answers. Health distinguishes incomplete answers and resolved gaps.
+Historical grades stay unchanged. Historical grades without points cannot show
+how partial credit was distributed.
 
 The Claude Code and Codex plugin adds four more tools, in place of the Pi commands and
 the push from the browser:
