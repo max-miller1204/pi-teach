@@ -127,9 +127,9 @@ Each question has a "How sure are you?" row: Guessing, Unsure, or Sure. Read it 
 you grade. A wrong answer marked Sure is the strongest sign of a misconception: deal
 with it first. A right answer marked Guessing is not evidence of learning.
 
-After a grade, the learner can take the same quiz again. Each attempt is kept. An
-attempt right after feedback shows fluency, not storage strength. Do not treat it as
-proof of learning.
+After a grade, the browser quiz stays locked. Saved attempts and grades are kept.
+Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
+chat with a different example. Review those ideas later through spaced review.
 
 After grading, check missed ideas before moving to another lesson. Explain the idea
 briefly. Ask one new retrieval question in chat with a different example. Wait for

@@ -34,9 +34,10 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
 - **Confidence on every answer.** Each question asks "How sure are you?". A wrong
   answer marked Sure shows a misconception. A right answer marked Guessing does not
   count as learned.
-- **Retakes and pretests.** A graded quiz can be taken again, and every attempt is
-  kept. A pretest (`data-kind="pretest"`) comes before the teaching. It never counts
-  toward the score.
+- **Saved quizzes and pretests.** A graded quiz stays locked. Saved attempts and
+  grades are kept. Missed ideas get a new question in chat and spaced review later.
+  A pretest (`data-kind="pretest"`) comes before the teaching. It never counts toward
+  the score.
 - **Spaced review.** Every graded question gets a review schedule: 1, 3, 7, 21, then 60
   days. The schedule is calculated from the grades on disk. `scaffold_review` builds a
   review lesson from the due questions, mixed across lessons.
@@ -315,7 +316,7 @@ claude plugin validate .
 npm run e2e:claude      # a real Claude Code session: answer a question, grade a quiz
 npm run e2e:codex       # the same, through Codex
 npm run e2e:browser     # browser state tests with the real server
-npm run e2e:pi          # a real Pi session: question, quiz, and retake
+npm run e2e:pi          # a real Pi session: question, quiz, and chat follow-up
 ```
 
 All e2e scripts use the installed `playwright-cli` to drive the lesson page.

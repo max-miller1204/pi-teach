@@ -259,6 +259,15 @@ describe("gradePrompt", () => {
     expect(prompt).toContain(CONFIDENT_WRONG);
   });
 
+  it("keeps the graded quiz locked and checks missed ideas in chat", () => {
+    const prompt = gradePrompt(base, "push");
+    expect(prompt).toContain("Keep the graded browser quiz locked.");
+    expect(prompt).toContain("Do not ask for an immediate retake.");
+    expect(prompt).toContain("Use a different example.");
+    expect(prompt).toContain("Review the idea later through spaced review.");
+    expect(prompt).toContain("Check their reply");
+  });
+
   it("tells the teacher a pretest is diagnostic, with no retrieval check", () => {
     const prompt = gradePrompt({ ...base, kind: "pretest" }, "push");
     expect(prompt).toContain("**pretest**");

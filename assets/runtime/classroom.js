@@ -14,7 +14,7 @@
  *      assets/templates/quiz.html and hydrated: each `data-type` gets its controls,
  *      each question gets a confidence row, submitting posts the answers to disk and
  *      asks the teacher to grade them, and the grade renders inline when it arrives.
- *      A graded quiz can be taken again.
+ *      A graded quiz stays locked. Saved attempts and grades are kept.
  *
  *   3. Self-explanations. A `form.cl-reflect` is saved and shown to the teacher, but
  *      never graded.
@@ -1006,15 +1006,6 @@ function hydrateQuizzes() {
     submit.classList.add("cl-button");
     footer.appendChild(submit);
 
-    const retake = document.createElement("button");
-    retake.type = "button";
-    retake.className = "cl-button cl-button-quiet";
-    retake.dataset.clRetake = "";
-    retake.textContent = "Try again";
-    retake.hidden = true;
-    retake.addEventListener("click", () => resetQuiz(form));
-    footer.appendChild(retake);
-
     const status = document.createElement("span");
     status.className = "cl-quiz-status";
     status.dataset.clQuizStatus = "";
@@ -1066,7 +1057,7 @@ function enhanceQuestion(form, question) {
 
 function enhanceOrder(question) {
   const list = question.querySelector(".cl-order");
-  // Kept so a retake starts from the order the author wrote, not the last answer.
+  // Keep the authored order so saved answers can replace the displayed selections.
   list.dataset.clInitial = [...list.children].map((li) => li.dataset.item).join(" ");
   for (const item of list.children) {
     const controls = document.createElement("span");
@@ -1365,8 +1356,6 @@ function setQuizState(form, state) {
     else if (state === "submitted") submit.textContent = "Submitted";
     else submit.textContent = "Submit for grading";
   }
-  const retake = form.querySelector("[data-cl-retake]");
-  if (retake) retake.hidden = state !== "graded";
 }
 
 function setQuizStatus(form, html, isHtml = false) {
@@ -1376,7 +1365,7 @@ function setQuizStatus(form, html, isHtml = false) {
   else status.textContent = html;
 }
 
-/** Clear the form for another attempt. The graded attempt stays on disk. */
+/** Clear displayed answers before restoring a saved attempt. */
 function clearQuizAnswers(form) {
   for (const input of form.querySelectorAll(".cl-q input")) {
     if (input.type === "radio" || input.type === "checkbox") input.checked = false;
@@ -1389,19 +1378,6 @@ function clearQuizAnswers(form) {
   }
   for (const list of form.querySelectorAll(".cl-order"))
     reorder(list, list.dataset.clInitial.split(" "));
-}
-
-function resetQuiz(form) {
-  clearQuizAnswers(form);
-  form.querySelector("[data-cl-grade]")?.remove();
-  for (const verdict of form.querySelectorAll(".cl-q-verdict")) verdict.remove();
-
-  const next = Number(form.dataset.attempts ?? "1") + 1;
-  // A revision of the previous grade must not replace this new attempt.
-  form.dataset.activeAttempt = String(next);
-  setQuizState(form, "fresh");
-  setQuizStatus(form, `Attempt ${next}. Your earlier attempts are saved.`);
-  form.querySelector(".cl-q input, .cl-q textarea, .cl-q select, .cl-segment")?.focus();
 }
 
 /** Put the items of an order list in the given order of item ids. */

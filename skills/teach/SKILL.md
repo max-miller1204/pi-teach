@@ -17,8 +17,10 @@ description: Teach the user a topic one short interactive lesson at a time, in a
    answer marked Sure is a misconception. Treat a pretest as diagnostic. Follow the shared quiz follow-up rule from
    `begin_teaching` and the grading result.
 8. After a wrong answer, explain the missed idea and ask one new retrieval question
-   in chat. End your turn and wait for the learner's chat reply. Do not call
-   `wait_for_learner` while you need that reply. Check understanding before moving on.
+   in chat with a different example. Keep the graded browser quiz locked. Review
+   the idea later through spaced review. End your turn and wait for the learner's
+   chat reply. Do not call `wait_for_learner` while you need that reply. Check
+   understanding before moving on.
 9. Resume `wait_for_learner` when the learner returns to the page. Do not start the
    next lesson without their agreement.
 10. When `begin_teaching` reports questions due for review, offer a review before new

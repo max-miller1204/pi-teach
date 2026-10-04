@@ -64,19 +64,20 @@ const control = http.createServer(async (req, res) => {
   try {
     let body = "";
     for await (const chunk of req) body += chunk;
-    const { submissionId, feedback } = JSON.parse(body) as {
+    const { submissionId, feedback, correct } = JSON.parse(body) as {
       submissionId: string;
       feedback: string;
+      correct: boolean;
     };
     const submission = store.findSubmission(submissionId);
     if (!submission) throw new Error(`No submission ${submissionId}`);
     const result = await gradeTool.execute({
       submission_id: submission.id,
-      score: 100,
+      score: correct ? 100 : 0,
       feedback_markdown: feedback,
       questions: submission.answers.map((answer) => ({
         question_id: answer.questionId,
-        correct: true,
+        correct,
         feedback,
       })),
     });

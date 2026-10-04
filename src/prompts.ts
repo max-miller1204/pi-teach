@@ -39,7 +39,7 @@ function arrivalNote(delivery: Delivery): string {
 
 /** The same quiz follow-up rule applies to every host. */
 export const QUIZ_FOLLOW_UP =
-  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
+  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
 
 /** What to do after grading a pretest. Wrong answers are expected before teaching. */
 export const PRETEST_FOLLOW_UP =

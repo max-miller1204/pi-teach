@@ -21,8 +21,10 @@ async function browserRegression(page) {
     await new Promise((resolve) => source.addEventListener("open", resolve, { once: true }));
   });
   const form = (tab) => tab.locator('form[data-quiz-id="check-1"]');
-  const grade = async (submissionId, feedback) => {
-    const response = await page.request.post(control, { data: { submissionId, feedback } });
+  const grade = async (submissionId, feedback, correct) => {
+    const response = await page.request.post(control, {
+      data: { submissionId, feedback, correct },
+    });
     if (!response.ok()) throw new Error(await response.text());
   };
   const answer = async (options, segment) => {
@@ -78,31 +80,72 @@ async function browserRegression(page) {
 
   await answer(["a", "b"], "s1");
   const first = await submit();
-  await grade(first.id, "First grade");
+  await grade(first.id, "First grade", false);
   await waitGrade(page, "First grade");
   await waitGrade(observer, "First grade");
-  await form(page).getByRole("button", { name: "Try again", exact: true }).click();
-
-  await grade(first.id, "Revised first grade");
+  const assertLocked = async (tab) => {
+    assert(
+      (await tab.getByRole("button", { name: "Try again", exact: true }).count()) === 0,
+      "The page has a retry button",
+    );
+    assert(
+      await form(tab).getByRole("button", { name: "Graded", exact: true }).isDisabled(),
+      "The graded quiz is unlocked",
+    );
+  };
+  await assertLocked(page);
+  await screenshot("graded-wrong-answer");
+  await page.reload();
+  await waitGrade(page, "First grade");
+  await assertLocked(page);
+  await grade(first.id, "Revised first grade", false);
+  await waitGrade(page, "Revised first grade");
   await waitGrade(observer, "Revised first grade");
   let current = await selections(page);
   assert(
-    current.state === "fresh" && current.multi.length === 0 && current.locate.length === 0,
-    "An earlier grade replaced the retake draft",
+    current.multi.join() === "a,b" && current.locate.join() === "s1",
+    "A grade revision changed saved selections",
   );
 
-  await answer(["c"], "s3");
-  const second = await submit();
-  await grade(first.id, "Older grade during retake");
-  await waitGrade(observer, "Older grade during retake");
+  // The API still accepts additional attempts from older clients. Test their history.
+  const response2 = await page.request.post(new URL("/api/quiz/submit", page.url()).href, {
+    data: {
+      classroom: "rust",
+      lesson: "001-ownership",
+      quizId: "check-1",
+      kind: "check",
+      answers: [
+        {
+          questionId: "q1",
+          type: "multi",
+          parts: [{ id: "c", value: "Third statement" }],
+          confidence: "sure",
+        },
+        {
+          questionId: "q2",
+          type: "locate",
+          parts: [{ id: "s3", value: "Third line" }],
+          confidence: "sure",
+        },
+      ],
+    },
+  });
+  assert(response2.status() === 201, await response2.text());
+  const second = await response2.json();
+  await page.reload();
+  await page.waitForFunction(
+    () => document.querySelector('[data-quiz-id="check-1"]').dataset.state === "submitted",
+  );
+  await grade(first.id, "Older grade during saved attempt", false);
+  await observer.waitForFunction(() =>
+    window.browserTestGrades.includes("Older grade during saved attempt"),
+  );
   current = await selections(page);
   assert(
     current.state === "submitted" && current.multi.join() === "c" && current.locate.join() === "s3",
-    "An earlier grade replaced the pending retake",
+    "An earlier grade replaced the pending saved attempt",
   );
-  await screenshot("pending-retake");
-
-  await grade(second.id, "Second grade");
+  await grade(second.id, "Second grade", true);
   await waitGrade(page, "Second grade");
   await waitGrade(observer, "Second grade");
   for (const tab of [page, observer]) {
@@ -112,16 +155,18 @@ async function browserRegression(page) {
       "The second attempt retained selections from the first attempt",
     );
   }
-  await grade(first.id, "Stale revision after retake");
+  await grade(first.id, "Stale revision after saved attempt", false);
   await observer.waitForFunction(() =>
-    window.browserTestGrades.includes("Stale revision after retake"),
+    window.browserTestGrades.includes("Stale revision after saved attempt"),
   );
   current = await selections(observer);
   assert(
     current.multi.join() === "c" && current.locate.join() === "s3" && current.attempts === "2",
-    "A stale revision replaced the graded retake",
+    "A stale revision replaced the graded saved attempt",
   );
-  await screenshot("graded-retake");
+  await assertLocked(page);
+  await assertLocked(observer);
+  await screenshot("saved-attempt-history");
   await page.reload();
   await waitGrade(page, "Second grade");
   current = await selections(page);
@@ -146,8 +191,12 @@ async function browserRegression(page) {
   assert((await response).status() === 201, "The immediate quiz was refused");
   await (await response).finished();
   assert(
-    await instant.getByRole("button", { name: "Try again", exact: true }).isVisible(),
+    await instant.getByRole("button", { name: "Graded", exact: true }).isDisabled(),
     "The submit response replaced the grade",
+  );
+  assert(
+    (await instant.getByRole("button", { name: "Try again", exact: true }).count()) === 0,
+    "The immediate grade has a retry button",
   );
   await page.unroute("**/api/quiz/submit");
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
@@ -155,8 +204,8 @@ async function browserRegression(page) {
   return {
     passed: [
       "glossary",
-      "retake draft",
-      "pending retake",
+      "locked graded quiz",
+      "pending saved attempt",
       "cross-tab selections",
       "stale grade",
       "reload",

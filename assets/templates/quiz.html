@@ -6,7 +6,9 @@
   The runtime checks it, adds the controls each question type needs, adds the submit
   button and status line, locks the form on submit, writes the answers to the lesson's
   quiz/ directory, asks the teacher to grade them, and shows the grade inline. After a
-  grade, the learner can take the quiz again. Each attempt is kept.
+  grade, the form stays locked. Saved attempts and grades are kept. Do not add a
+  retry control. For a missed idea, the teacher asks a new question in chat with a
+  different example, checks the reply, and reviews the idea later.
 
   The runtime fails loudly. A quiz that breaks a rule below shows the errors on the
   page and in the browser console, and it cannot be submitted.

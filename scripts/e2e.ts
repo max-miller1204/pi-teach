@@ -302,7 +302,8 @@ async function main(): Promise<void> {
       `async page => {
       await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'graded');
       if (!await page.locator('.cl-q-verdict').count()) throw new Error('The page has no question verdict.');
-      if (!await page.getByRole('button', {name:'Try again', exact:true}).isVisible()) throw new Error('The page has no retake button.');
+      if (await page.getByRole('button', {name:'Try again', exact:true}).count()) throw new Error('The page has a retry button.');
+      if (!await page.getByRole('button', {name:'Graded', exact:true}).isDisabled()) throw new Error('The graded quiz is unlocked.');
       return true;
     }`,
     );
