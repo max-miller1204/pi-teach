@@ -305,21 +305,30 @@ const SUBMIT_LESSON = `async page => {
       return el.tagName.toLowerCase() + (cls ? '.' + cls : '') + kind;
     }),
   );
-  const controls = [];
+  // A control can start disabled, such as "Back" on the first step. Retry it after the
+  // other controls have run. A control still disabled then is reported.
+  const controls = new Map();
   const buttons = page.locator('main[data-cl-content] button');
-  for (let i = 0; i < await buttons.count(); i++) {
-    const button = buttons.nth(i);
-    const authored = await button.evaluate((b) =>
-      !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error'));
-    if (!authored || !(await button.isVisible())) continue;
-    const label = ((await button.getAttribute('aria-label')) || (await button.innerText())).trim();
-    const before = await page.evaluate(() => document.querySelector('main').innerHTML);
-    await button.focus();
-    const keyboard = await button.evaluate((b) => document.activeElement === b);
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(150);
-    const after = await page.evaluate(() => document.querySelector('main').innerHTML);
-    controls.push({ label, keyboard, changed: before !== after });
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < await buttons.count(); i++) {
+      if (controls.get(i)?.keyboard) continue;
+      const button = buttons.nth(i);
+      const authored = await button.evaluate((b) =>
+        !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error'));
+      if (!authored || !(await button.isVisible())) continue;
+      const label = ((await button.getAttribute('aria-label')) || (await button.innerText())).trim();
+      if (await button.isDisabled()) {
+        controls.set(i, { label, keyboard: false, changed: false });
+        continue;
+      }
+      const before = await page.evaluate(() => document.querySelector('main').innerHTML);
+      await button.focus();
+      const keyboard = await button.evaluate((b) => document.activeElement === b);
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(150);
+      const after = await page.evaluate(() => document.querySelector('main').innerHTML);
+      controls.set(i, { label, keyboard, changed: before !== after });
+    }
   }
   const submitted = [];
   for (const form of await page.locator('form.cl-quiz').all()) {
@@ -354,7 +363,7 @@ const SUBMIT_LESSON = `async page => {
     const result = await response;
     submitted.push({ quizId: await form.getAttribute('data-quiz-id'), status: result.status(), body: result.status() === 201 ? null : await result.text(), saved });
   }
-  return { errors, contract, outline, controls, submitted };
+  return { errors, contract, outline, controls: [...controls.values()], submitted };
 }`;
 
 /** Reload a lesson and read each quiz's state, grade, and restored answers. */
@@ -469,7 +478,7 @@ async function main(): Promise<void> {
       for (const error of result.contract) report.problems.push(`Contract error: ${error}`);
       for (const control of result.controls) {
         if (!control.keyboard)
-          report.problems.push(`Control "${control.label}" cannot take focus.`);
+          report.problems.push(`Control "${control.label}" stayed disabled or cannot take focus.`);
       }
       for (const quiz of result.submitted) {
         if (quiz.status !== 201)
