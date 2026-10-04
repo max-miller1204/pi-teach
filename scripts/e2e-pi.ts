@@ -131,6 +131,15 @@ try {
     session,
     fixture.root,
     `async page => {
+    if (await page.locator('.cl-confidence').count()) throw new Error('The page has confidence controls');
+    ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, "pi-fresh-lesson.png"))},fullPage:true});` : ""}
+    return true;
+  }`,
+  );
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
     await page.evaluate(() => {
       const text = document.querySelector('main > p').firstChild;
       const start = text.textContent.indexOf('one owner');
@@ -174,7 +183,6 @@ try {
       `async page => {
       const form = page.locator('form.cl-quiz');
       await form.locator('input[value="${option}"]').check();
-      await form.locator('.cl-confidence input[value=sure]').check();
       const response = page.waitForResponse(r => r.url().endsWith('/api/quiz/submit') && r.request().method() === 'POST');
       await form.getByRole('button', {name:'Submit for grading', exact:true}).click();
       const result = await response;
@@ -182,6 +190,9 @@ try {
       return await result.json();
     }`,
     );
+    const saved = store.findSubmission(submitted.id);
+    if (!saved || saved.answers.some((answer) => answer.confidence !== undefined))
+      throw new Error("The browser submission contains confidence metadata");
     const grade = await until(
       "quiz grade",
       () =>
@@ -211,6 +222,7 @@ try {
         const form = document.querySelector('form.cl-quiz');
         return form.dataset.state === 'graded' && form.dataset.attempts === '${attempt}';
       });
+      if (await page.locator('.cl-confidence').count()) throw new Error('The graded page has confidence controls');
       if (await page.getByRole('button', {name:'Try again', exact:true}).count()) throw new Error('The page has a retry button');
       if (!await page.getByRole('button', {name:'Graded', exact:true}).isDisabled()) throw new Error('The graded quiz is unlocked');
       if (!await page.locator('input[value="${option}"]').isChecked()) throw new Error('The page shows the wrong answer');

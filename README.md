@@ -31,16 +31,14 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
   `match`, and `locate`. A `.cl-q-stimulus` block holds what they look at: a passage,
   code, a table, or an image. A quiz that breaks the contract shows its errors on the
   page and cannot be submitted.
-- **Confidence on every answer.** Each question asks "How sure are you?". A wrong
-  answer marked Sure shows a misconception. A right answer marked Guessing does not
-  count as learned.
 - **Saved quizzes and pretests.** A graded quiz stays locked. Saved attempts and
   grades are kept. Missed ideas get a new question in chat and spaced review later.
   A pretest (`data-kind="pretest"`) comes before the teaching. It never counts toward
-  the score.
+  the score. Quiz answers do not ask for a confidence rating.
 - **Spaced review.** Every graded question gets a review schedule: 1, 3, 7, 21, then 60
   days. The schedule is calculated from the grades on disk. `scaffold_review` builds a
-  review lesson from the due questions, mixed across lessons.
+  review lesson from the due questions, mixed across lessons. Correctness controls
+  the schedule. Saved confidence metadata is kept but no longer affects review.
 - **Self-explanations.** A `form.cl-reflect` asks the learner to explain an idea in
   their own words. The teacher reads it. It is never graded.
 - **Glossary terms in lessons.** The first use of each `GLOSSARY.md` term in each
@@ -263,7 +261,7 @@ Claude Code and Codex read the same file. `autoOpen` also controls `open_classro
 | `scaffold_classroom`     | Create a classroom in the canonical location with a `MISSION.md` stub.                                       |
 | `scaffold_lesson`        | Create a numbered lesson directory from the template.                                                        |
 | `scaffold_review`        | Create a spaced review lesson from the questions that are due, and return them with their review keys.       |
-| `lesson_health`          | Report long question threads, repeated misses, confident misses, glossary problems, and self-explanations.   |
+| `lesson_health`          | Report long question threads, repeated misses, glossary problems, and self-explanations.                     |
 
 The Claude Code and Codex plugin adds four more tools, in place of the Pi commands and
 the push from the browser:
@@ -325,11 +323,13 @@ are not part of CI. The browser state test uses the grading tool without a model
 They use a temporary classrooms directory. The Codex run also uses a temporary
 `CODEX_HOME` that holds a copy of your `auth.json`. The script deletes both when it ends.
 
-To save screenshots, pass an output directory to the browser or Pi test:
+To save screenshots, pass an output directory to an E2E test:
 
 ```bash
 npm run e2e:browser -- /tmp/pi-teach-evidence
 npm run e2e:pi -- /tmp/pi-teach-evidence
+npm run e2e:claude -- /tmp/pi-teach-evidence
+npm run e2e:codex -- /tmp/pi-teach-evidence
 ```
 
 The package is installed from git, not npm: `pi install git:github.com/max-miller1204/pi-teach`

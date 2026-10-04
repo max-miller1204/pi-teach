@@ -123,10 +123,6 @@ work for any topic:
 A quiz that breaks the contract shows its errors on the page and cannot be submitted.
 Open the lesson after you write it, to make sure that the quiz works.
 
-Each question has a "How sure are you?" row: Guessing, Unsure, or Sure. Read it when
-you grade. A wrong answer marked Sure is the strongest sign of a misconception: deal
-with it first. A right answer marked Guessing is not evidence of learning.
-
 After a grade, the browser quiz stays locked. Saved attempts and grades are kept.
 Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
 chat with a different example. Review those ideas later through spaced review.
@@ -176,8 +172,9 @@ ended up producing.
 
 Every graded question in a check or a review enters a review schedule. A correct answer
 moves the question to a longer interval: 1, 3, 7, 21, then 60 days. A wrong answer moves
-it back to one day. A correct answer marked Guessing does not move it. The schedule is
-calculated from the grades on disk, so you never edit it.
+it back to one day. The schedule is
+calculated from the grades on disk, so you never edit it. Old confidence metadata
+is kept in saved attempts but does not affect the schedule.
 
 `begin_teaching` and `/teach` tell you how many questions are due. When questions are
 due, offer the learner a review before new material. If they agree, call
@@ -189,8 +186,7 @@ recall the idea, not a remembered answer.
 ## Lesson health
 
 Call `lesson_health` before you plan the next lesson. It reports long question threads,
-quiz questions missed more than once, wrong answers marked Sure, words the glossary
-says to avoid, errors in `GLOSSARY.md`, and the learner's self-explanations. When the
+quiz questions missed more than once, words the glossary says to avoid, errors in `GLOSSARY.md`, and the learner's self-explanations. When the
 same passage or question keeps failing, fix the lesson: add the explanation that the
 thread ended up with, or teach the missing prerequisite first.
 

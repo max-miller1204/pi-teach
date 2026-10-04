@@ -38,7 +38,7 @@ fixture.write(
       </li>
     </ol>
   </form>
-  <form class="cl-quiz" data-quiz-id="instant" data-title="Immediate grade" data-confidence="off">
+  <form class="cl-quiz" data-quiz-id="instant" data-title="Immediate grade" data-confidence="on">
     <ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="term">
       <p class="cl-q-prompt">Name the owner.</p><input type="text">
     </li></ol>
@@ -108,6 +108,16 @@ try {
       path.join(root, "test/browser.playwright.js"),
     ),
   );
+  const submissions = store.listSubmissions("rust", "001-ownership");
+  const grades = store.listGrades("rust", "001-ownership");
+  if (
+    submissions.length !== 3 ||
+    submissions.some((submission) => !grades.some((grade) => grade.submissionId === submission.id))
+  )
+    throw new Error("The browser flow lost saved attempts or grades");
+  const review = store.reviewItems("rust");
+  if (review.length !== 3 || review.some((item) => item.box !== 1))
+    throw new Error("Correct answers did not advance spaced review");
 } finally {
   if (browserOpen) await playwright(session, fixture.root, "close");
   await server.close();

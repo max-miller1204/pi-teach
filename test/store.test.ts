@@ -365,13 +365,18 @@ describe("review items", () => {
     });
     writeGradedAttempt({
       at: T0 + DAY_MS,
-      answers: [termAnswer("q1", "owner", { confidence: "sure" })],
+      answers: [termAnswer("q1", "owner", { confidence: "guess" })],
       correct: { q1: true },
     });
 
+    const saved = store.listSubmissions("rust", "001-ownership");
     const items = store.reviewItems("rust");
     expect(items.map((item) => item.key)).toEqual(["001-ownership/check-1/q1"]);
     expect(items[0]).toMatchObject({ box: 1, dueAt: T0 + 4 * DAY_MS, lastAnswer: "owner" });
+    expect(store.listSubmissions("rust", "001-ownership")).toEqual(saved);
+    expect(saved.find((submission) => submission.quizId === "check-1")!.answers[0].confidence).toBe(
+      "guess",
+    );
   });
 
   it("counts a review question as another attempt at the item it names", () => {

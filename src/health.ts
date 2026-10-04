@@ -36,7 +36,6 @@ interface QuestionStats {
   prompt: string;
   attempts: number;
   misses: number;
-  confidentMisses: number;
   lastCorrect: boolean;
 }
 
@@ -63,12 +62,10 @@ function questionStats(inputs: LessonHealthInput[]): QuestionStats[] {
         prompt: group[0].prompt ?? "",
         attempts: 0,
         misses: 0,
-        confidentMisses: 0,
         lastCorrect: true,
       };
       entry.attempts += 1;
       if (!verdict.correct) entry.misses += 1;
-      if (!verdict.correct && group[0].confidence === "sure") entry.confidentMisses += 1;
       entry.lastCorrect = verdict.correct;
       stats.set(key, entry);
     }
@@ -113,13 +110,6 @@ export function lessonHealthLines(
       lines.push(
         `  - \`${s.quizId}/${s.questionId}\` "${clip(s.prompt, 80)}": missed ${s.misses} of ${s.attempts}`,
       );
-    }
-  }
-  const confident = stats.filter((s) => s.confidentMisses > 0);
-  if (confident.length > 0) {
-    lines.push('- **Wrong while "Sure"** (likely misconceptions):');
-    for (const s of confident) {
-      lines.push(`  - \`${s.quizId}/${s.questionId}\` "${clip(s.prompt, 80)}"`);
     }
   }
   const open = stats.filter((s) => !s.lastCorrect && s.misses < REPEAT_MISS);

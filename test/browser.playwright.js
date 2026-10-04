@@ -30,8 +30,6 @@ async function browserRegression(page) {
   const answer = async (options, segment) => {
     for (const option of options) await form(page).locator(`input[value="${option}"]`).check();
     await form(page).locator(`[data-segment="${segment}"]`).click();
-    for (const confidence of await form(page).locator('.cl-confidence input[value="sure"]').all())
-      await confidence.check();
   };
   const submit = async () => {
     const response = page.waitForResponse(
@@ -63,6 +61,12 @@ async function browserRegression(page) {
     if (!condition) throw new Error(message);
   };
 
+  assert((await page.locator(".cl-confidence").count()) === 0, "The page has confidence controls");
+  assert(
+    !(await page.locator("body").innerText()).includes("How sure are you?"),
+    "The page asks for confidence",
+  );
+  await screenshot("fresh-quizzes");
   await page.locator("section .cl-term").waitFor();
   assert(
     (await page.locator("section .cl-term").count()) === 1,
@@ -80,6 +84,11 @@ async function browserRegression(page) {
 
   await answer(["a", "b"], "s1");
   const first = await submit();
+  assert(
+    first.answers.every((answer) => !Object.hasOwn(answer, "confidence")),
+    "The browser sent confidence metadata",
+  );
+  await screenshot("submitted-quiz");
   await grade(first.id, "First grade", false);
   await waitGrade(page, "First grade");
   await waitGrade(observer, "First grade");
@@ -119,7 +128,7 @@ async function browserRegression(page) {
           questionId: "q1",
           type: "multi",
           parts: [{ id: "c", value: "Third statement" }],
-          confidence: "sure",
+          confidence: "guess",
         },
         {
           questionId: "q2",
@@ -198,11 +207,13 @@ async function browserRegression(page) {
     (await instant.getByRole("button", { name: "Try again", exact: true }).count()) === 0,
     "The immediate grade has a retry button",
   );
+  await screenshot("all-graded-quizzes");
   await page.unroute("**/api/quiz/submit");
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
   await observer.close();
   return {
     passed: [
+      "no confidence controls or submitted metadata",
       "glossary",
       "locked graded quiz",
       "pending saved attempt",

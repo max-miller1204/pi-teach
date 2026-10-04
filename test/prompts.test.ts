@@ -3,7 +3,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { resolveClassroom } from "../src/commands.ts";
 import {
   askPrompt,
-  CONFIDENT_WRONG,
   followUpPrompt,
   gradePrompt,
   missionStub,
@@ -251,12 +250,12 @@ describe("gradePrompt", () => {
     submittedAt: 4,
   };
 
-  it("shows typed answers and confidence, and says what confidence means", () => {
+  it("shows typed answers and ignores saved confidence metadata", () => {
     const prompt = gradePrompt(base, "push");
     expect(prompt).toContain("[q1] (cloze) Fill in the blank.");
     expect(prompt).toContain("A value has one [b1: «owner»].");
-    expect(prompt).toContain("Their confidence: Sure");
-    expect(prompt).toContain(CONFIDENT_WRONG);
+    expect(prompt).not.toContain("Their confidence");
+    expect(prompt).not.toContain("misconception");
   });
 
   it("keeps the graded quiz locked and checks missed ideas in chat", () => {

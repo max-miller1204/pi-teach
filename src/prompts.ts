@@ -45,14 +45,6 @@ export const QUIZ_FOLLOW_UP =
 export const PRETEST_FOLLOW_UP =
   "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to decide what the lesson stresses and what it can skip. Tell the learner briefly what the lesson will focus on. Write a learning record only for prior knowledge the pretest shows.";
 
-/** What a confident wrong answer means, and what to do about it. */
-export const CONFIDENT_WRONG =
-  'An answer marked "Sure" that is wrong is the strongest sign of a misconception. Address it first. After the learner corrects it, write a learning record about the corrected misconception.';
-
-/** What a correct guess means for the review schedule. */
-export const CORRECT_GUESS =
-  'An answer marked "Guessing" that is correct is not evidence of memory. It does not move the item to a longer review interval.';
-
 /**
  * The review status of a classroom, as a section of the teaching brief.
  *
@@ -236,8 +228,6 @@ export function gradePrompt(
       "This is a **spaced review**. Each question reviews an earlier question, named by `Reviews:`. Your grade moves that item to a longer interval, or back to one day.",
   }[kind];
 
-  const confidenceUsed = submission.answers.some((answer) => answer.confidence);
-
   return [
     `📝 A quiz was just submitted from the classroom web page and is waiting on you to grade it. ${arrivalNote(delivery)}`,
     "",
@@ -252,7 +242,6 @@ export function gradePrompt(
     answers,
     "",
     "Read the lesson to see what each question was actually testing, then grade it. Be honest — a passing grade the learner did not earn costs them the thing they came for. For a wrong answer, say what is wrong and point at the idea they have missed, rather than just restating the correct answer.",
-    ...(confidenceUsed ? ["", CONFIDENT_WRONG, CORRECT_GUESS] : []),
     "",
     `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. That is what renders the grade on their page.`,
     "",

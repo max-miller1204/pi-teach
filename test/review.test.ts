@@ -29,12 +29,11 @@ function event(key: string, day: number, correct: boolean, extra: Partial<Review
 }
 
 describe("nextBox", () => {
-  it("moves up on a correct answer, back to the start on a wrong one, and stays on a guess", () => {
+  it("moves up on a correct answer and back to the start on a wrong one", () => {
     expect(nextBox(0, true)).toBe(1);
     expect(nextBox(3, false)).toBe(0);
-    expect(nextBox(2, true, "guess")).toBe(2);
-    expect(nextBox(2, true, "unsure")).toBe(3);
-    expect(nextBox(4, true, "sure")).toBe(4);
+    expect(nextBox(2, true)).toBe(3);
+    expect(nextBox(4, true)).toBe(4);
   });
 });
 
@@ -63,9 +62,13 @@ describe("scheduleItems", () => {
     expect(item.lastCorrect).toBe(false);
   });
 
-  it("flags a wrong answer the learner was sure of", () => {
-    const [item] = scheduleItems([event("a/q/1", 0, false, { confidence: "sure" })]);
-    expect(item.confidentlyWrong).toBe(true);
+  it("ignores confidence metadata from old review events", () => {
+    const old = { ...event("a/q/1", 0, true), confidence: "guess" };
+    const [item] = scheduleItems([old]);
+    expect(item.box).toBe(1);
+    expect(item.dueAt).toBe(T0 + 3 * DAY_MS);
+    expect(item).not.toHaveProperty("lastConfidence");
+    expect(item).not.toHaveProperty("confidentlyWrong");
   });
 });
 

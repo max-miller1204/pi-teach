@@ -640,7 +640,6 @@ export function reviewEvents(classroom: string): ReviewEvent[] {
           key: group[0].reviewOf ?? reviewKey(lesson, submission.quizId, questionId),
           at: submission.submittedAt,
           correct: verdict.correct,
-          confidence: group[0].confidence,
           prompt: group[0].prompt ?? "",
           answer: answerSummary(group),
           feedback: verdict.feedback,

@@ -7,11 +7,8 @@
  * count as one more attempt at the same item.
  *
  * The schedule is a Leitner system. A correct answer moves the item up one box. A
- * wrong answer moves it back to the first box. A correct answer marked "Guessing" does
- * not move it, because a guess is not evidence of memory.
+ * wrong answer moves it back to the first box. The schedule uses correctness only.
  */
-
-import type { Confidence } from "./quiz.ts";
 
 /** Days until the next review, for each box. */
 export const REVIEW_INTERVALS_DAYS = [1, 3, 7, 21, 60] as const;
@@ -28,7 +25,6 @@ export interface ReviewEvent {
   /** When the learner answered. */
   at: number;
   correct: boolean;
-  confidence?: Confidence;
   prompt: string;
   /** The learner's answer, as one line. */
   answer: string;
@@ -46,18 +42,14 @@ export interface ReviewItem {
   dueAt: number;
   lastAt: number;
   lastCorrect: boolean;
-  lastConfidence?: Confidence;
   lastAnswer: string;
   lastFeedback: string;
   attempts: number;
-  /** The last answer was wrong although the learner said "Sure". */
-  confidentlyWrong: boolean;
 }
 
 /** The box after one more graded answer. */
-export function nextBox(box: number, correct: boolean, confidence?: Confidence): number {
+export function nextBox(box: number, correct: boolean): number {
   if (!correct) return 0;
-  if (confidence === "guess") return box;
   return Math.min(box + 1, REVIEW_INTERVALS_DAYS.length - 1);
 }
 
@@ -74,7 +66,7 @@ export function scheduleItems(events: ReviewEvent[]): ReviewItem[] {
   for (const [key, list] of byKey) {
     const [lesson, quizId, questionId] = key.split("/");
     let box = 0;
-    for (const event of list) box = nextBox(box, event.correct, event.confidence);
+    for (const event of list) box = nextBox(box, event.correct);
     const last = list[list.length - 1];
     items.push({
       key,
@@ -86,11 +78,9 @@ export function scheduleItems(events: ReviewEvent[]): ReviewItem[] {
       dueAt: last.at + REVIEW_INTERVALS_DAYS[box] * DAY_MS,
       lastAt: last.at,
       lastCorrect: last.correct,
-      lastConfidence: last.confidence,
       lastAnswer: last.answer,
       lastFeedback: last.feedback,
       attempts: list.length,
-      confidentlyWrong: !last.correct && last.confidence === "sure",
     });
   }
   return items.sort((a, b) => a.dueAt - b.dueAt);
