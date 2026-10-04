@@ -310,7 +310,7 @@ const SUBMIT_LESSON = `async page => {
   for (let i = 0; i < await buttons.count(); i++) {
     const button = buttons.nth(i);
     const authored = await button.evaluate((b) =>
-      !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel') && !/\\bcl-/.test(b.className));
+      !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error'));
     if (!authored || !(await button.isVisible())) continue;
     const label = ((await button.getAttribute('aria-label')) || (await button.innerText())).trim();
     const before = await page.evaluate(() => document.querySelector('main').innerHTML);

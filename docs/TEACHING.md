@@ -143,7 +143,8 @@ Some examples, from an operating systems course:
 
 A lesson can also hold a small local interaction: plain HTML, CSS, and an inline
 script, such as a stepper, a toggle, or a `<details>` reveal. Use
-`<button type="button">`. Make each control work with the keyboard, label it, and
+`<button type="button" class="cl-button">`, or add `cl-button-quiet` for a secondary
+control. Make each control work with the keyboard, label it, and
 show its result visibly. Check it in the browser. Keep local controls outside
 `form.cl-quiz`. You do not need to change the runtime for a new lesson pattern.
 
