@@ -261,7 +261,7 @@ describe("reading answers back", () => {
     expect(lines.join("\n")).toContain(
       "A value has one [b1: «owner»]. It is dropped at the end of its [b2: «scope»].",
     );
-    expect(lines).toContain("Their confidence: Sure");
+    expect(lines).not.toContain("Their confidence");
   });
 
   it("shows order, match, locate, numeric, and the stimulus", () => {

@@ -6,7 +6,9 @@
   The runtime checks it, adds the controls each question type needs, adds the submit
   button and status line, locks the form on submit, writes the answers to the lesson's
   quiz/ directory, asks the teacher to grade them, and shows the grade inline. After a
-  grade, the learner can take the quiz again. Each attempt is kept.
+  grade, the form stays locked. Saved attempts and grades are kept. Do not add a
+  retry control. For a missed idea, the teacher asks a new question in chat with a
+  different example, checks the reply, and reviews the idea later.
 
   The runtime fails loudly. A quiz that breaks a rule below shows the errors on the
   page and in the browser console, and it cannot be submitted.
@@ -23,9 +25,8 @@
                  the review schedule. Put it at the top of the lesson.
         review   a spaced review. Made by scaffold_review. Every question needs
                  data-review-of (see below).
-    * data-confidence="off" removes the "How sure are you?" row. It is on by default.
-      Keep it on: a wrong answer marked "Sure" shows a misconception, and a right
-      answer marked "Guessing" does not move the question to a longer review interval.
+    * Answer each question directly. Do not add confidence controls. Old
+      data-confidence attributes have no effect.
     * Do not add your own submit button. The runtime adds one. If you add one, it is
       used instead.
 

@@ -12,9 +12,9 @@
  *
  *   2. Quizzes. Any `form.cl-quiz` in the lesson is checked against the contract in
  *      assets/templates/quiz.html and hydrated: each `data-type` gets its controls,
- *      each question gets a confidence row, submitting posts the answers to disk and
+ *      submitting posts the answers to disk and
  *      asks the teacher to grade them, and the grade renders inline when it arrives.
- *      A graded quiz can be taken again.
+ *      A graded quiz stays locked. Saved attempts and grades are kept.
  *
  *   3. Self-explanations. A `form.cl-reflect` is saved and shown to the teacher, but
  *      never graded.
@@ -29,15 +29,7 @@
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
 import { findTerms, firstUses } from "./glossary.mjs";
 import { initLinks } from "./links.mjs";
-import {
-  CONFIDENCE_LABELS,
-  CONFIDENCE_LEVELS,
-  QUIZ_KINDS,
-  isContractId,
-  isQuizKind,
-  parseNumber,
-  questionErrors,
-} from "./quiz.mjs";
+import { QUIZ_KINDS, isContractId, isQuizKind, parseNumber, questionErrors } from "./quiz.mjs";
 import { initTheme } from "./theme.mjs";
 
 const config = readConfig();
@@ -864,11 +856,9 @@ function quizForms() {
   return [...document.querySelectorAll("form.cl-quiz")];
 }
 
-/** Elements inside a question, without the confidence row the runtime adds. */
+/** Elements inside a question. */
 function own(question, selector) {
-  return [...question.querySelectorAll(selector)].filter(
-    (element) => !element.closest(".cl-confidence"),
-  );
+  return [...question.querySelectorAll(selector)];
 }
 
 /** Summarise a question's markup as plain data, for `questionErrors`. */
@@ -912,11 +902,6 @@ function quizErrors(form, seenQuizIds) {
   if (kind !== undefined && !isQuizKind(kind)) {
     errors.push(`Unknown data-kind "${kind}". Use one of: ${QUIZ_KINDS.join(", ")}.`);
   }
-  const confidence = form.dataset.confidence;
-  if (confidence !== undefined && confidence !== "on" && confidence !== "off") {
-    errors.push(`Unknown data-confidence "${confidence}". Use "on" or "off".`);
-  }
-
   const questions = [...form.querySelectorAll(".cl-q")];
   if (questions.length === 0) errors.push("The quiz has no .cl-q questions.");
   const ids = questions.map((q) => q.dataset.questionId).filter(Boolean);
@@ -1006,15 +991,6 @@ function hydrateQuizzes() {
     submit.classList.add("cl-button");
     footer.appendChild(submit);
 
-    const retake = document.createElement("button");
-    retake.type = "button";
-    retake.className = "cl-button cl-button-quiet";
-    retake.dataset.clRetake = "";
-    retake.textContent = "Try again";
-    retake.hidden = true;
-    retake.addEventListener("click", () => resetQuiz(form));
-    footer.appendChild(retake);
-
     const status = document.createElement("span");
     status.className = "cl-quiz-status";
     status.dataset.clQuizStatus = "";
@@ -1035,11 +1011,7 @@ function hydrateQuizzes() {
   }
 }
 
-function confidenceEnabled(form) {
-  return form.dataset.confidence !== "off";
-}
-
-/** Add the controls a question type needs, and the confidence row. */
+/** Add the controls a question type needs. */
 function enhanceQuestion(form, question) {
   switch (question.dataset.type) {
     case "numeric":
@@ -1061,12 +1033,11 @@ function enhanceQuestion(form, question) {
       enhanceLocate(form, question);
       break;
   }
-  if (confidenceEnabled(form)) addConfidence(question);
 }
 
 function enhanceOrder(question) {
   const list = question.querySelector(".cl-order");
-  // Kept so a retake starts from the order the author wrote, not the last answer.
+  // Keep the authored order so saved answers can replace the displayed selections.
   list.dataset.clInitial = [...list.children].map((li) => li.dataset.item).join(" ");
   for (const item of list.children) {
     const controls = document.createElement("span");
@@ -1143,24 +1114,6 @@ function enhanceLocate(form, question) {
   }
 }
 
-function addConfidence(question) {
-  const fieldset = document.createElement("fieldset");
-  fieldset.className = "cl-confidence";
-  const legend = document.createElement("legend");
-  legend.textContent = "How sure are you?";
-  fieldset.appendChild(legend);
-  for (const level of CONFIDENCE_LEVELS) {
-    const label = document.createElement("label");
-    const input = document.createElement("input");
-    input.type = "radio";
-    input.name = `cl-confidence-${question.dataset.questionId}`;
-    input.value = level;
-    label.append(input, ` ${CONFIDENCE_LABELS[level]}`);
-    fieldset.appendChild(label);
-  }
-  question.appendChild(fieldset);
-}
-
 /** Plain text of a stimulus block. Line breaks are kept, because code needs them. */
 function stimulusText(element) {
   const text = (element.innerText || element.textContent || "").trim();
@@ -1185,7 +1138,7 @@ function clozeText(element) {
  * Returns `{ answer }`, or `{ missing: true }` when the learner has not answered it
  * yet, or `{ invalid: message }` when the answer cannot be sent as it is.
  */
-function collectAnswer(form, question) {
+function collectAnswer(question) {
   const type = question.dataset.type;
   const answer = {
     questionId: question.dataset.questionId,
@@ -1268,11 +1221,6 @@ function collectAnswer(form, question) {
     }
   }
 
-  if (confidenceEnabled(form)) {
-    const level = question.querySelector(".cl-confidence input:checked");
-    if (!level) return { missing: true };
-    answer.confidence = level.value;
-  }
   return { answer };
 }
 
@@ -1291,7 +1239,7 @@ async function onQuizSubmit(event, form) {
   const answers = [];
   let missing = 0;
   for (const [i, question] of questions.entries()) {
-    const result = collectAnswer(form, question);
+    const result = collectAnswer(question);
     if (result.invalid) {
       setQuizStatus(form, `Question ${i + 1}: ${result.invalid}`);
       return;
@@ -1300,12 +1248,7 @@ async function onQuizSubmit(event, form) {
     else answers.push(result.answer);
   }
   if (missing > 0) {
-    setQuizStatus(
-      form,
-      confidenceEnabled(form)
-        ? `Answer every question, and say how sure you are (${missing} left).`
-        : `Answer every question first (${missing} left).`,
-    );
+    setQuizStatus(form, `Answer every question first (${missing} left).`);
     return;
   }
 
@@ -1365,8 +1308,6 @@ function setQuizState(form, state) {
     else if (state === "submitted") submit.textContent = "Submitted";
     else submit.textContent = "Submit for grading";
   }
-  const retake = form.querySelector("[data-cl-retake]");
-  if (retake) retake.hidden = state !== "graded";
 }
 
 function setQuizStatus(form, html, isHtml = false) {
@@ -1376,7 +1317,7 @@ function setQuizStatus(form, html, isHtml = false) {
   else status.textContent = html;
 }
 
-/** Clear the form for another attempt. The graded attempt stays on disk. */
+/** Clear displayed answers before restoring a saved attempt. */
 function clearQuizAnswers(form) {
   for (const input of form.querySelectorAll(".cl-q input")) {
     if (input.type === "radio" || input.type === "checkbox") input.checked = false;
@@ -1389,19 +1330,6 @@ function clearQuizAnswers(form) {
   }
   for (const list of form.querySelectorAll(".cl-order"))
     reorder(list, list.dataset.clInitial.split(" "));
-}
-
-function resetQuiz(form) {
-  clearQuizAnswers(form);
-  form.querySelector("[data-cl-grade]")?.remove();
-  for (const verdict of form.querySelectorAll(".cl-q-verdict")) verdict.remove();
-
-  const next = Number(form.dataset.attempts ?? "1") + 1;
-  // A revision of the previous grade must not replace this new attempt.
-  form.dataset.activeAttempt = String(next);
-  setQuizState(form, "fresh");
-  setQuizStatus(form, `Attempt ${next}. Your earlier attempts are saved.`);
-  form.querySelector(".cl-q input, .cl-q textarea, .cl-q select, .cl-segment")?.focus();
 }
 
 /** Put the items of an order list in the given order of item ids. */
@@ -1481,13 +1409,6 @@ function restoreAnswer(question, group) {
         if (segment) segment.setAttribute("aria-pressed", "true");
       }
       break;
-  }
-
-  if (answer.confidence) {
-    const level = question.querySelector(
-      `.cl-confidence input[value="${cssEscape(answer.confidence)}"]`,
-    );
-    if (level) level.checked = true;
   }
 }
 

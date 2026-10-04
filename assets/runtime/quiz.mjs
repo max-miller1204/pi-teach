@@ -31,12 +31,8 @@ export const RECOGNITION_TYPES = ["choice", "multi", "match"];
  */
 export const QUIZ_KINDS = ["check", "pretest", "review"];
 
-export const CONFIDENCE_LEVELS = ["guess", "unsure", "sure"];
-
 /** How many segments a `locate` question lets the learner select. `one` is the default. */
 export const LOCATE_SELECT = ["one", "many"];
-
-export const CONFIDENCE_LABELS = { guess: "Guessing", unsure: "Unsure", sure: "Sure" };
 
 export function isQuestionType(value) {
   return typeof value === "string" && QUESTION_TYPES.includes(value);
@@ -44,10 +40,6 @@ export function isQuestionType(value) {
 
 export function isQuizKind(value) {
   return typeof value === "string" && QUIZ_KINDS.includes(value);
-}
-
-export function isConfidence(value) {
-  return typeof value === "string" && CONFIDENCE_LEVELS.includes(value);
 }
 
 const NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;

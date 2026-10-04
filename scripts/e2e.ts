@@ -34,9 +34,11 @@ const STEP_TIMEOUT_MS = 180_000;
 const CLASSROOM = "rust";
 const LESSON = "001-ownership";
 
+const artifacts = process.argv[3] ? path.resolve(process.argv[3]) : null;
+if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
 const harness = process.argv[2];
 if (harness !== "claude" && harness !== "codex") {
-  throw new Error("Usage: node scripts/e2e.ts <claude|codex>");
+  throw new Error("Usage: node scripts/e2e.ts <claude|codex> [artifacts]");
 }
 
 const PROMPT = [
@@ -278,7 +280,6 @@ async function main(): Promise<void> {
       await page.waitForFunction(() => document.querySelector('.cl-card-answer')?.textContent.trim()
         && !document.querySelector('.cl-card-answer .cl-card-status'));
       await page.locator('.cl-q input[value=b]').check();
-      await page.locator('.cl-confidence input[value=sure]').check();
       const response = page.waitForResponse(r => r.url().endsWith('/api/quiz/submit') && r.request().method() === 'POST');
       await page.getByRole('button', {name:'Submit for grading', exact:true}).click();
       const result = await response;
@@ -286,6 +287,12 @@ async function main(): Promise<void> {
       return await result.json();
     }`,
     );
+    if (
+      (submitted["answers"] as Array<Record<string, unknown>>).some(
+        (answer) => "confidence" in answer,
+      )
+    )
+      throw new Error("The browser submitted confidence metadata.");
     log(`submitted quiz ${String(submitted["id"])}`);
 
     const gradesDir = path.join(classrooms, CLASSROOM, LESSON, "quiz", "grades");
@@ -301,8 +308,11 @@ async function main(): Promise<void> {
       classrooms,
       `async page => {
       await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'graded');
+      if (await page.locator('.cl-confidence').count()) throw new Error('The page has confidence controls.');
       if (!await page.locator('.cl-q-verdict').count()) throw new Error('The page has no question verdict.');
-      if (!await page.getByRole('button', {name:'Try again', exact:true}).isVisible()) throw new Error('The page has no retake button.');
+      if (await page.getByRole('button', {name:'Try again', exact:true}).count()) throw new Error('The page has a retry button.');
+      if (!await page.getByRole('button', {name:'Graded', exact:true}).isDisabled()) throw new Error('The graded quiz is unlocked.');
+      ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, `${harness}-graded-quiz.png`))},fullPage:true});` : ""}
       return true;
     }`,
     );

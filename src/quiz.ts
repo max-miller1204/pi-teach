@@ -8,18 +8,18 @@
  */
 
 import {
-  CONFIDENCE_LABELS,
-  isConfidence,
   isContractId,
   isQuestionType,
   parseNumber,
   parseReviewKey,
-  type Confidence,
   type QuestionType,
   type QuizKind,
 } from "../assets/runtime/quiz.mjs";
 
-export type { Confidence, QuestionType, QuizKind };
+export type { QuestionType, QuizKind };
+
+/** Metadata from quiz attempts saved before confidence controls were removed. */
+export type Confidence = "guess" | "unsure" | "sure";
 
 /** One piece of a structured answer: a chosen option, a filled blank, an ordered item. */
 export interface AnswerPart {
@@ -56,6 +56,7 @@ export interface QuizAnswer {
   parts?: AnswerPart[];
   /** `match`: one pair for each left-hand item. */
   pairs?: AnswerPair[];
+  /** Legacy metadata. It does not affect grading or spaced review. */
   confidence?: Confidence;
   /** `review` quizzes: the key of the item this question reviews. */
   reviewOf?: string;
@@ -137,7 +138,7 @@ export function parseAnswer(raw: unknown, kind: QuizKind): QuizAnswer {
   };
 
   if (a["confidence"] !== undefined) {
-    if (!isConfidence(a["confidence"])) {
+    if (a["confidence"] !== "guess" && a["confidence"] !== "unsure" && a["confidence"] !== "sure") {
       throw new AnswerError(
         `${where} has an unknown confidence: ${JSON.stringify(a["confidence"])}.`,
       );
@@ -301,7 +302,6 @@ export function answerDetail(group: QuizAnswer[]): string[] {
       break;
   }
 
-  if (answer.confidence) lines.push(`Their confidence: ${CONFIDENCE_LABELS[answer.confidence]}`);
   if (answer.reviewOf) lines.push(`Reviews: \`${answer.reviewOf}\``);
   return lines;
 }
