@@ -120,6 +120,20 @@ work for any topic:
   error in a proof, the grammar mistake).
 - **Recognition types. Use these for quick checks.** `choice`, `multi`, `match`.
 
+Choose the response type for the skill each question tests. Mix suitable types within
+and across lessons. Do not replace every response with short text. Use numeric for
+counts, order for sequences, cloze for precise missing values, and locate for errors.
+Keep short for explanations. Do not force a type that does not fit the question.
+`lesson_health` reports a short-only lesson with at least three questions.
+
+Before submission, write the grading rubric in private `quiz/key.json`. State the
+maximum points and the criteria for full and partial credit for each question.
+Use the same rubric for all attempts at that quiz. Set `correct` to true only for
+full credit. Supply `points_earned` and `points_possible` for every question when
+using partial credit or weights. The overall score is the earned points divided
+by the possible points, times 100. Integer rounding is allowed. Without points,
+grading uses equal-weight binary results. Do not mix grading methods during a quiz.
+
 A quiz that breaks the contract shows its errors on the page and cannot be submitted.
 Open the lesson after you write it, to make sure that the quiz works.
 
@@ -173,7 +187,7 @@ ended up producing.
 Every graded question in a check or a review enters a review schedule. A correct answer
 moves the question to a longer interval: 1, 3, 7, 21, then 60 days. A wrong answer moves
 it back to one day. The schedule is
-calculated from the grades on disk, so you never edit it. Old confidence metadata
+calculated from grades and recorded chat checks on disk. Do not edit the schedule. Old confidence metadata
 is kept in saved attempts but does not affect the schedule.
 
 `begin_teaching` and `/teach` tell you how many questions are due. When questions are
@@ -211,6 +225,14 @@ Write one when they demonstrate real understanding of something non-trivial, dis
 prior knowledge, correct a misconception, or shift the mission. Not when material was
 merely covered — coverage is not learning. These are what tell the next session where
 the floor is.
+
+After a successful chat retrieval check resolves a quiz gap, write an active learning
+record. Call `record_retrieval_check` with the original review key, that record file
+name, the learner's actual answer, and the question and evidence of understanding.
+One record can resolve several items. Record each link once. This preserves scores
+and attempts. Health shows the gap as resolved. Review uses the later check as one
+correct answer. A later miss opens the gap again. One correction does not establish
+long-term mastery. Free-form learning records alone do not change computed health.
 
 ## Notes
 

@@ -1492,3 +1492,9 @@ mark.cl-hl.cl-hl-pending {
     color: #000;
   }
 }
+
+.cl-q-verdict[data-outcome="partial"] {
+  color: var(--cl-accent);
+  background: var(--cl-accent-soft);
+  border-left: 3px solid currentColor;
+}

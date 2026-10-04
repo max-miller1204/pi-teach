@@ -18,6 +18,15 @@ const artifacts = process.argv[2] ? path.resolve(process.argv[2]) : null;
 if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
 seedClassroom(fixture);
 fixture.write("rust/GLOSSARY.md", "**Borrow checker**:\nChecks that borrows are valid.\n");
+const contract = fs
+  .readFileSync(path.join(root, "assets/templates/quiz.html"), "utf8")
+  .split("-->")
+  .slice(1)
+  .join("-->");
+const allTypes = contract
+  .slice(contract.indexOf('<form class="cl-quiz"'), contract.indexOf("</form>") + 7)
+  .replace('data-quiz-id="check-1"', 'data-quiz-id="all-types"');
+const partialQuiz = `<form class="cl-quiz" data-quiz-id="partial" data-title="Partial credit regression"><ol class="cl-questions">${[1, 2, 3].map((i) => `<li class="cl-q" data-question-id="q${i}" data-type="short"><p class="cl-q-prompt">Explain idea ${i}.</p><textarea></textarea></li>`).join("")}</ol></form>`;
 fixture.write(
   "rust/001-ownership/lesson.html",
   lessonHtml(
@@ -42,11 +51,12 @@ fixture.write(
     <ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="term">
       <p class="cl-q-prompt">Name the owner.</p><input type="text">
     </li></ol>
-  </form>`,
+  </form>${allTypes}${partialQuiz}`,
   ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
 );
 
 server.setHooks({
+  delivery: "wait",
   onAsk() {},
   onFollowUp() {},
   onReflect() {},
@@ -64,20 +74,23 @@ const control = http.createServer(async (req, res) => {
   try {
     let body = "";
     for await (const chunk of req) body += chunk;
-    const { submissionId, feedback, correct } = JSON.parse(body) as {
+    const { submissionId, feedback, correct, partial } = JSON.parse(body) as {
       submissionId: string;
       feedback: string;
       correct: boolean;
+      partial?: boolean;
     };
     const submission = store.findSubmission(submissionId);
     if (!submission) throw new Error(`No submission ${submissionId}`);
     const result = await gradeTool.execute({
       submission_id: submission.id,
-      score: correct ? 100 : 0,
+      score: partial ? 78 : correct ? 100 : 0,
       feedback_markdown: feedback,
-      questions: submission.answers.map((answer) => ({
+      questions: submission.answers.map((answer, index) => ({
         question_id: answer.questionId,
-        correct,
+        correct: partial ? index === 0 : correct,
+        points_earned: partial ? [9, 7, 5][index] : undefined,
+        points_possible: partial ? 9 : undefined,
         feedback,
       })),
     });
@@ -111,12 +124,17 @@ try {
   const submissions = store.listSubmissions("rust", "001-ownership");
   const grades = store.listGrades("rust", "001-ownership");
   if (
-    submissions.length !== 3 ||
+    submissions.length !== 5 ||
     submissions.some((submission) => !grades.some((grade) => grade.submissionId === submission.id))
   )
     throw new Error("The browser flow lost saved attempts or grades");
   const review = store.reviewItems("rust");
-  if (review.length !== 3 || review.some((item) => item.box !== 1))
+  if (
+    review.length !== 16 ||
+    review.some(
+      (item) => item.box !== (item.quizId === "partial" && item.questionId !== "q1" ? 0 : 1),
+    )
+  )
     throw new Error("Correct answers did not advance spaced review");
 } finally {
   if (browserOpen) await playwright(session, fixture.root, "close");

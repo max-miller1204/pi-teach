@@ -26,6 +26,7 @@
  * server-side, so nothing here needs a markdown parser.
  */
 
+import { gradePointsNotice, gradeSummary, questionGradeLabel, questionOutcome } from "./grade.mjs";
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
 import { findTerms, firstUses } from "./glossary.mjs";
 import { initLinks } from "./links.mjs";
@@ -1453,7 +1454,7 @@ function applyQuizState(state) {
     setQuizState(form, "submitted");
     setQuizStatus(
       form,
-      `<span class="cl-spinner"></span> Waiting for your teacher to grade this…${attemptNote}`,
+      `<span class="cl-spinner"></span> Submission saved. Waiting for your teacher to grade it.${attemptNote}${config.delivery === "wait" ? " Your teacher receives page requests while listening. If no grade arrives, return to chat and ask them to listen." : ""}`,
       true,
     );
     return;
@@ -1481,9 +1482,10 @@ function renderGrade(form, grade) {
   summary.innerHTML = `
     <div class="cl-grade-banner" data-tone="${tone}">
       <span class="cl-grade-score">${Math.round(grade.score)}%</span>
-      <span>${grade.questions.filter((q) => q.correct).length} of ${grade.questions.length} correct</span>
+      <span>${gradeSummary(grade.questions)}</span>
     </div>
-    <div class="cl-grade-feedback">${grade.feedbackHtml || ""}</div>`;
+    <div class="cl-grade-feedback">${grade.feedbackHtml || ""}</div>
+    ${gradePointsNotice(grade) ? `<p class="cl-quiz-status">${escapeText(gradePointsNotice(grade))}</p>` : ""}`;
   const anchor = form.querySelector(".cl-quiz-kind") ?? form.querySelector(".cl-quiz-title");
   if (anchor) anchor.after(summary);
   else form.prepend(summary);
@@ -1497,7 +1499,8 @@ function renderGrade(form, grade) {
     const verdict = document.createElement("div");
     verdict.className = "cl-q-verdict";
     verdict.dataset.correct = String(questionGrade.correct);
-    verdict.innerHTML = `<span aria-hidden="true">${questionGrade.correct ? "✓" : "✕"}</span><span>${
+    verdict.dataset.outcome = questionOutcome(questionGrade);
+    verdict.innerHTML = `<span>${escapeText(questionGradeLabel(questionGrade))}</span><span>${
       questionGrade.feedbackHtml || escapeText(questionGrade.feedback)
     }</span>`;
     question.appendChild(verdict);

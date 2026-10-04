@@ -274,7 +274,7 @@ describe("applyAnswer routing", () => {
 });
 
 describe("applyGrade", () => {
-  it("clamps the score and renders every piece of feedback to HTML", () => {
+  it("renders every piece of feedback to HTML", () => {
     const submission = store.createSubmission({
       classroom: "rust",
       lesson: "001-ownership",
@@ -285,7 +285,7 @@ describe("applyGrade", () => {
     });
 
     const grade = applyGrade(submission, {
-      score: 140,
+      score: 100,
       feedbackMarkdown: "Solid **work**.",
       questions: [{ questionId: "q1", correct: true, feedback: "Exactly `right`." }],
     });

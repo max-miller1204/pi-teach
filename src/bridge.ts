@@ -14,6 +14,7 @@
  *      extension uses to route replies back to the right thread.
  */
 
+import { validateGrade } from "../assets/runtime/grade.mjs";
 import { findLastAssistantText } from "./assistant-text.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { askPrompt, followUpPrompt, gradePrompt, reflectPrompt } from "./prompts.ts";
@@ -146,20 +147,25 @@ export function applyGrade(
   input: {
     score: number;
     feedbackMarkdown: string;
-    questions: Array<{ questionId: string; correct: boolean; feedback: string }>;
+    questions: store.QuizQuestionGrade[];
   },
 ): store.QuizGrade {
+  const score = validateGrade(input.score, input.questions, [
+    ...new Set(submission.answers.map((a) => a.questionId)),
+  ]);
   const grade: store.QuizGrade = {
     submissionId: submission.id,
     classroom: submission.classroom,
     lesson: submission.lesson,
     quizId: submission.quizId,
-    score: Math.max(0, Math.min(100, input.score)),
+    score,
     feedbackMarkdown: input.feedbackMarkdown,
     feedbackHtml: renderMarkdown(input.feedbackMarkdown),
     questions: input.questions.map((q) => ({
       questionId: q.questionId,
       correct: q.correct,
+      pointsEarned: q.pointsEarned,
+      pointsPossible: q.pointsPossible,
       feedback: q.feedback,
       feedbackHtml: renderMarkdown(q.feedback),
     })),

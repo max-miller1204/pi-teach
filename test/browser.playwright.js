@@ -209,6 +209,101 @@ async function browserRegression(page) {
   );
   await screenshot("all-graded-quizzes");
   await page.unroute("**/api/quiz/submit");
+  const allTypes = page.locator('[data-quiz-id="all-types"]');
+  await allTypes.locator('[data-type="choice"] input[value="a"]').check();
+  await allTypes.locator('[data-type="multi"] input[value="b"]').check();
+  await allTypes.locator('[data-type="term"] input').fill("lifetime");
+  for (const field of await allTypes.locator('[data-type="short"] textarea').all())
+    await field.fill("An explanation.");
+  await allTypes.locator(".cl-number").fill("4");
+  await allTypes.locator(".cl-unit").fill("bytes");
+  await allTypes.locator('[data-blank="b1"]').fill("owner");
+  await allTypes.locator('[data-blank="b2"]').fill("scope");
+  await allTypes.locator('[data-item="bind"] button[data-cl-move="-1"]').click();
+  for (const select of await allTypes.locator('[data-type="match"] select').all())
+    await select.selectOption("r2");
+  await allTypes.locator('[data-segment="s3"]').click();
+  const typesResponse = page.waitForResponse(
+    (r) => r.url().endsWith("/api/quiz/submit") && r.request().method() === "POST",
+  );
+  await allTypes.getByRole("button", { name: "Submit for grading", exact: true }).click();
+  const typesResult = await typesResponse;
+  assert(typesResult.status() === 201, await typesResult.text());
+  const typedSubmission = await typesResult.json();
+  assert(
+    new Set(typedSubmission.answers.map((a) => a.type)).size === 9,
+    "The runtime lost a supported response type",
+  );
+  const saved = await allTypes.evaluate((form) => ({
+    text: [...form.querySelectorAll('input[type="text"], textarea')].map((field) => field.value),
+    order: [...form.querySelectorAll(".cl-order > li")].map((li) => li.dataset.item),
+    pairs: [...form.querySelectorAll("select")].map((field) => field.value),
+  }));
+  await grade(typedSubmission.id, "All types grade", true);
+  await page.reload();
+  await page.waitForFunction(
+    () => document.querySelector('[data-quiz-id="all-types"]').dataset.state === "graded",
+  );
+  const restored = await allTypes.evaluate((form) => ({
+    text: [...form.querySelectorAll('input[type="text"], textarea')].map((field) => field.value),
+    order: [...form.querySelectorAll(".cl-order > li")].map((li) => li.dataset.item),
+    pairs: [...form.querySelectorAll("select")].map((field) => field.value),
+  }));
+  assert(JSON.stringify(saved) === JSON.stringify(restored), "Reload changed a structured answer");
+  assert(
+    await allTypes.locator('[data-type="choice"] input[value="a"]').isChecked(),
+    "Choice answer was lost",
+  );
+  assert(
+    await allTypes.locator('[data-type="multi"] input[value="b"]').isChecked(),
+    "Multi answer was lost",
+  );
+  assert(
+    (await allTypes.locator('[data-segment="s3"]').getAttribute("aria-pressed")) === "true",
+    "Locate answer was lost",
+  );
+  const partialForm = page.locator('[data-quiz-id="partial"]');
+  for (const field of await partialForm.locator("textarea").all())
+    await field.fill("A partly complete answer.");
+  const partialResponse = page.waitForResponse(
+    (r) => r.url().endsWith("/api/quiz/submit") && r.request().method() === "POST",
+  );
+  await partialForm.getByRole("button", { name: "Submit for grading", exact: true }).click();
+  const partialSubmission = await (await partialResponse).json();
+  assert(
+    (await partialForm.innerText()).includes("Your teacher receives page requests while listening"),
+    "The pending quiz does not explain MCP delivery",
+  );
+  const gradedPartial = await page.request.post(control, {
+    data: {
+      submissionId: partialSubmission.id,
+      feedback: "Partial grade",
+      partial: true,
+      correct: false,
+    },
+  });
+  assert(gradedPartial.ok(), await gradedPartial.text());
+  await page.waitForFunction(
+    () => document.querySelector('[data-quiz-id="partial"]').dataset.state === "graded",
+  );
+  assert((await partialForm.innerText()).includes("78%"), "Partial score is wrong");
+  assert(
+    (await partialForm.innerText()).includes("1 of 3 fully correct · 2 partial credit"),
+    "Partial summary is wrong",
+  );
+  assert(
+    (await partialForm.locator('[data-outcome="partial"]').count()) === 2,
+    "Partial answers have the wrong verdict",
+  );
+  await page.reload();
+  await page.waitForFunction(
+    () => document.querySelector('[data-quiz-id="partial"]').dataset.state === "graded",
+  );
+  assert(
+    (await partialForm.locator('[data-outcome="partial"]').count()) === 2,
+    "Reload lost partial points",
+  );
+  await screenshot("partial-credit-and-all-types");
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
   await observer.close();
   return {
@@ -221,6 +316,9 @@ async function browserRegression(page) {
       "stale grade",
       "reload",
       "grade before response",
+      "all nine response types submit and restore",
+      "partial credit display and reload",
+      "MCP delivery explanation",
     ],
   };
 }

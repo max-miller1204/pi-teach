@@ -144,8 +144,9 @@ export function safeJoin(root: string, relative: string): string | null {
 export function isDir(p: string): boolean {
   try {
     return fs.statSync(p).isDirectory();
-  } catch {
-    return false;
+  } catch (err) {
+    if (["ENOENT", "ENOTDIR"].includes((err as NodeJS.ErrnoException).code ?? "")) return false;
+    throw err;
   }
 }
 
@@ -153,7 +154,8 @@ export function isDir(p: string): boolean {
 export function isFile(p: string): boolean {
   try {
     return fs.statSync(p).isFile();
-  } catch {
-    return false;
+  } catch (err) {
+    if (["ENOENT", "ENOTDIR"].includes((err as NodeJS.ErrnoException).code ?? "")) return false;
+    throw err;
   }
 }

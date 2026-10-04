@@ -44,7 +44,7 @@ if (harness !== "claude" && harness !== "codex") {
 const PROMPT = [
   `Call begin_teaching with topic "${CLASSROOM}" to get the teaching method.`,
   `Use the existing lesson. Call open_classroom with classroom "${CLASSROOM}".`,
-  "Then call wait_for_learner with timeout_seconds 120, and do what its result asks.",
+  "Then call wait_for_learner with timeout_seconds 60, and do what its result asks.",
   "Keep calling wait_for_learner and handling its results until you have answered one question and graded one quiz.",
   "After grading, follow the teaching method, then end this run. Keep explanations short.",
 ].join(" ");
@@ -75,6 +75,18 @@ function seedClassroom(root: string): void {
       '<label><input type="radio" name="q1" value="b">The value stays alive forever</label>' +
       "</li></ol></form>" +
       "</main></body></html>",
+  );
+  fs.mkdirSync(path.join(lesson, "quiz"), { recursive: true });
+  fs.writeFileSync(
+    path.join(lesson, "quiz", "key.json"),
+    JSON.stringify({
+      "check-1": {
+        q1: {
+          pointsPossible: 1,
+          criteria: "One point for option a: the value is dropped. Zero points for b.",
+        },
+      },
+    }),
   );
 }
 

@@ -471,3 +471,27 @@ describe("readGlossary", () => {
     expect(store.readGlossary("rust").terms.map((t) => t.term)).toEqual(["Owner"]);
   });
 });
+
+describe("corrupt state", () => {
+  it("reports invalid JSON instead of treating annotations as absent", () => {
+    seedClassroom(fixture);
+    fixture.write("rust/001-ownership/annotations.json", "{");
+    expect(() => store.listAnnotations("rust", "001-ownership")).toThrow(/annotations.json/);
+  });
+});
+
+it("distinguishes absent optional state from corrupt state files", () => {
+  seedClassroom(fixture);
+  expect(store.listAnnotations("rust", "001-ownership")).toEqual([]);
+  expect(store.listReflections("rust", "001-ownership")).toEqual([]);
+  for (const source of ["null", "{}", "true", "[invalid]"]) {
+    fixture.write("rust/001-ownership/annotations.json", source);
+    expect(() => store.listAnnotations("rust", "001-ownership")).toThrow(/annotations.json/);
+  }
+});
+
+it("reports a corrupt grade instead of dropping it from history", () => {
+  seedClassroom(fixture);
+  fixture.write("rust/001-ownership/quiz/grades/corrupt.json", "{");
+  expect(() => store.listGrades("rust", "001-ownership")).toThrow(/corrupt.json/);
+});

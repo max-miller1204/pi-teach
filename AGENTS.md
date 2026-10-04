@@ -29,8 +29,9 @@ cannot reach the agent — questions and grading would stop working. Session-sco
 feature, not a limitation to fix.
 
 Claude Code and Codex keep the same shape: the client spawns one MCP process per session,
-and the HTTP server lives in it. An MCP server cannot wake its client, so the browser's
-prompts go into a `LearnerInbox`, and the agent collects them with `wait_for_learner`.
+and the HTTP server lives in it. This MCP adapter does not push browser prompts into
+its client. It queues them in a `LearnerInbox`. The agent collects them with
+`wait_for_learner`.
 The prompts are the same as in Pi; only `Delivery` (`"push"` or `"wait"`) changes one
 sentence.
 
@@ -71,7 +72,7 @@ Extension side (`.ts`):
   `<classroom>/<lesson>`.
 - `src/bridge.ts` — waking the agent, and the origin FIFO that keeps `agent_end`
   attribution honest.
-- `src/tools.ts`: the six shared tools, as plain JSON Schema. Pi's validator compiles
+- `src/tools.ts`: the seven shared tools, as plain JSON Schema. Pi's validator compiles
   JSON Schema as-is, so there is no `typebox` import. `ToolHost` holds the one string
   that differs between hosts.
 - `src/mcp.ts` — the MCP server for Claude Code and Codex: a pure JSON-RPC dispatcher
@@ -120,8 +121,7 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   resolves the turn (oldest pending, else the most recent, so a revision is not lost), and
   `applyAnswer` routes through it.
 - **The status widget is derived, never stored.** `refreshStatusWidget()` reads
-  `server.getPort()` each time rather than being handed a port, so an ephemeral-port
-  fallback cannot desync it. It uses plain string lines (the only content RPC mode
+  `server.getPort()` each time rather than being handed a port, so the displayed port stays current. It uses plain string lines (the only content RPC mode
   honours) and swallows `setWidget` failures — a mode without widgets must not take the
   server down with it. Call it after anything that starts or stops the server.
 - **The learner inbox never drops a prompt.** A prompt that arrives while nobody waits
@@ -154,7 +154,7 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   latest attempt at each `quizId`. A new attempt is refused (409) until the last one is
   graded.
 - **The review schedule is derived, never stored.** `store.reviewItems()` rebuilds it
-  from every graded answer. Pretests are left out. A review question names its item
+  from every graded answer and linked chat retrieval check. Pretests are left out. A review question names its item
   with `data-review-of`, and the server refuses a key that was never graded.
 - **`quiz/` is never a static route.** It holds submissions and any answer key. Adding a
   route that serves lesson directories wholesale would leak it; the media route is

@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { questionCredit } from "../assets/runtime/grade.mjs";
 import { reviewKey } from "../assets/runtime/quiz.mjs";
 import { parseGlossary, type Glossary } from "./glossary.ts";
 import {
@@ -146,6 +147,9 @@ export interface QuizSubmission {
 }
 
 export interface QuizQuestionGrade {
+  /** Absent on historical binary grades. */
+  pointsEarned?: number;
+  pointsPossible?: number;
   questionId: string;
   correct: boolean;
   feedback: string;
@@ -166,11 +170,19 @@ export interface QuizGrade {
 
 // ── Small JSON helpers ────────────────────────────────────────────────────────
 
-function readJson<T>(file: string): T | null {
+function readJson<T>(
+  file: string,
+  shape: "object" | "array" = "object",
+  optional = true,
+): T | null {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as T;
-  } catch {
-    return null;
+    const value: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (value === null || typeof value !== "object" || Array.isArray(value) !== (shape === "array"))
+      throw new Error(`Expected a JSON ${shape}.`);
+    return value as T;
+  } catch (err) {
+    if (optional && (err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new Error(`Cannot read JSON state ${file}: ${(err as Error).message}`, { cause: err });
   }
 }
 
@@ -182,8 +194,9 @@ function writeJson(file: string, value: unknown): void {
 function mtime(p: string): number {
   try {
     return fs.statSync(p).mtimeMs;
-  } catch {
-    return 0;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw err;
   }
 }
 
@@ -201,8 +214,9 @@ export function resolveLessonHtml(dir: string): string | null {
   let entries: string[];
   try {
     entries = fs.readdirSync(dir);
-  } catch {
-    return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
   }
   const html = entries.filter((e) => e.toLowerCase().endsWith(".html")).sort();
   const numbered = html.filter((e) => /^lesson[-_]/i.test(e));
@@ -348,21 +362,17 @@ export function writeLessonMeta(classroom: string, lesson: string, meta: LessonM
 
 /** Read a `<title>` out of the lesson document, for lessons with no lesson.json. */
 function titleFromHtml(htmlPath: string): string | null {
-  try {
-    const head = fs.readFileSync(htmlPath, "utf8").slice(0, 4096);
-    const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head);
-    const title = m?.[1]?.trim();
-    return title ? title.replace(/\s+/g, " ") : null;
-  } catch {
-    return null;
-  }
+  const head = fs.readFileSync(htmlPath, "utf8").slice(0, 4096);
+  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head);
+  const title = m?.[1]?.trim();
+  return title ? title.replace(/\s+/g, " ") : null;
 }
 
 // ── Annotations ───────────────────────────────────────────────────────────────
 
 export function listAnnotations(classroom: string, lesson: string): Annotation[] {
   if (!isValidSlug(classroom) || !isValidSlug(lesson)) return [];
-  return readJson<Annotation[]>(annotationsFile(classroom, lesson)) ?? [];
+  return readJson<Annotation[]>(annotationsFile(classroom, lesson), "array") ?? [];
 }
 
 function writeAnnotations(classroom: string, lesson: string, list: Annotation[]): void {
@@ -514,7 +524,7 @@ function listJsonFiles<T>(dir: string): T[] {
     .readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
     .sort()
-    .map((f) => readJson<T>(path.join(dir, f)))
+    .map((f) => readJson<T>(path.join(dir, f), "object", false))
     .filter((v): v is T => v !== null);
 }
 
@@ -636,10 +646,12 @@ export function reviewEvents(classroom: string): ReviewEvent[] {
       for (const [questionId, group] of answersByQuestion(submission.answers)) {
         const verdict = grade.questions.find((q) => q.questionId === questionId);
         if (!verdict) continue;
+        const credit = questionCredit(verdict);
         events.push({
           key: group[0].reviewOf ?? reviewKey(lesson, submission.quizId, questionId),
           at: submission.submittedAt,
           correct: verdict.correct,
+          credit: credit.earned / credit.possible,
           prompt: group[0].prompt ?? "",
           answer: answerSummary(group),
           feedback: verdict.feedback,
@@ -647,12 +659,80 @@ export function reviewEvents(classroom: string): ReviewEvent[] {
       }
     }
   }
+  const checks = listRetrievalChecks(classroom);
+  for (const check of checks) {
+    const original = events.find((event) => event.key === check.key);
+    if (!original)
+      throw new Error(`Retrieval check ${check.id} refers to an unknown review item: ${check.key}`);
+    events.push({
+      key: check.key,
+      at: check.at,
+      correct: true,
+      credit: 1,
+      prompt: original.prompt,
+      answer: check.answer,
+      feedback: check.evidence,
+      source: "chat",
+      learningRecord: check.learningRecord,
+    });
+  }
   return events;
 }
 
 /** Every review item in a classroom, with its schedule, soonest due first. */
 export function reviewItems(classroom: string): ReviewItem[] {
   return scheduleItems(reviewEvents(classroom));
+}
+
+/** A successful chat retrieval check linked to an existing quiz item. */
+export interface RetrievalCheck {
+  id: string;
+  key: string;
+  at: number;
+  answer: string;
+  evidence: string;
+  learningRecord: string;
+}
+
+export function listRetrievalChecks(classroom: string): RetrievalCheck[] {
+  return listJsonFiles<RetrievalCheck>(
+    path.join(classroomDir(classroom), "quiz", "retrieval-checks"),
+  ).sort((a, b) => a.at - b.at);
+}
+
+/** Preserve the quiz attempt and add later evidence of understanding. */
+export function recordRetrievalCheck(
+  classroom: string,
+  input: Omit<RetrievalCheck, "id" | "at">,
+): RetrievalCheck {
+  const item = reviewItems(classroom).find((item) => item.key === input.key);
+  if (!item) throw new Error(`No graded review item: ${input.key}`);
+  const record = readLearningRecords(classroom).find(
+    (record) => record.file === input.learningRecord,
+  );
+  if (!record) throw new Error(`No learning record: ${input.learningRecord}`);
+  if (/^status:\s*superseded/im.test(record.markdown))
+    throw new Error("Use an active learning record.");
+  if (!input.answer.trim() || !input.evidence.trim())
+    throw new Error("Include the learner's answer and the evidence of understanding.");
+  const previous = listRetrievalChecks(classroom);
+  if (
+    previous.some(
+      (check) => check.key === input.key && check.learningRecord === input.learningRecord,
+    )
+  ) {
+    throw new Error("This learning record already has a retrieval check for this item.");
+  }
+  const check = {
+    ...input,
+    id: randomUUID(),
+    at: Math.max(Date.now(), item.lastAt + 1, ...previous.map((c) => c.at + 1)),
+  };
+  writeJson(
+    path.join(classroomDir(classroom), "quiz", "retrieval-checks", `${check.at}-${check.id}.json`),
+    check,
+  );
+  return check;
 }
 
 // ── Reflections ───────────────────────────────────────────────────────────────
@@ -671,7 +751,7 @@ export interface Reflection {
 /** Every saved reflection in a lesson, oldest first. Each save is kept. */
 export function listReflections(classroom: string, lesson: string): Reflection[] {
   if (!isValidSlug(classroom) || !isValidSlug(lesson)) return [];
-  return readJson<Reflection[]>(reflectionsFile(classroom, lesson)) ?? [];
+  return readJson<Reflection[]>(reflectionsFile(classroom, lesson), "array") ?? [];
 }
 
 export function createReflection(input: Omit<Reflection, "id" | "savedAt">): Reflection {

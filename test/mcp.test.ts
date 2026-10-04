@@ -102,6 +102,7 @@ describe("protocol", () => {
       "lesson_health",
       "list_classrooms",
       "open_classroom",
+      "record_retrieval_check",
       "scaffold_classroom",
       "scaffold_lesson",
       "scaffold_review",
@@ -246,6 +247,80 @@ describe("wait_for_learner", () => {
     expect(inbox.size).toBe(0);
   });
 
+  it("recovers an ungraded submission after an MCP restart", async () => {
+    const submission = store.createSubmission({
+      classroom: "rust",
+      lesson: "001-ownership",
+      quizId: "check-1",
+      quizTitle: "Check",
+      kind: "check",
+      answers: [{ questionId: "q1", type: "term", value: "owner" }],
+    });
+    await call("open_classroom", { classroom: "rust" });
+    expect(text(await call("wait_for_learner", { timeout_seconds: 1 }))).toContain(submission.id);
+  });
+
+  it("recovers pending card turns once and ignores requests already answered", async () => {
+    await call("open_classroom", { classroom: "rust" });
+    const card = await askFromBrowser("Before restart?");
+    inbox.reset();
+    await call("open_classroom", { classroom: "rust" });
+    await call("open_classroom", { classroom: "rust" });
+    expect(inbox.size).toBe(1);
+    const received = text(await call("wait_for_learner"));
+    expect(received).toContain(card.id);
+    expect(received).not.toContain("2 requests");
+    await call("answer_lesson_question", { annotation_id: card.id, answer_markdown: "One owner." });
+    const followUp = store.addFollowUp(card.id, "And borrows?")!.followUp;
+    await call("open_classroom", { classroom: "rust" });
+    expect(text(await call("wait_for_learner"))).toContain(followUp.question);
+    await call("answer_lesson_question", {
+      annotation_id: card.id,
+      answer_markdown: "Many readers.",
+    });
+    inbox.reset();
+    await call("open_classroom", { classroom: "rust" });
+    expect(inbox.size).toBe(0);
+  });
+
+  it("does not deliver a queued submission that has already been graded", async () => {
+    const submission = store.createSubmission({
+      classroom: "rust",
+      lesson: "001-ownership",
+      quizId: "check-1",
+      quizTitle: "Check",
+      kind: "check",
+      answers: [{ questionId: "q1", type: "term", value: "owner" }],
+    });
+    await call("open_classroom", { classroom: "rust" });
+    await call("grade_lesson_quiz", {
+      submission_id: submission.id,
+      score: 100,
+      feedback_markdown: "Yes.",
+      questions: [{ question_id: "q1", correct: true, feedback: "Right." }],
+    });
+    const result = text(await call("wait_for_learner", { timeout_seconds: 1 }));
+    expect(result).not.toContain(submission.id);
+    expect(result).toContain("Nothing from the learner");
+    inbox.reset();
+    await call("open_classroom", { classroom: "rust" });
+    expect(inbox.size).toBe(0);
+  });
+
+  it("restricts recovered requests to the classroom that was opened", async () => {
+    seedClassroom(fixture, { classroom: "other" });
+    store.createSubmission({
+      classroom: "other",
+      lesson: "001-ownership",
+      quizId: "check-1",
+      quizTitle: "Check",
+      kind: "check",
+      answers: [{ questionId: "q1", value: "x" }],
+    });
+    await call("open_classroom", { classroom: "rust" });
+    expect(inbox.size).toBe(0);
+  });
+
   it("returns nothing when the wait times out", async () => {
     await call("open_classroom");
     const result = await call("wait_for_learner", { timeout_seconds: 1 });
@@ -275,10 +350,10 @@ describe("wait_for_learner", () => {
 });
 
 describe("waitSeconds", () => {
-  it("defaults, rounds, and clamps", () => {
+  it("defaults and rejects invalid or long waits", () => {
     expect(waitSeconds(undefined)).toBe(DEFAULT_WAIT_SECONDS);
-    expect(waitSeconds(2.4)).toBe(2);
-    expect(waitSeconds(0)).toBe(1);
-    expect(waitSeconds(1e9)).toBe(MAX_WAIT_SECONDS);
+    expect(waitSeconds(MAX_WAIT_SECONDS)).toBe(MAX_WAIT_SECONDS);
+    for (const value of [2.4, 0, 1e9, null, "60"])
+      expect(() => waitSeconds(value)).toThrow(/timeout_seconds/);
   });
 });

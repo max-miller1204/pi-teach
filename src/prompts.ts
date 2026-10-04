@@ -16,13 +16,9 @@ import { answerDetail, answersByQuestion, kindOf } from "./quiz.ts";
 import { relativeDay, type ReviewSummary } from "./review.ts";
 import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
 
-/** Read a bundled doc, returning "" when it is missing rather than throwing. */
+/** Read a required teaching document. */
 function readDoc(name: string): string {
-  try {
-    return fs.readFileSync(path.join(docsDir(), name), "utf8");
-  } catch {
-    return "";
-  }
+  return fs.readFileSync(path.join(docsDir(), name), "utf8");
 }
 
 /**
@@ -39,7 +35,7 @@ function arrivalNote(delivery: Delivery): string {
 
 /** The same quiz follow-up rule applies to every host. */
 export const QUIZ_FOLLOW_UP =
-  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
+  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. Then call record_retrieval_check with the original review key, the active learning record file name, their actual chat answer, and the evidence. Do not change the quiz score. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
 
 /** What to do after grading a pretest. Wrong answers are expected before teaching. */
 export const PRETEST_FOLLOW_UP =
@@ -241,9 +237,9 @@ export function gradePrompt(
     "",
     answers,
     "",
-    "Read the lesson to see what each question was actually testing, then grade it. Be honest — a passing grade the learner did not earn costs them the thing they came for. For a wrong answer, say what is wrong and point at the idea they have missed, rather than just restating the correct answer.",
+    "Read the lesson and its private quiz/key.json rubric before grading. Use the criteria set before submission. Do not change the rubric between attempts. For an incomplete answer, name the missing idea and award only the points specified by the rubric. If no rubric exists, report the authoring gap and stop. Ask the teacher to supply the rubric before grading.",
     "",
-    `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. That is what renders the grade on their page.`,
+    `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. Set \`correct\` to true only for full credit. For partial credit or weighted questions, supply \`points_earned\` and \`points_possible\` for every question. The score must equal 100 times total earned points divided by total possible points. Integer rounding is allowed. With no points, answers use equal-weight binary grading. That is what renders the grade on their page.`,
     "",
     kind === "pretest" ? PRETEST_FOLLOW_UP : QUIZ_FOLLOW_UP,
   ].join("\n");
