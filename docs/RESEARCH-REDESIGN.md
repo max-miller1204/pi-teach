@@ -31,6 +31,7 @@ intervals are product choices. They are not scientific constants or proof of mas
 The implementation used isolated classrooms and separate service ports. It did not
 submit work to the learner classrooms or stop the installed service. It preserved
 historical grades and the unsubmitted CMDA attempt.
+The T3 preview host was unavailable. Browser checks used isolated headless sessions.
 
 TypeScript, 417 unit tests, browser checks, live Pi, live Claude, live Codex, and
 Claude plugin validation passed. Both quality evaluators detected a bad lesson
@@ -52,6 +53,13 @@ Final authoring reports are recorded in the implementation PR. All local reports
 including failures, live under `work/research-redesign-20261006/` in the implementation
 worktree. Private rubrics and synthetic service records remain local. PR screenshots
 contain synthetic page content only.
+
+Both final authoring runs passed browser checks and failed some semantic criteria.
+The final Claude assessment-only quiz passed semantic review. Its teaching pages
+failed checks for cues, support gaps, and weak interaction tasks. The final Codex
+pages failed checks for cues and rubric equivalence. These runs show that stronger
+instructions do not guarantee consistent question quality. Read each source excerpt
+and rubric before using a generated page.
 
 No human learning study has run. Passing software checks or an agent answering its
 own quiz does not establish human retention or transfer. Generated lessons can
