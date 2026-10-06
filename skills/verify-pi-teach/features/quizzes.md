@@ -15,7 +15,7 @@ Learners submit typed quiz answers. Grades lock the saved attempt. Stored grades
 
 - Open a lesson and fill its `form.cl-quiz` controls.
 - Click `Submit for grading`.
-- Use the next-attempt action after grading.
+- Reload a graded quiz. It stays locked. The page has no next-attempt action.
 - Open a review lesson with `data-review-of` questions.
 - Reply to a teacher's retrieval question in the panel.
 - Save a lesson's self-explanation form.
@@ -32,4 +32,4 @@ Preconditions: Require the browser CLI and repository dependencies. Each harness
 
 ## Gotchas
 
-The broad browser regression uses a temporary grading control server. It proves UI controls and production grade application. It does not prove model judgment. Do not use this control endpoint as learner proof. The host harness proves one choice question. Neither path alone proves every review or retrieval entry point. Generated authoring output varies. Keep private fixture keys inside local evidence. Do not publish them or expose real rubrics.
+The broad browser regression uses a temporary grading control server. It proves UI controls and production grade application. It does not prove model judgment. Do not use this control endpoint as learner proof. The host harness proves one choice question. Neither path alone proves every review or retrieval entry point. No harness clicks a self-explanation `Save` button or reloads a self-explanation draft. Report them as unverified. Generated authoring output varies. Keep private fixture keys inside local evidence. Do not publish them or expose real rubrics.
