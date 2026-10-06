@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { QUESTION_TYPES } from "../assets/runtime/quiz.mjs";
-import { templatesDir } from "../src/paths.ts";
+import { assetsDir, templatesDir } from "../src/paths.ts";
 import { authoredQuestions } from "../src/quiz-authoring.ts";
 
 const read = (name: string) => fs.readFileSync(path.join(templatesDir(), name), "utf8");
@@ -54,5 +54,14 @@ describe("quiz contract", () => {
       expect(values).not.toContain(undefined);
       expect(new Set(values).size).toBe(values.length);
     }
+  });
+});
+
+describe("browser check config", () => {
+  it("requires a headless launch", () => {
+    const config = JSON.parse(
+      fs.readFileSync(path.join(assetsDir(), "playwright-headless.json"), "utf8"),
+    );
+    expect(config.browser.launchOptions.headless).toBe(true);
   });
 });

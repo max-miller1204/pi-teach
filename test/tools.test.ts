@@ -168,7 +168,10 @@ describe("scaffold_lesson", () => {
     expect(text).toContain("predict, retrieve, explain, practise, or diagnose");
     expect(text).toContain(path.join(path.dirname(htmlPath), "quiz", "key.json"));
     expect(text).toContain("Call lesson_health for this lesson");
-    expect(text).toContain("Open the lesson URL in your browser tool.");
+    expect(text).toContain("Check the lesson URL in a headless browser.");
+    expect(text).toContain("playwright-headless.json");
+    expect(text).toContain("Do not open a visible browser window.");
+    expect(text).toContain("Report a headless launch failure");
     expect(text).not.toContain("if you have one");
 
     const html = fs.readFileSync(htmlPath, "utf8");

@@ -145,7 +145,7 @@ const AUTHORING_PROMPT = [
   "Do not call wait_for_learner and do not ask the learner anything. Nobody will reply during this run.",
   // Reason: a real session knows its own browser tool. This run has only a shell
   // command, so name it. This describes the environment and gives no authoring hint.
-  "Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
+  "Check each lesson page and its local controls in headless mode. Use the packaged config named in the scaffold instructions. Do not use --headed or show a visible window. Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
   "When all three lessons are written, end with one line per lesson that states why you chose its activities.",
 ].join("\n");
 
@@ -430,7 +430,7 @@ async function main(): Promise<void> {
     const authoring = startSession(
       AUTHORING_PROMPT,
       ["begin_teaching", "list_classrooms", "lesson_health", "scaffold_lesson", "open_classroom"],
-      // Reason: the scaffold tells the agent to check its pages in a browser tool.
+      // Reason: this evaluation explicitly requests browser checks.
       // Claude Code runs with an allowlist, so allow the browser CLI explicitly.
       ["Read", "Write", "Edit", "Glob", "Grep", "Bash(playwright-cli:*)"],
       env,
@@ -444,6 +444,22 @@ async function main(): Promise<void> {
     const pageChecks = browserCommands(harness, authoring.stream());
     log(`browser commands: ${pageChecks.length}`);
     if (pageChecks.length === 0) failures.push("The agent never opened a lesson in a browser.");
+    const launches = pageChecks.filter((command) =>
+      /\bplaywright-cli(?:\s+-[^\s]+)*\s+open(?:\s|$)/.test(command),
+    );
+    if (launches.length === 0) failures.push("The agent never launched a headless check session.");
+    for (const command of launches) {
+      if (!command.includes("--config") || !command.includes("playwright-headless.json"))
+        failures.push("The agent opened a browser without the packaged headless config.");
+    }
+    if (
+      pageChecks.some(
+        (command) =>
+          command.includes("--headed") ||
+          /\bplaywright-cli(?:\s+-[^\s]+)*\s+show(?:\s|$)/.test(command),
+      )
+    )
+      failures.push("The agent requested a visible browser.");
     if (authoringCalls.filter((call) => call === "scaffold_lesson").length !== OBJECTIVES.length) {
       failures.push(
         `The agent called scaffold_lesson ${authoringCalls.filter((c) => c === "scaffold_lesson").length} times.`,
