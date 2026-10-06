@@ -37,11 +37,37 @@ it("times out setup and gives the turn its own deadline", () => {
   const fail = vi.fn();
   const deadline = new TeacherDeadline(fail);
   deadline.enter("waiting for initialize");
-  vi.advanceTimersByTime(170_000);
+  vi.advanceTimersByTime(50_000);
   deadline.enter("waiting for thread/resume");
-  vi.advanceTimersByTime(170_000);
+  vi.advanceTimersByTime(50_000);
   deadline.enter("running turn turn-1");
   vi.advanceTimersByTime(180_000);
   expect(fail).toHaveBeenCalledOnce();
   expect(fail.mock.calls[0][0].message).toContain("running turn turn-1");
+});
+
+it("fails a request at its total limit despite continued output", () => {
+  const fail = vi.fn();
+  const deadline = new TeacherDeadline(fail);
+  deadline.enter("running turn-1");
+  for (let i = 0; i < 5; i++) {
+    vi.advanceTimersByTime(59_000);
+    deadline.progress("item/agentMessage/delta");
+  }
+  expect(fail).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(5_000);
+  expect(fail).toHaveBeenCalledOnce();
+  expect(fail.mock.calls[0][0].message).toContain("300 second request limit");
+  expect(fail.mock.calls[0][0].message).toContain("item/agentMessage/delta");
+  deadline.enter("late notification");
+  vi.advanceTimersByTime(300_000);
+  expect(fail).toHaveBeenCalledOnce();
+});
+
+it("reports only one failure when both limits expire together", () => {
+  const fail = vi.fn();
+  const deadline = new TeacherDeadline(fail, 1000, 1000);
+  vi.advanceTimersByTime(1000);
+  expect(fail).toHaveBeenCalledOnce();
+  deadline.stop();
 });

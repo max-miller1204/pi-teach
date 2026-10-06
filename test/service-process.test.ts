@@ -123,8 +123,23 @@ it("keeps HTTP and submissions alive after MCP exit, reconnects, and preserves g
   const first = client();
   await first.call("initialize", { clientInfo: { name: "codex-test" } });
   const tools = await first.call("tools/list");
-  expect(tools.result.tools.map((t: any) => t.name)).toContain("classroom_phone");
-  expect(tools.result.tools.map((t: any) => t.name)).not.toContain("wait_for_learner");
+  expect(tools.result.tools.map((t: any) => t.name).sort()).toEqual(
+    [
+      "begin_teaching",
+      "classroom_phone",
+      "classroom_service",
+      "lesson_health",
+      "list_classrooms",
+      "open_classroom",
+      "scaffold_classroom",
+      "scaffold_lesson",
+      "scaffold_review",
+    ].sort(),
+  );
+  expect(
+    tools.result.tools.find((t: any) => t.name === "scaffold_lesson").inputSchema.properties.mode
+      .enum,
+  ).toEqual(["lesson", "quiz", "pretest"]);
   expect((await serviceStatus()).running).toBe(false);
   const opened = await first.call("tools/call", {
     name: "open_classroom",
@@ -310,12 +325,12 @@ it("accepts another lesson submission and control requests during a long Codex g
   expect((await serviceStatus()).pid).toBe(before.pid);
 }, 15_000);
 
-function accelerateDeadline() {
+function accelerateDeadline(total = false) {
   // Scale only the teacher deadline. Keep service and HTTP timers unchanged.
   const preload = f.write(
     "deadline.mjs",
     `const original = globalThis.setTimeout;
-globalThis.setTimeout = (callback, ms, ...args) => original(callback, ms === 180000 ? 1000 : ms, ...args);
+globalThis.setTimeout = (callback, ms, ...args) => original(callback, ms === ${total ? 300000 : 180000} ? 1000 : ms, ...args);
 `,
   );
   env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --import=${pathToFileURL(preload).href}`;
@@ -340,35 +355,45 @@ it.each(["invalid", "truncated"])(
   },
   15_000,
 );
-it("times out a stalled grade despite unrelated model output and requires retry", async () => {
-  f.write("behavior.json", JSON.stringify({ gate: true, noise: true }));
-  accelerateDeadline();
-  const base = await openDetached();
-  const submission = await submit(base, "001-ownership");
-  await waitFor(async () => {
-    const state = JSON.parse(fs.readFileSync(path.join(f.root, "rust/.teacher.json"), "utf8"));
-    return state.requests[0]?.status === "failed";
-  });
-  const file = path.join(f.root, "rust/.teacher.json");
-  const state = JSON.parse(fs.readFileSync(file, "utf8"));
-  expect(state.requests[0].error).toContain(
-    `quiz request quiz:${submission.id} in rust/001-ownership`,
-  );
-  expect(state.requests[0].error).toContain(
-    "running turn test-turn in thread test-dedicated-session",
-  );
-  expect(state.requests[0].error).toContain("Last progress: none");
-  f.write("release", "");
-  await new Promise((r) => setTimeout(r, 1200));
-  expect(JSON.parse(fs.readFileSync(file, "utf8")).requests[0].status).toBe("failed");
-  const retried = await fetch(`${base}/api/teacher/retry`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ classroom: "rust", id: `quiz:${submission.id}` }),
-  });
-  expect(retried.status).toBe(200);
-  await waitFor(
-    async () => JSON.parse(fs.readFileSync(file, "utf8")).requests[0].status === "done",
-  );
-  expect(fs.readdirSync(path.join(f.root, "rust/001-ownership/quiz/grades"))).toHaveLength(1);
-}, 15_000);
+it.each(["noise", "progress"])(
+  "times out an unfinished grade despite %s and requires retry",
+  async (mode) => {
+    f.write("behavior.json", JSON.stringify({ gate: true, [mode]: true }));
+    accelerateDeadline(mode === "progress");
+    const base = await openDetached();
+    const submission = await submit(base, "001-ownership");
+    await waitFor(async () => {
+      const state = JSON.parse(fs.readFileSync(path.join(f.root, "rust/.teacher.json"), "utf8"));
+      return state.requests[0]?.status === "failed";
+    });
+    const file = path.join(f.root, "rust/.teacher.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(state.requests[0].error).toContain(
+      `quiz request quiz:${submission.id} in rust/001-ownership`,
+    );
+    expect(state.requests[0].error).toContain(
+      "running turn test-turn in thread test-dedicated-session",
+    );
+    expect(state.requests[0].error).toContain(
+      mode === "progress" ? "300 second request limit" : "made no progress",
+    );
+    expect(state.requests[0].error).toContain(
+      `Last progress: ${mode === "progress" ? "item/agentMessage/delta" : "none"}`,
+    );
+    expect(fs.existsSync(path.join(f.root, "rust/001-ownership/quiz/grades"))).toBe(false);
+    f.write("release", "");
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).requests[0].status).toBe("failed");
+    const retried = await fetch(`${base}/api/teacher/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ classroom: "rust", id: `quiz:${submission.id}` }),
+    });
+    expect(retried.status).toBe(200);
+    await waitFor(
+      async () => JSON.parse(fs.readFileSync(file, "utf8")).requests[0].status === "done",
+    );
+    expect(fs.readdirSync(path.join(f.root, "rust/001-ownership/quiz/grades"))).toHaveLength(1);
+  },
+  15_000,
+);
