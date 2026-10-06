@@ -80,6 +80,18 @@ describe("draft values", () => {
     expect(draftErrors("quiz:check-1", [])).toEqual(["The quiz draft must be an object."]);
   });
 
+  it("keeps optional confidence and assistance separate from answers", () => {
+    expect(draftErrors("quiz:check", { q1: { confidence: "unsure", assistance: "hint" } })).toEqual(
+      [],
+    );
+    expect(
+      draftErrors("quiz:check", { q1: { confidence: "certain", assistance: "magic" } }),
+    ).toEqual([
+      "The draft of question q1 has an invalid confidence.",
+      "The draft of question q1 has an invalid assistance.",
+    ]);
+  });
+
   it("needs a full anchor on a question draft", () => {
     const anchor = { exact: "one owner", prefix: "has ", suffix: ".", occurrence: 0 };
     expect(draftErrors("ask", { anchor, text: "Why?" })).toEqual([]);

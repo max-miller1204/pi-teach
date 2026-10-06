@@ -223,6 +223,91 @@ it("validates newly authored assessment identities, kinds, types, and rubric cov
   expect(s.rubricDigest).toMatch(/^[a-f0-9]{64}$/);
 });
 
+it("binds private objective evidence to an attempt and excludes it from learner responses", async () => {
+  const lesson = "095-evidence";
+  fixture.write(
+    `rust/${lesson}/lesson.json`,
+    JSON.stringify({ title: "Evidence", assessmentContract: 1, instructionalContract: 1 }),
+  );
+  fixture.write(
+    `rust/${lesson}/lesson.html`,
+    '<form class="cl-quiz" data-quiz-id="check"><li class="cl-q" data-question-id="q1" data-type="term"></li></form>',
+  );
+  fixture.write(
+    `rust/${lesson}/quiz/key.json`,
+    JSON.stringify({
+      check: {
+        q1: { expected: "owner", points: 1, full: "Names owner", partial: "No partial credit" },
+      },
+    }),
+  );
+  const plan = {
+    version: 1,
+    objectives: {
+      o: {
+        statement: "Apply ownership",
+        application: true,
+        interleaveGroup: "PRIVATE GROUP",
+        strategy: "PRIVATE STRATEGY",
+      },
+    },
+    quizzes: {
+      check: {
+        purpose: "assessment",
+        questions: { q1: { objective: "o", task: "transfer", support: "assisted" } },
+      },
+    },
+  };
+  const body = {
+    classroom: "rust",
+    lesson,
+    quizId: "check",
+    kind: "check",
+    answers: [
+      {
+        ...termAnswer("q1", "owner"),
+        confidence: "unsure",
+        assistance: "none",
+        learning: { support: "independent" },
+      },
+    ],
+  };
+  expect((await post("/api/quiz/submit", body)).status).toBe(400);
+  fixture.write(`rust/${lesson}/quiz/plan.json`, JSON.stringify(plan));
+  const response = await post("/api/quiz/submit", body);
+  expect(response.status).toBe(201);
+  const publicAttempt = await response.json();
+  expect(publicAttempt.teachingPlan).toBeUndefined();
+  expect(publicAttempt.answers[0].learning).toBeUndefined();
+  expect(publicAttempt.answers[0]).toMatchObject({ confidence: "unsure", assistance: "none" });
+  const saved = store.findSubmission(publicAttempt.id)!;
+  expect(saved.answers[0].learning).toMatchObject({
+    support: "assisted",
+    assistance: "none",
+    task: "transfer",
+  });
+  expect(saved.teachingPlan).toEqual(plan);
+  plan.objectives.o.application = false;
+  plan.quizzes.check.questions.q1.support = "independent";
+  fixture.write(`rust/${lesson}/quiz/plan.json`, JSON.stringify(plan));
+  applyGrade(saved, {
+    score: 100,
+    feedbackMarkdown: "Correct. This was supported work.",
+    questions: [
+      { questionId: "q1", correct: true, pointsEarned: 1, pointsPossible: 1, feedback: "Correct" },
+    ],
+  });
+  expect(store.reviewItems("rust").find((i) => i.key === `${lesson}/check/q1`)).toMatchObject({
+    context: "assisted",
+    objective: { application: true },
+    delayedSuccesses: 0,
+  });
+  const state = await (await get(`/api/state?classroom=rust&lesson=${lesson}`)).text();
+  expect(state).not.toContain("PRIVATE STRATEGY");
+  expect(state).not.toContain("PRIVATE GROUP");
+  expect((await get(`/c/rust/${lesson}/quiz/plan.json`)).status).toBe(404);
+});
+
 /** Read Server-Sent Events until `predicate` matches or the deadline passes. */
 async function nextEvent(
   url: string,

@@ -103,6 +103,8 @@
       <!-- KEEP for a new lesson. Ask about central ideas in the upcoming lesson. Two or three is a practical default. -->
       <form
         class="cl-quiz"
+        data-evidence="report"
+        data-confidence="optional"
         data-quiz-id="pretest-1"
         data-kind="pretest"
         data-title="Before you learn"
@@ -137,7 +139,13 @@
         valid type, so the page shows a contract error until you choose a type and
         write the question. Place quizzes where they serve the lesson. Keep the pretest outside its gate. Put post-teaching checks inside the gate.
       -->
-        <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
+        <form
+          class="cl-quiz"
+          data-evidence="report"
+          data-confidence="optional"
+          data-quiz-id="check-1"
+          data-title="Check on learning"
+        >
           <ol class="cl-questions">
             <li class="cl-q" data-question-id="q1" data-type="CHOOSE-A-TYPE">
               <p class="cl-q-prompt">Write a question that tests the objective.</p>

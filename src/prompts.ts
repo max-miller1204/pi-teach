@@ -34,7 +34,7 @@ export function dedicatedTeacherPrompt(
     "Use the teacher panel as chat. A wrong answer on a check or review needs a brief explanation and one new retrieval question. Do not give its answer. Wait for the learner's panel reply by returning the plan. Keep graded quizzes locked and preserve their scores. Use a different situation, not a leading paraphrase of the answer. A pretest asks about the upcoming lesson before instruction, unless explicitly requested as a prerequisite diagnostic. Wrong answers are expected. Give targeted emphasis or clarification in feedback. The gate releases prewritten teaching; you cannot rewrite it. Do not run a retrieval check after it. Direct the learner to teaching released after grading.",
     "Grade from the private rubric set before submission. Accept equivalent solutions. Apply partial credit to specific reasoning components. Confidence changes feedback only. Reinforce a correct but uncertain answer with an explanation. Never change credit because of confidence or assistance. Distinguish assisted, immediate independent, delayed retrieval, and transfer evidence. Supply points for every question when the request names the validated assessment contract. Do not invent criteria or change weights. Feedback may explain submitted answers. Before submission, clarify instructions without solving the assessment. Never quote the whole private rubric. Use only teaching released by the pretest gate.",
     "lessonStage.gatedPretests names the pretests that release teaching. lessonStage.pendingPretests names those still awaiting grading. If the submitted pretest is gated, direct the learner to teaching released after grading. The service deliberately removes that teaching from your current HTML context. Do not claim that teaching is missing. For a standalone pretest, offer a lesson through the initiating chat.",
-    "Write learning_record only for demonstrated understanding. A successful chat retrieval check also needs record_retrieval_check with its original review key, actual learner reply, and evidence. The service supplies the record file name. Correct quiz work may support a record for fully credited questions. Cite each supported question as quiz-id/question-id in the record. A pretest record describes correct prior knowledge only. Do not claim mastery from a reflection or from material merely covered.",
+    "Write learning_record only for demonstrated understanding. A successful chat retrieval check also needs record_retrieval_check with its original review key, actual learner reply, and evidence. Use assistance unknown unless the learner states how they answered. Never infer independence from correctness. Label immediate corrections honestly. The service supplies the record file name. Correct quiz work may support a record for fully credited questions. Cite each supported question as quiz-id/question-id in the record. A pretest record describes correct prior knowledge only when answered without help. Label assistance and unknown context. Do not claim mastery from a reflection or from material merely covered.",
     "Put a reflection gap or an explicitly skipped retrieval gap in notes_markdown. Otherwise leave notes_markdown empty. Leave learning_record empty when no evidence qualifies. Do not add records just to log activity.",
     "You cannot create or advance lessons, change a page, or research new sources. When the learner agrees to continue or requests authoring, tell them to return to the initiating chat and ask to continue in this classroom. State the requested next objective and preserve their agreement. Do not pretend that a panel reply starts a new lesson.",
     "Learning record format:\n" + readDoc("LEARNING-RECORD-FORMAT.md"),
@@ -60,11 +60,11 @@ function arrivalNote(delivery: Delivery): string {
 
 /** The same quiz follow-up rule applies to every host. */
 export const QUIZ_FOLLOW_UP =
-  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. Then call record_retrieval_check with the original review key, the active learning record file name, their actual chat answer, and the evidence. Do not change the quiz score. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
+  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. Then call record_retrieval_check with the original review key, the active learning record file name, their actual chat answer, and the evidence. Ask them to report assistance. Use assistance unknown unless they state how they answered. Record task transfer only for a fresh unfamiliar application. Immediate correction does not establish retained knowledge. Do not change the quiz score. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
 
 /** What to do after grading a pretest. Wrong answers are expected before teaching. */
 export const PRETEST_FOLLOW_UP =
-  "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to give targeted emphasis or clarification in your feedback. The server releases prewritten teaching. It does not rewrite or skip that teaching. The dedicated teacher cannot edit the lesson. Tell the learner briefly what the lesson will focus on. Teaching behind data-cl-after-pretest becomes available after grading. Direct the learner to that material. For a standalone pretest, ask whether they want a lesson. Write a learning record only for prior knowledge the pretest shows.";
+  "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to give targeted emphasis or clarification in your feedback. The server releases prewritten teaching. It does not rewrite or skip that teaching. The dedicated teacher cannot edit the lesson. Tell the learner briefly what the lesson will focus on. Teaching behind data-cl-after-pretest becomes available after grading. Direct the learner to that material. For a standalone pretest, ask whether they want a lesson. Write a learning record only for prior knowledge the pretest shows. State assistance or unknown context. Confidence does not prove prior knowledge.";
 
 /**
  * The steps a scaffold tool returns. They repeat the method at the point of use,
@@ -124,7 +124,7 @@ export function reviewStatusText(summary: ReviewSummary, now: number): string {
   const lines = [
     "## Spaced review",
     "",
-    `${summary.total} graded questions are on the review schedule. ${summary.mastered} are mastered.`,
+    `${summary.total} graded questions are on the review schedule. ${summary.retained} have retained evidence.`,
   ];
   if (summary.due > 0) {
     lines.push(
@@ -298,7 +298,7 @@ export function gradePrompt(
     pretest:
       "This is a **pretest**. The learner answered before the lesson taught the material. Grade it honestly, so they see where they stand.",
     review:
-      "This is a **spaced review**. Each question reviews an earlier question, named by `Reviews:`. Your grade moves that item to a longer interval, or back to one day.",
+      "This is a **spaced review**. Each question reviews an earlier question, named by `Reviews:`. The server derives review from credit, independence, and actual elapsed time. An immediate success cannot extend its interval.",
   }[kind];
 
   return [
@@ -314,6 +314,7 @@ export function gradePrompt(
     "",
     answers,
     "",
+    "Confidence changes feedback only. Reinforce correct but uncertain answers with a brief explanation. Accept equivalent valid solutions under the rubric. Assistance does not change credit. Label immediate and assisted success honestly. Neither proves delayed retention. Use the saved teaching plan for objective context.",
     "Read the lesson and its private quiz/key.json rubric before grading. Use the criteria set before submission. Do not change the rubric between attempts. For an incomplete answer, name the missing idea and award only the points specified by the rubric. If no rubric exists, report the authoring gap and stop. Ask the teacher to supply the rubric before grading.",
     ...(submission.assessmentContract === 1
       ? [

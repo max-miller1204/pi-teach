@@ -372,7 +372,7 @@ describe("review items", () => {
     const saved = store.listSubmissions("rust", "001-ownership");
     const items = store.reviewItems("rust");
     expect(items.map((item) => item.key)).toEqual(["001-ownership/check-1/q1"]);
-    expect(items[0]).toMatchObject({ box: 1, dueAt: T0 + 4 * DAY_MS, lastAnswer: "owner" });
+    expect(items[0]).toMatchObject({ box: 0, dueAt: T0 + 2 * DAY_MS + 1, lastAnswer: "owner" });
     expect(store.listSubmissions("rust", "001-ownership")).toEqual(saved);
     expect(saved.find((submission) => submission.quizId === "check-1")!.answers[0].confidence).toBe(
       "guess",
@@ -469,6 +469,8 @@ describe("quiz states", () => {
 
     const [item] = store.reviewItems("rust");
     expect(item).toMatchObject({ attempts: 1, lastCorrect: true, lastFeedback: "Revised." });
+    expect(item.dueAt).toBe(original.gradedAt + DAY_MS);
+    expect(item.progress).toBe("context-unknown");
 
     const second = writeGradedAttempt({
       at: T0 + 100,

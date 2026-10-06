@@ -53,6 +53,11 @@ export function initDiagrams(root) {
     const diagram = document.createElement("div");
     diagram.className = "cl-diagram";
     diagram.setAttribute("aria-busy", "true");
+    for (const name of ["aria-label", "aria-labelledby", "aria-describedby"]) {
+      if (pre.hasAttribute(name)) diagram.setAttribute(name, pre.getAttribute(name));
+    }
+    if (pre.hasAttribute("aria-label") || pre.hasAttribute("aria-labelledby"))
+      diagram.setAttribute("role", "img");
     sources.set(diagram, dedentSource(pre.textContent));
     pre.replaceWith(diagram);
     return diagram;

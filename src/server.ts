@@ -500,7 +500,9 @@ function handleState(res: http.ServerResponse, url: URL): void {
 
   sendJson(res, {
     annotations: store.listAnnotations(params.classroom, params.lesson),
-    quizzes: store.latestQuizStates(params.classroom, params.lesson),
+    quizzes: store
+      .latestQuizStates(params.classroom, params.lesson)
+      .map((state) => ({ ...state, submission: store.publicSubmission(state.submission) })),
     reflections: store.latestReflections(params.classroom, params.lesson),
     drafts: store.readDrafts(params.classroom, params.lesson),
     teacher: hooks?.teacherState?.(params.classroom, params.lesson),
@@ -713,7 +715,7 @@ async function handleQuizSubmit(
   });
 
   hooks?.onQuizSubmit(submission);
-  sendJson(res, submission, 201);
+  sendJson(res, store.publicSubmission(submission), 201);
 }
 
 async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

@@ -192,7 +192,7 @@ ${sidePanel(data)}`;
 }
 
 /**
- * The learner's progress: what is due, what is mastered, and what they have built.
+ * The learner's progress: what is due, what evidence is retained, and what they have built.
  *
  * Only shown once there is something to show. A new classroom has no progress yet,
  * and four zeros would only be noise.
@@ -207,12 +207,14 @@ function progressSection(data: ClassroomPageData): string {
 
   const stats = [
     stat(String(review.due), "due for review", review.due > 0 ? "due" : ""),
-    stat(`${review.mastered}/${review.total}`, "questions mastered"),
+    stat(`${review.retained}/${review.total}`, "items with retained evidence"),
+    stat(String(review.transferNeeded), "need transfer evidence"),
+    stat(String(review.unknown), "have unknown context"),
     stat(String(glossaryTerms), glossaryTerms === 1 ? "glossary term" : "glossary terms"),
     stat(String(records), records === 1 ? "learning record" : "learning records"),
   ];
 
-  const percent = review.total > 0 ? Math.round((review.mastered / review.total) * 100) : 0;
+  const percent = review.total > 0 ? Math.round((review.retained / review.total) * 100) : 0;
   const note =
     review.due > 0
       ? "Ask your teacher for a review before the next lesson. Spaced recall is what makes it stick."
@@ -225,7 +227,8 @@ function progressSection(data: ClassroomPageData): string {
   <div class="cl-stats">
     ${stats.join("\n    ")}
   </div>
-  ${review.total > 0 ? `<div class="cl-meter" role="meter" aria-label="Questions mastered" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width: ${percent}%"></span></div>` : ""}
+  ${review.total > 0 ? `<div class="cl-meter" role="meter" aria-label="Items with retained evidence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width: ${percent}%"></span></div>` : ""}
+  <p class="cl-progress-note">Retained evidence needs independent answers after a delay. Application skills also need transfer. Old records with missing context stay unknown.</p>
   ${note ? `<p class="cl-progress-note">${escapeHtml(note)}</p>` : ""}
 </section>`;
 }

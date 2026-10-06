@@ -111,6 +111,21 @@ describe("grade_lesson_quiz", () => {
       },
     });
     fixture.write(`rust/${lesson}/quiz/key.json`, rubric);
+    fixture.write(
+      `rust/${lesson}/quiz/plan.json`,
+      JSON.stringify({
+        version: 1,
+        objectives: { ownership: { statement: "Identify the owner", application: false } },
+        quizzes: {
+          "assessment-1": {
+            purpose: "assessment",
+            questions: {
+              q1: { objective: "ownership", task: "retrieval", support: "independent" },
+            },
+          },
+        },
+      }),
+    );
     const s = store.createSubmission({
       classroom: "rust",
       lesson,
@@ -197,7 +212,7 @@ describe("grade_lesson_quiz", () => {
     expect(text).not.toContain("Wrong while");
     expect(text).not.toContain("Correct but guessed");
     // A wrong answer returns tomorrow. A correct answer moves to three days.
-    expect(text).toContain("Next review: q1 tomorrow, q2 in 3 days.");
+    expect(text).toContain("Next review: q1 tomorrow, q2 tomorrow.");
     expect(result.details).not.toHaveProperty("confidentlyWrong");
     expect(result.details).not.toHaveProperty("correctGuesses");
   });
@@ -301,7 +316,7 @@ describe("scaffold_review", () => {
 
     writeGradedAttempt({ at: Date.now(), answers: [termAnswer("q1", "x")], correct: { q1: true } });
     const notYet = await tool("scaffold_review").execute({ classroom: "rust" });
-    expect(notYet.content[0].text).toContain("The next question is due in 3 days.");
+    expect(notYet.content[0].text).toContain("The next question is due tomorrow.");
   });
 
   it("creates a review lesson and lists the due questions with their keys", async () => {
@@ -395,6 +410,7 @@ describe("record_retrieval_check", () => {
   }
   it("resolves current health and schedules later review without changing the grade", async () => {
     missed();
+    const dueAt = store.reviewItems("rust")[0].dueAt;
     const grades = store.listGrades("rust", "001-ownership");
     const submissions = store.listSubmissions("rust", "001-ownership");
     fixture.write(
@@ -407,13 +423,14 @@ describe("record_retrieval_check", () => {
     expect(store.listSubmissions("rust", "001-ownership")).toEqual(submissions);
     const [item] = store.reviewItems("rust");
     expect(item).toMatchObject({
-      box: 1,
+      box: 0,
       attempts: 2,
       lastCorrect: true,
       lastSource: "chat",
       learningRecord: "0001-owner.md",
     });
-    expect(item.dueAt).toBe(item.lastAt + 3 * DAY_MS);
+    expect(item.dueAt).toBe(dueAt);
+    expect(item.progress).toBe("context-unknown");
     const health = await tool("lesson_health").execute({ classroom: "rust" });
     expect(health.content[0].text).toContain("Resolved quiz gaps");
     expect(health.content[0].text).toContain("0001-owner.md");
