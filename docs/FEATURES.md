@@ -30,10 +30,12 @@
   served page until the pretest is graded. Explicit quiz requests get assessment-only
   pages. A pretest never counts toward
   the score. Confidence is optional and informs feedback only. Assistance reports describe evidence.
-- **Spaced review.** Every graded question gets a review schedule: 1, 3, 7, 21, then 60
-  days. The schedule is calculated from the grades on disk. `scaffold_review` builds a
-  review lesson from the due questions, mixed across lessons. Correctness controls
-  the schedule. Confidence never changes the schedule. Immediate success does not extend review. Old context stays unknown.
+- **Spaced review.** Each graded question except pretests gets a history-derived
+  schedule. Base intervals are 1, 3, 7, 21, and 60 days. These are product choices.
+  Elapsed time and independent retrieval control interval growth. An optional
+  retention duration can cap an interval. `scaffold_review` mixes related strategies
+  that require method selection. Confidence never changes the schedule.
+  Immediate success does not extend review. Old context stays unknown.
 - **Self-explanations.** A `form.cl-reflect` asks the learner to explain an idea in
   their own words. The teacher reads it. It is never graded.
 - **Diagrams.** A `<pre class="mermaid">` block in a lesson or a reference document is

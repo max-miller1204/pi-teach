@@ -56,6 +56,9 @@ Use purpose `prequestion` for the upcoming topic. Use `prerequisite` for a separ
 standalone pretest of prerequisites. Use `prior-retrieval` for a separate quiz on
 previously taught topics. Use `assessment` for checks and reviews. A prerequisite
 diagnostic or prior retrieval cannot replace a gated prequestion.
+These separate quizzes can share a page. Their own objectives do not need upcoming
+prequestions. Every objective must be used. Objectives used by an upcoming prequestion
+or assessment need both when the page has a teaching gate.
 
 Set `support` to `assisted` for hints, supplied method steps, or faded completion.
 Use `independent` for questions that require unaided work. This author setting alone

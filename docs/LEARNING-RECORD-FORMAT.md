@@ -2,7 +2,8 @@
 
 Learning records live in `./learning-records/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc. Create the directory lazily : only when the first record is written.
 
-They are the teaching equivalent of ADRs: they capture non-obvious lessons, key insights, and stated prior knowledge that will steer future sessions. They are used to calculate the zone of proximal development.
+They record evidence and stated prior knowledge for future teaching decisions.
+They do not calculate a learner's ability or prove retained knowledge.
 
 ## Template
 
@@ -12,7 +13,8 @@ They are the teaching equivalent of ADRs: they capture non-obvious lessons, key 
 {1-3 sentences: what was learned (or what prior knowledge was established), and why it matters for future sessions.}
 ```
 
-That is the whole format. A learning record can be a single paragraph. The value is recording _that_ this is now known and _why_ it changes what to teach next : not in filling out sections.
+That is the whole format. A learning record can be a single paragraph. State what
+the evidence shows and how it changes the next teaching decision.
 
 ## Optional sections
 
@@ -31,7 +33,7 @@ Scan `./learning-records/` for the highest existing number and increment by one.
 Write one when any of these is true:
 
 1. **The user demonstrated genuine understanding of something non-trivial** : not just exposure, but evidence they can use the concept correctly. This sets a new floor for what to teach next.
-2. **The user disclosed prior knowledge** : "I already know X." Record it so future sessions don't re-teach it. Also record the _depth_ claimed.
+2. **The user disclosed prior knowledge** : "I already know X." Record the claimed depth. Label it as self-report until an independent response supports it.
 3. **A misconception was corrected** : the user previously believed something wrong and now sees why. These are high-value: they predict future stumbling blocks for related topics.
 4. **The mission shifted in response to learning** : the user discovered they cared about something different than they thought. Cross-link to [[MISSION.md]] and update it.
 

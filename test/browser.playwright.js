@@ -154,10 +154,13 @@ async function browserRegression(page) {
   }
   await verifyReflectionAndFollowUpDrafts();
 
-  assert((await page.locator(".cl-confidence").count()) === 0, "The page has confidence controls");
   assert(
-    !(await page.locator("body").innerText()).includes("How sure are you?"),
-    "The page asks for confidence",
+    (await page.locator('[data-quiz-id="check-1"] [data-cl-confidence]').count()) === 0,
+    "A page without optional confidence unexpectedly requests it",
+  );
+  assert(
+    (await page.locator('[data-quiz-id="instant"] [data-cl-confidence]').count()) === 1,
+    "The optional confidence control is missing",
   );
   const invalidOptions = page.locator('[data-quiz-id="invalid-options"]');
   assert(
@@ -310,12 +313,41 @@ async function browserRegression(page) {
   });
   const instant = page.locator('[data-quiz-id="instant"]');
   await instant.locator('input[type="text"]').fill("owner");
+  await instant.locator("[data-cl-confidence]").selectOption("unsure");
+  await instant.locator("[data-cl-assistance]").selectOption("hint");
+  await waitDrafts(
+    (drafts) =>
+      drafts["quiz:instant"]?.q1?.confidence === "unsure" &&
+      drafts["quiz:instant"]?.q1?.assistance === "hint",
+    "Optional reports were not saved in the draft",
+  );
+  await page.reload();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-quiz-id="instant"] [data-cl-confidence]')?.value === "unsure",
+  );
+  assert(
+    (await instant.locator("[data-cl-assistance]").inputValue()) === "hint",
+    "Reload lost the assistance draft",
+  );
+  await screenshot("confidence-assistance-draft");
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/quiz/submit") && r.request().method() === "POST",
   );
   await instant.getByRole("button", { name: "Submit for grading", exact: true }).click();
   assert((await response).status() === 201, "The immediate quiz was refused");
   await (await response).finished();
+  const instantSubmission = await (await response).json();
+  assert(
+    instantSubmission.answers[0].confidence === "unsure" &&
+      instantSubmission.answers[0].assistance === "hint",
+    "Submission lost confidence or assistance",
+  );
+  assert(
+    (await instant.locator("[data-cl-confidence]").inputValue()) === "unsure" &&
+      (await instant.locator("[data-cl-assistance]").inputValue()) === "hint",
+    "Grade state lost optional reports",
+  );
   assert(
     await instant.getByRole("button", { name: "Graded", exact: true }).isDisabled(),
     "The submit response replaced the grade",
@@ -523,6 +555,15 @@ async function browserRegression(page) {
     (await page.locator("section > p .cl-term").count()) === 1,
     "The glossary skipped the prose next to a diagram",
   );
+  assert(
+    (await page.locator("figure .cl-diagram").getAttribute("aria-label")) === "Borrow check",
+    "Diagram lost its accessible name",
+  );
+  assert(
+    (await page.locator("figure .cl-diagram").getAttribute("aria-describedby")) ===
+      "borrow-description",
+    "Diagram lost its text description link",
+  );
   const label = page.locator("figure .cl-diagram svg").getByText("x < y?");
   assert((await label.count()) === 1, "An escaped label did not draw");
   await label.selectText();
@@ -578,7 +619,7 @@ async function browserRegression(page) {
     passed: [
       "self-explanation Save and draft reload",
       "saved card follow-up draft reload",
-      "no confidence controls or submitted metadata",
+      "optional confidence and assistance survive drafts, submit, and grade state",
       "glossary",
       "locked graded quiz",
       "pending saved attempt",

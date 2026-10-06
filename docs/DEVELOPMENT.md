@@ -13,6 +13,10 @@ npm run e2e:claude      # a real Claude Code session: answer a question, grade a
 npm run e2e:codex       # the same, through Codex
 npm run e2e:browser     # browser state tests with the real server
 npm run e2e:pi          # a real Pi session: question, quiz, and chat follow-up
+npm run e2e:quality -- claude     # semantic reviewer must detect bad aligned metadata
+npm run e2e:quality -- codex
+npm run e2e:feedback -- claude    # alternate, partial, uncertain, assisted, and old answers
+npm run e2e:feedback -- codex
 npm run e2e:authoring -- claude   # a real agent writes lessons; the script submits them
 npm run e2e:authoring -- codex
 ```
@@ -21,7 +25,11 @@ npm run e2e:authoring -- codex
 lessons from the scaffold. The script inspects them, submits every quiz in the
 browser, lets a second session grade them, and checks the page after a reload. It
 prints a report of each lesson's outline, quiz kinds, and response types. Model
-output varies between runs. Read the report as an evaluation, not as proof.
+output varies between runs. A separate evaluator reads the question content, teaching, and private rubric.
+It reports source excerpts for semantic alignment, cues, transfer, support, and
+equivalent solutions. Structural metadata is checked separately. Read every judgment.
+A model evaluator can be wrong. These runs are not human learning evidence.
+Use [EVALUATION.md](EVALUATION.md) for the delayed human retention and transfer protocol.
 
 All e2e scripts use the installed `playwright-cli` to drive the lesson page.
 The Pi, Claude Code, and Codex tests call a real model. They need a logged-in harness and

@@ -36,6 +36,32 @@ it("rejects prerequisite retrieval as a substitute for upcoming prequestions", (
   p.quizzes.pre.purpose = "prerequisite";
   expect(() => parseTeachingPlan(JSON.stringify(p), html)).toThrow("upcoming lesson");
 });
+it.each(["prerequisite", "prior-retrieval"])(
+  "keeps separate %s objectives outside upcoming coverage",
+  (purpose) => {
+    const p = plan();
+    Object.assign(p.objectives, {
+      prior: { statement: "Recall a prior topic", application: false },
+    });
+    Object.assign(p.quizzes, {
+      diagnostic: {
+        purpose,
+        questions: { d: { objective: "prior", task: "retrieval", support: "independent" } },
+      },
+    });
+    const diagnostic = `<form class="cl-quiz" data-quiz-id="diagnostic" data-kind="pretest"><li class="cl-q" data-question-id="d" data-type="short"></li></form>`;
+    expect(parseTeachingPlan(JSON.stringify(p), diagnostic + html)).toEqual(p);
+    p.quizzes.pre.purpose = purpose;
+    expect(() => parseTeachingPlan(JSON.stringify(p), diagnostic + html)).toThrow(
+      "upcoming lesson",
+    );
+  },
+);
+it("rejects objectives that no question uses", () => {
+  const p = plan();
+  Object.assign(p.objectives, { unused: { statement: "Unused idea", application: false } });
+  expect(() => parseTeachingPlan(JSON.stringify(p), html)).toThrow("unused objective");
+});
 it.each(["missing", "visible", "duplicate", "other-gate"])(
   "rejects %s teaching targets",
   (kind) => {

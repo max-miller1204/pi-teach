@@ -79,6 +79,7 @@ export function parseTeachingPlan(text: string, html: string): TeachingPlan {
   const stage = stageLesson(html, new Set());
   const assessed = new Set<string>();
   const prequestioned = new Set<string>();
+  const referenced = new Set<string>();
   for (const quiz of quizzes) {
     const mapping = object(mappings[quiz.id!], `Mapping for quiz ${quiz.id}`);
     const purpose = mapping.purpose;
@@ -97,6 +98,7 @@ export function parseTeachingPlan(text: string, html: string): TeachingPlan {
       const q = object(questions[question.id!], `Mapping for ${where}`);
       if (typeof q.objective !== "string" || !Object.hasOwn(objectives, q.objective))
         throw new Error(`Question ${where} names no objective.`);
+      referenced.add(q.objective);
       if (
         !MENTAL_TASKS.includes(q.task as QuestionPlan["task"]) ||
         !["independent", "assisted"].includes(String(q.support))
@@ -129,8 +131,10 @@ export function parseTeachingPlan(text: string, html: string): TeachingPlan {
   }
   if (Object.keys(mappings).some((id) => !quizzes.some((q) => q.id === id)))
     throw new Error("Teaching plan maps an unknown quiz.");
+  if (Object.keys(objectives).some((id) => !referenced.has(id)))
+    throw new Error("Teaching plan declares an unused objective.");
   if (stage.gatedPretests.length) {
-    for (const id of Object.keys(objectives)) {
+    for (const id of new Set([...prequestioned, ...assessed])) {
       if (!prequestioned.has(id) || !assessed.has(id))
         throw new Error(
           `Upcoming objective ${id} needs a prequestion and a post-teaching assessment.`,

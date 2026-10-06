@@ -19,6 +19,13 @@ correct answers. Health distinguishes incomplete answers and resolved gaps.
 Historical grades stay unchanged. Historical grades without points cannot show
 how partial credit was distributed.
 
+New scaffolded pages need a private [teaching plan](TEACHING-PLAN.md) as well as the
+rubric. `lesson_health` checks objective and teaching mappings. It cannot judge
+question quality. `scaffold_review` returns evidence context, objective policy,
+schedule policy, and the reason for each due item. Keep method labels private.
+`record_retrieval_check` accepts `assistance` and `task`. Missing assistance stays
+unknown. Use task `transfer` only for an unfamiliar application of the principle.
+
 The Claude Code and Codex plugin exposes authoring tools and these service tools.
 The dedicated teacher owns answer, grade, and retrieval writes:
 
