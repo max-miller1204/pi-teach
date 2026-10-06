@@ -55,6 +55,7 @@ import {
   until,
   type Harness,
 } from "./harness.ts";
+import { selectLocateAnswer } from "./authoring-browser.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 
 const AUTHORING_TIMEOUT_MS = 30 * 60_000;
@@ -152,6 +153,7 @@ const AUTHORING_PROMPT = [
 
 interface Session {
   stream(): string;
+  stderr(): string;
   stop(): void;
   exited: Promise<number | null>;
 }
@@ -176,7 +178,7 @@ function startSession(
       resolve(code);
     }),
   );
-  return { stream: () => stream, stop: () => child.kill(), exited };
+  return { stream: () => stream, stderr: () => stderr, stop: () => child.kill(), exited };
 }
 
 async function within<T>(what: string, ms: number, promise: Promise<T>): Promise<T> {
@@ -293,6 +295,7 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
 
 /** Load a lesson, check it, press its local controls, then answer and submit each quiz. */
 const SUBMIT_LESSON = `async page => {
+  const selectLocateAnswer = ${selectLocateAnswer.toString()};
   const errors = [];
   const consoleErrors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -355,7 +358,7 @@ const SUBMIT_LESSON = `async page => {
       }
       if (type === 'cloze') for (const blank of await q.locator('input[data-blank]').all()) await blank.fill('x');
       if (type === 'match') for (const select of await q.locator('select').all()) await select.selectOption({ index: 1 });
-      if (type === 'locate') await q.locator('.cl-segment').first().click();
+      if (type === 'locate') await selectLocateAnswer(q.locator('.cl-segment').first());
     }
     const saved = await form.evaluate((f) => ({
       checked: [...f.querySelectorAll('input:checked')].map((i) => i.value),
@@ -367,7 +370,7 @@ const SUBMIT_LESSON = `async page => {
     const response = page.waitForResponse((r) => r.url().endsWith('/api/quiz/submit') && r.request().method() === 'POST');
     await form.getByRole('button', { name: 'Submit for grading', exact: true }).click();
     const result = await response.catch(async (error) => {
-      throw new Error(error.message + ' Quiz ' + (await form.getAttribute('data-quiz-id')) + ' sent no submission. Page errors: ' + JSON.stringify(errors) + ' Console errors: ' + JSON.stringify(consoleErrors) + ' Submit requests: ' + JSON.stringify(requests) + ' Form state: ' + (await form.getAttribute('data-state')) + ' Status: ' + JSON.stringify(await form.locator('.cl-quiz-status, [role=status]').allInnerTexts()));
+      throw new Error(error.message + ' Quiz ' + (await form.getAttribute('data-quiz-id')) + ' received no submit response. Page errors: ' + JSON.stringify(errors) + ' Console errors: ' + JSON.stringify(consoleErrors) + ' Submit requests: ' + JSON.stringify(requests) + ' Form state: ' + (await form.getAttribute('data-state')) + ' Status: ' + JSON.stringify(await form.locator('.cl-quiz-status, [role=status]').allInnerTexts()));
     });
     submitted.push({ quizId: await form.getAttribute('data-quiz-id'), status: result.status(), body: result.status() === 201 ? null : await result.text(), saved });
   }
@@ -645,6 +648,10 @@ async function main(): Promise<void> {
       throw new Error(`Authoring evaluation failed:\n- ${failures.join("\n- ")}`);
     log("PASS: the agent authored, the learner submitted, the agent graded, and reload kept it.");
   } finally {
+    if (artifacts && sessions[0]) {
+      fs.writeFileSync(path.join(artifacts, `${harness}-authoring.jsonl`), sessions[0].stream());
+      fs.writeFileSync(path.join(artifacts, `${harness}-authoring.stderr`), sessions[0].stderr());
+    }
     for (const session of sessions) session.stop();
     if (browserOpen) await playwright(browser, root, "close");
     await server.close();
@@ -652,9 +659,10 @@ async function main(): Promise<void> {
       await control("/stop", {});
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
-    // Keep the service log: it is the only record of a teacher or request failure.
-    if (artifacts && fs.existsSync(servicePaths().log)) {
-      fs.copyFileSync(servicePaths().log, path.join(artifacts, `${harness}-service.log`));
+    if (artifacts) {
+      fs.cpSync(path.join(root, CLASSROOM), path.join(artifacts, "classroom"), { recursive: true });
+      if (fs.existsSync(servicePaths().log))
+        fs.copyFileSync(servicePaths().log, path.join(artifacts, `${harness}-service.log`));
     }
     fs.rmSync(root, { recursive: true, force: true });
     if (home) fs.rmSync(home, { recursive: true, force: true });

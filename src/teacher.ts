@@ -244,7 +244,7 @@ async function runCodex(
     });
   }
   try {
-    await request("initialize", { clientInfo: { name: "pi_teach_teacher", version: "0.6.0" } });
+    await request("initialize", { clientInfo: { name: "pi_teach_teacher", version: "0.6.1" } });
     child.stdin.write('{"method":"initialized","params":{}}\n');
     const config = {
       cwd,
