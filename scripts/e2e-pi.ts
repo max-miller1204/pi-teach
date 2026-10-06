@@ -1,4 +1,5 @@
 /** Test browser questions, quiz grading, and chat follow-up in a real Pi session. */
+import { highlightText } from "./browser-actions.ts";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -145,12 +146,39 @@ try {
       ? true
       : null,
   );
-  await playwright(session, fixture.root, "open", `${base}/c/rust/001-ownership`);
+  send({ id: "open", type: "prompt", message: "/classroom rust" });
+  const classroomUrl = await until("classroom link", () => {
+    const event = events.find(
+      (e) =>
+        e.type === "extension_ui_request" && e.method === "notify" && /^📚 http/.test(e.message),
+    );
+    return event ? (/http:\/\/127\.0\.0\.1:\d+\/c\/rust/.exec(event.message)?.[0] ?? null) : null;
+  });
+  await playwright(session, fixture.root, "open", classroomUrl);
   browserOpen = true;
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "pi-reading.json"),
+      JSON.stringify(
+        {
+          command: "/classroom rust",
+          classroomUrl,
+          lessonUrl: `${base}/c/rust/001-ownership`,
+          lesson: fs.readFileSync(
+            path.join(fixture.root, "rust/001-ownership/lesson.html"),
+            "utf8",
+          ),
+        },
+        null,
+        2,
+      ),
+    );
   await playwrightCode(
     session,
     fixture.root,
     `async page => {
+    await page.locator('a[href="/c/rust/001-ownership"]').click();
+    await page.locator('[data-cl-content]').getByText('Every value in Rust has one owner.', {exact:false}).waitFor();
     if (await page.locator('.cl-confidence').count()) throw new Error('The page has confidence controls');
     ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, "pi-fresh-lesson.png"))},fullPage:true});` : ""}
     return true;
@@ -160,14 +188,7 @@ try {
     session,
     fixture.root,
     `async page => {
-    await page.evaluate(() => {
-      const text = document.querySelector('main > p').firstChild;
-      const start = text.textContent.indexOf('one owner');
-      const range = document.createRange();
-      range.setStart(text, start); range.setEnd(text, start + 9);
-      window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
-      document.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
-    });
+    await (${highlightText.toString()})(page, 'main > p', 'one owner');
     await page.locator('.cl-ask-pill').click();
     await page.locator('[data-cl-question]').fill('Why does Rust allow only one owner?');
     const response = page.waitForResponse(r => r.url().endsWith('/api/ask') && r.request().method() === 'POST');
@@ -190,6 +211,11 @@ try {
       ? true
       : null,
   );
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "pi-composer-annotation.json"),
+      JSON.stringify(store.listAnnotations("rust", "001-ownership"), null, 2),
+    );
   console.log("[e2e:pi] browser question answered through answer_lesson_question");
 
   const attempt = 1;
@@ -303,6 +329,10 @@ try {
     "[e2e:pi] PASS: browser question, wrong-answer chat check, locked quiz, spaced review, widget, and server stop",
   );
 } finally {
+  if (artifacts) {
+    fs.writeFileSync(path.join(artifacts, "pi-events.json"), JSON.stringify(events, null, 2));
+    fs.writeFileSync(path.join(artifacts, "pi-stderr.log"), stderr);
+  }
   if (browserOpen) await playwright(session, fixture.root, "close");
   child.kill();
   fixture.cleanup();
