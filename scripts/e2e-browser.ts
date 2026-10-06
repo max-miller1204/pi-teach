@@ -4,11 +4,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { applyGrade } from "../src/bridge.ts";
+import { applyAnswer, applyGrade } from "../src/bridge.ts";
 import * as server from "../src/server.ts";
 import { classroomTools, PI_HOST } from "../src/tools.ts";
 import * as store from "../src/store.ts";
 import { makeFixture, lessonHtml, seedClassroom } from "../test/helpers.ts";
+import { verifyServiceBrowser } from "./e2e-service-browser.ts";
 import { playwright } from "./playwright.ts";
 
 const fixture = makeFixture();
@@ -36,6 +37,8 @@ fixture.write(
   lessonHtml(
     "Browser regression",
     `
+  <form class="cl-reflect" data-reflect-id="ownership"><p class="cl-reflect-prompt">Explain ownership.</p><textarea></textarea></form>
+  <p data-draft-passage>Every value has one owner.</p>
   <section><p><strong>borrow</strong> checker rejects it.</p><p>The borrow checker checks again.</p></section>
   <form class="cl-quiz" data-quiz-id="check-1" data-title="Check">
     <ol class="cl-questions">
@@ -93,7 +96,9 @@ fixture.write(
 
 server.setHooks({
   delivery: "wait",
-  onAsk() {},
+  onAsk(annotation) {
+    setTimeout(() => applyAnswer(annotation.id, "The owner releases the value."), 100);
+  },
   onFollowUp() {},
   onReflect() {},
   onQuizSubmit(submission) {
@@ -140,6 +145,17 @@ const control = http.createServer(async (req, res) => {
 });
 
 let browserOpen = false;
+const draftHistory: unknown[] = [];
+let lastDraft = "";
+const draftWatcher = setInterval(() => {
+  const file = path.join(fixture.root, "rust/001-ownership/drafts.json");
+  if (!fs.existsSync(file)) return;
+  const text = fs.readFileSync(file, "utf8");
+  if (text !== lastDraft) {
+    draftHistory.push(JSON.parse(text));
+    lastDraft = text;
+  }
+}, 25);
 try {
   const base = await server.start();
   await new Promise<void>((resolve) => control.listen(0, "127.0.0.1", resolve));
@@ -148,15 +164,48 @@ try {
   const url = `${base}/c/rust/001-ownership?control=${address.port}${artifacts ? `&artifacts=${encodeURIComponent(artifacts)}` : ""}`;
   await playwright(session, fixture.root, "open", url);
   browserOpen = true;
-  console.log(
-    await playwright(
-      session,
-      fixture.root,
-      "run-code",
-      "--filename",
-      path.join(root, "test/browser.playwright.js"),
-    ),
+  const browserResult = await playwright(
+    session,
+    fixture.root,
+    "run-code",
+    "--filename",
+    path.join(root, "test/browser.playwright.js"),
   );
+  console.log(browserResult);
+  if (
+    !draftHistory.some(
+      (draft: any) => draft["reflect:ownership"] === "The owner releases the value.",
+    )
+  )
+    throw new Error("The reflection draft was not stored on disk before reload.");
+  if (artifacts) {
+    fs.writeFileSync(path.join(artifacts, "browser-result.json"), browserResult);
+    fs.writeFileSync(
+      path.join(artifacts, "disk-draft-history.json"),
+      JSON.stringify(draftHistory, null, 2),
+    );
+  }
+  const reflections = store.listReflections("rust", "001-ownership");
+  const annotations = store.listAnnotations("rust", "001-ownership");
+  const drafts = JSON.parse(
+    fs.readFileSync(path.join(fixture.root, "rust/001-ownership/drafts.json"), "utf8"),
+  );
+  if (reflections.length !== 1 || reflections[0].text !== "The owner releases the value.")
+    throw new Error("The Save button did not store the self-explanation.");
+  if (Object.hasOwn(drafts, "reflect:ownership")) throw new Error("Save left a reflection draft.");
+  if (
+    annotations.length !== 1 ||
+    annotations[0].status !== "answered" ||
+    annotations[0].followUps?.length
+  )
+    throw new Error("The saved card or its unsent follow-up changed.");
+  if (drafts[`followup:${annotations[0].id}`] !== "Does moving change the owner?")
+    throw new Error("The follow-up draft was not stored.");
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "stored-learner-paths.json"),
+      JSON.stringify({ reflections, annotations, drafts }, null, 2),
+    );
   const submissions = store.listSubmissions("rust", "001-ownership");
   const grades = store.listGrades("rust", "001-ownership");
   if (
@@ -172,7 +221,29 @@ try {
     )
   )
     throw new Error("Correct answers did not advance spaced review");
+} catch (error) {
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "failure.json"),
+      JSON.stringify(
+        {
+          error: String(error),
+          drafts: store.readDrafts("rust", "001-ownership"),
+          annotations: store.listAnnotations("rust", "001-ownership"),
+          reflections: store.listReflections("rust", "001-ownership"),
+        },
+        null,
+        2,
+      ),
+    );
+  throw error;
 } finally {
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "disk-draft-history.json"),
+      JSON.stringify(draftHistory, null, 2),
+    );
+  clearInterval(draftWatcher);
   if (browserOpen) await playwright(session, fixture.root, "close");
   await server.close();
   await new Promise<void>((resolve, reject) =>
@@ -180,3 +251,5 @@ try {
   );
   fixture.cleanup();
 }
+
+await verifyServiceBrowser(artifacts ? path.join(artifacts, "service") : null);

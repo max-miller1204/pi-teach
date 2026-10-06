@@ -65,7 +65,7 @@ node skills/verify-pi-teach/scripts/control.mjs drive
 
 The helper opens a separate browser session through the repository's `scripts/playwright.ts`. It clicks classroom and lesson links. It toggles the theme and reloads. It checks local storage and the reloaded theme. It checks that the private rubric route returns 404. The helper does not call internal setters or test endpoints.
 
-Read the mapped feature recipe before using another harness. The broader browser harness has a separate grading control endpoint. It proves browser behavior against the production grading boundary. It does not prove model behavior. The dedicated teacher harness makes real model calls. It injects the first passage question through the public HTTP API. That entry point does not prove the highlight composer.
+Read the mapped feature recipe before using another harness. The broader browser harness has a separate grading control endpoint. It proves browser behavior against the production grading boundary. It does not prove model behavior. The dedicated teacher harness makes real model calls. It selects the first passage with mouse actions. It clicks Ask, types a question, and clicks Ask your teacher. The browser harness also runs a separate persistent-service fixture with a mock Codex executable. That fixture proves retry, teacher drafts, and reconnect without model calls.
 
 Stop at a failing action. Save the failure. Run the doctor for the affected service. Diagnose the cause. Do not report a different entry point as proof of the failed path.
 
