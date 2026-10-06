@@ -40,7 +40,7 @@ import {
   isValidSlug,
   lessonDir,
   runtimeAssetsDir,
-  safeJoin,
+  safeStaticFile,
 } from "./paths.ts";
 import {
   classroomPage,
@@ -250,7 +250,7 @@ function sendFavicon(res: http.ServerResponse): void {
 }
 
 function handleStatic(res: http.ServerResponse, rest: string[]): void {
-  const file = safeJoin(runtimeAssetsDir(), rest.join("/"));
+  const file = safeStaticFile(runtimeAssetsDir(), rest.join("/"));
   if (!file || !isFile(file)) return sendNotFound(res, "Asset not found");
   sendFile(res, file);
 }
@@ -290,7 +290,7 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
 
   // /c/<classroom>/assets/<path>
   if (second === "assets") {
-    const file = safeJoin(path.join(classroomDir(name), "assets"), tail.join("/"));
+    const file = safeStaticFile(path.join(classroomDir(name), "assets"), tail.join("/"));
     if (!file || !isFile(file)) return sendNotFound(res, "Asset not found");
     return sendFile(res, file);
   }
@@ -303,12 +303,17 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
   // is deliberately not served: quiz/ holds submissions and any answer key.
   if (tail.length > 0) {
     if (tail[0] !== "media") return sendNotFound(res, "Not found");
-    const file = safeJoin(path.join(lessonDir(name, second), "media"), tail.slice(1).join("/"));
+    const file = safeStaticFile(
+      path.join(lessonDir(name, second), "media"),
+      tail.slice(1).join("/"),
+    );
     if (!file || !isFile(file)) return sendNotFound(res, "File not found");
     return sendFile(res, file);
   }
 
   // /c/<classroom>/<lesson>
+  const publicLesson = safeStaticFile(lessonDir(name, second), path.basename(lesson.htmlPath));
+  if (!publicLesson) return sendNotFound(res, "Lesson document cannot be a symlink");
   let html: string;
   try {
     html = fs.readFileSync(lesson.htmlPath, "utf8");
@@ -354,7 +359,7 @@ function handleDoc(res: http.ServerResponse, rest: string[]): void {
     nested !== undefined;
   if (!allowed) return sendNotFound(res, "Not found");
 
-  const file = safeJoin(classroomDir(name), relative);
+  const file = safeStaticFile(classroomDir(name), relative);
   if (!file || !isFile(file)) return sendNotFound(res, `No such document: ${relative}`);
   const parent = nested && {
     label: nested.label,
@@ -378,7 +383,7 @@ function handleReference(res: http.ServerResponse, rest: string[]): void {
   const classroom = store.readClassroom(name);
   if (!classroom) return sendNotFound(res, `Unknown classroom: ${name}`);
 
-  const file = safeJoin(path.join(classroomDir(name), "reference"), tail.join("/"));
+  const file = safeStaticFile(path.join(classroomDir(name), "reference"), tail.join("/"));
   if (!file || !file.endsWith(".html") || !isFile(file)) return sendNotFound(res, "Not found");
 
   // Reference docs get the stylesheet, the theme bootstrap, the link behaviour, and

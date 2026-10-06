@@ -26,6 +26,7 @@ import {
   lessonDir,
   reflectionsFile,
   submissionsDir,
+  safeStaticFile,
 } from "./paths.ts";
 import {
   answerSummary,
@@ -838,11 +839,19 @@ export function listClassroomDocs(classroom: string): string[] {
 }
 
 export function listLearningRecords(classroom: string): string[] {
-  const dir = path.join(classroomDir(classroom), "learning-records");
+  const root = classroomDir(classroom);
+  const dir = path.join(root, "learning-records");
   if (!isDir(dir)) return [];
+  if (!safeStaticFile(root, "learning-records"))
+    throw new Error("Learning records directory must not be a symlink.");
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
+    .map((file) => {
+      if (!safeStaticFile(root, `learning-records/${file}`))
+        throw new Error(`Learning record must not be a symlink: ${file}.`);
+      return file;
+    })
     .sort();
 }
 

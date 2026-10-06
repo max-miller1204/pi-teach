@@ -1,11 +1,25 @@
 import { expect, it } from "vitest";
 import {
   authoredQuestions,
+  authoredQuizzes,
   authoredQuestionTypes,
   quizDiversityLines,
   typeCounts,
   unfinishedQuestionLines,
 } from "../src/quiz-authoring.ts";
+it.each(['"', "'"])(
+  "reads quoted comparison characters and review identity with %s quotes",
+  (quote) => {
+    const html = `<form data-title=${quote}Predict x > 0${quote} class=${quote}cl-quiz${quote} data-quiz-id=${quote}review${quote} data-kind=${quote}review${quote}><li title=${quote}x < 1${quote} class=${quote}cl-q${quote} data-question-id=${quote}q1${quote} data-type=${quote}short${quote} data-review-of=${quote}001-original/check/q1${quote}></li></form>`;
+    expect(authoredQuizzes(html)).toEqual([
+      {
+        id: "review",
+        kind: "review",
+        questions: [{ id: "q1", type: "short", reviewOf: "001-original/check/q1" }],
+      },
+    ]);
+  },
+);
 it("reads authored types without counting examples in comments or scripts", () => {
   expect(
     authoredQuestionTypes(

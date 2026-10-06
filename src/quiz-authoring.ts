@@ -1,26 +1,44 @@
 /** Read authored questions for authoring diagnostics. Runtime validation stays separate. */
 import { isQuestionType, QUESTION_TYPES, type QuestionType } from "../assets/runtime/quiz.mjs";
+import { authoringContent, htmlAttributes, TAG_ATTRIBUTES } from "./authoring-html.ts";
 
 /** One `.cl-q` element as written, before any check. */
 export interface AuthoredQuestion {
   id: string | null;
   type: string | null;
+  reviewOf?: string;
+}
+
+/** The authored quiz identities used by the server's assessment contract. */
+export function authoredQuizzes(
+  html: string,
+): Array<{ id: string | null; kind: string; questions: AuthoredQuestion[] }> {
+  const source = authoringContent(html);
+  return [
+    ...source.matchAll(new RegExp(`<form\\b(${TAG_ATTRIBUTES})>([\\s\\S]*?)<\\/form\\s*>`, "gi")),
+  ].flatMap((form) => {
+    const attributes = htmlAttributes(form[1]);
+    if (!attributes.get("class")?.split(/\s+/).includes("cl-quiz")) return [];
+    return [
+      {
+        id: attributes.get("data-quiz-id") ?? null,
+        kind: attributes.get("data-kind") ?? "check",
+        questions: authoredQuestions(form[2]),
+      },
+    ];
+  });
 }
 
 export function authoredQuestions(html: string): AuthoredQuestion[] {
   const questions: AuthoredQuestion[] = [];
-  const source = html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
-  for (const tag of source.matchAll(/<[a-z][\w-]*\b([^<>]*)>/gi)) {
-    const attributes = new Map<string, string>();
-    for (const attr of tag[1].matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
-      attributes.set(attr[1].toLowerCase(), attr[2] ?? attr[3]);
-    }
+  const source = authoringContent(html);
+  for (const tag of source.matchAll(new RegExp(`<[a-z][\\w-]*\\b(${TAG_ATTRIBUTES})>`, "gi"))) {
+    const attributes = htmlAttributes(tag[1]);
     if (!attributes.get("class")?.split(/\s+/).includes("cl-q")) continue;
     questions.push({
       id: attributes.get("data-question-id") ?? null,
       type: attributes.get("data-type") ?? null,
+      ...(attributes.has("data-review-of") ? { reviewOf: attributes.get("data-review-of") } : {}),
     });
   }
   return questions;
