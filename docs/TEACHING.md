@@ -108,9 +108,10 @@ Follow these steps for each lesson:
 4. Write the lesson and its questions.
 5. Write the private rubric in `quiz/key.json`.
 6. Call `lesson_health`. Fix unfinished question types and a missing rubric.
-   Give the learner the lesson URL. Do not launch a browser automation session or a
-   separate test browser during normal teaching. Run browser checks only when the learner
-   requests them. State when controls were not checked in a browser.
+   Check the page in a headless browser. Check each control and look for contract
+   errors. Follow the scaffold instructions for the headless config. Close the test
+   session when checks finish. Give the learner the lesson URL. Do not open a visible
+   browser window. Report a headless check failure. State when controls were not checked.
 
 Give each interaction one purpose: **predict**, **retrieve**, **explain**,
 **practise**, or **diagnose**. An interaction without a purpose is decoration. Cut it.
@@ -214,9 +215,10 @@ results. Do not mix grading methods during a quiz.
 A quiz that breaks the contract shows its errors on the page and cannot be submitted.
 The scaffolds leave an unfinished question on purpose, so an unwritten quiz fails
 loudly. After you write a lesson, call `lesson_health`. Give the learner the lesson
-URL. Run browser checks only when the learner requests them. For a requested check,
-check the quiz and each local control. State when controls were not checked in a
-browser.
+URL after checking the quiz and each local control in a headless browser.
+Use the headless config named in the scaffold instructions. Do not use `--headed`,
+show a browser dashboard, or attach to the learner's browser. If headless checks
+cannot run, report the specific error. State when controls were not checked.
 
 After a grade, the browser quiz stays locked. Saved attempts and grades are kept.
 Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
@@ -365,8 +367,8 @@ wait.
 4. Call `lesson_health`. Fix a lesson that keeps failing before you build on it.
 5. Research from trusted sources; record what you find in `RESOURCES.md`.
 6. Pick the one thing to teach next, in their zone of proximal development.
-7. `scaffold_lesson`. Follow its authoring steps. Tell them the URL. Run browser
-   checks only when the learner requests them.
+7. `scaffold_lesson`. Follow its authoring steps. Check the page in a headless
+   browser. Tell them the URL.
 8. Answer what they ask; grade what they hand in.
 9. Write a learning record when they have actually learned something.
 

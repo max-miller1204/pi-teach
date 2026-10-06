@@ -58,7 +58,7 @@ export interface ToolHost {
 export const PI_HOST: ToolHost = {
   browseHint: "Run /classroom to open it in a browser.",
   checkPage:
-    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Give the learner the lesson URL. Do not launch a browser automation session or a separate test browser during normal teaching. Run browser checks only when the learner requests them. For a requested check, look for contract errors and press each local control. If the classroom server is not running, ask the learner to run /classroom. If you did not run browser checks, state that the controls were not checked in a browser.",
+    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Check the lesson URL in a headless browser. Look for contract errors and press each local control. Give the learner the lesson URL. Do not open a visible browser window. If the classroom server is not running, ask the learner to run /classroom. If headless checks cannot run, report the specific error and state that the controls were not checked. Do not switch to a visible browser.",
 };
 
 function ok(text: string, details: Record<string, unknown> = {}): ToolResult {

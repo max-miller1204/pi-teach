@@ -32,9 +32,10 @@ description: Teach the user a topic one short interactive lesson at a time, in a
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.
 12. Create each lesson with `scaffold_lesson` and each review with `scaffold_review`.
     Follow the authoring steps they return. Read the current quiz contract each time.
-    Give the learner the lesson URL. Do not launch a browser automation session or a
-    separate test browser during normal teaching. Run browser checks only when the learner
-    requests them. State when controls were not checked in a browser.
+    Check each lesson in a headless browser before giving the learner its link.
+    Follow the scaffold instructions for the headless config and test session.
+    Do not open a visible browser window. Report a headless check failure.
+    State when controls were not checked.
     The lesson template is a shell. Design the lesson from its objective and the
     learner. Choose response types that fit each skill.
 13. Write the private quiz rubric before submission. Use it for every attempt.

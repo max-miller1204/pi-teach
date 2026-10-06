@@ -11,7 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { classroomDir, docsDir, lessonDir, templatesDir } from "./paths.ts";
+import { assetsDir, classroomDir, docsDir, lessonDir, templatesDir } from "./paths.ts";
 import { answerDetail, answersByQuestion, kindOf } from "./quiz.ts";
 import { relativeDay, type ReviewSummary } from "./review.ts";
 import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
@@ -71,7 +71,8 @@ export function authoringSteps(
     `1. Read the current quiz contract: ${contract}. Read it for each ${kind}. It can change between sessions.`,
     ...middle,
     `5. Write the private rubric in ${rubric} before the learner submits. For each question, give the expected answer, the points possible, and the full and partial credit criteria.`,
-    `6. Check lesson health. Each control must work, and no contract error may show. ${checkPage}`,
+    `6. Check the page in a headless browser. Each control must work, and no contract error may show. ${checkPage}`,
+    `For playwright-cli, use a new named session and pass --config=${JSON.stringify(path.join(assetsDir(), "playwright-headless.json"))} to open. This config sets headless to true. Do not use --headed, show, an attached user browser, or a tool that opens a visible window. Close the test session when checks finish. Report a headless launch failure instead of changing browser mode.`,
   ].join("\n");
 }
 
