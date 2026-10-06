@@ -26,6 +26,7 @@ Preconditions: Run the chosen host's version and login checks from the skill. Au
 - **Codex:** Run `node scripts/e2e.ts codex "$PI_VERIFY_RUN/evidence/teacher-codex" > "$PI_VERIFY_RUN/evidence/teacher-codex.log" 2>&1`. Record the exit code with `printf '%s\n' "$?" > "$PI_VERIFY_RUN/evidence/teacher-codex.exit"` immediately afterward.
 - **Observe:** Require the host-exit, answered-card, panel-reply, and session-resume assertions to pass. Inspect the teacher-panel PNG and logs. The harness reads `/api/state` and checks the saved answer and session identity.
 - **Handles:** The panel uses `.cl-teacher`, `.cl-teacher-messages`, and the button named `Send reply`. Inspect `scripts/e2e.ts` for the exact API payload and waiting conditions.
+- **Drafts:** The quizzes feature's browser harness opens the composer from a highlight and reloads its draft. It does not submit the question. No harness reloads a follow-up or teacher reply draft.
 
 ## Gotchas
 

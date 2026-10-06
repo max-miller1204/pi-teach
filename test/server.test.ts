@@ -157,6 +157,7 @@ describe("pages", () => {
     expect((await get("/static/anchor.mjs")).status).toBe(200);
     expect((await get("/static/theme.mjs")).status).toBe(200);
     expect((await get("/static/links.mjs")).status).toBe(200);
+    expect((await get("/static/draft.mjs")).status).toBe(200);
   });
 });
 
@@ -187,6 +188,12 @@ describe("refusals", () => {
     fixture.write("rust/001-ownership/quiz/key.json", JSON.stringify({ q1: "a" }));
     expect((await get("/c/rust/001-ownership/quiz/key.json")).status).toBe(404);
     expect((await get("/c/rust/001-ownership/media/../quiz/key.json")).status).toBe(404);
+  });
+
+  it("never serves drafts as files", async () => {
+    fixture.write("rust/001-ownership/drafts.json", JSON.stringify({ teacher: "secret" }));
+    expect((await get("/c/rust/001-ownership/drafts.json")).status).toBe(404);
+    expect((await get("/c/rust/001-ownership/media/../drafts.json")).status).toBe(404);
   });
 
   it("only serves the classroom's own markdown documents", async () => {
@@ -612,5 +619,123 @@ describe("glossary and progress", () => {
       '<span class="cl-stat-value">1</span><span class="cl-stat-label">glossary term</span>',
     );
     expect(await (await get("/")).text()).toContain("due for review");
+  });
+});
+
+describe("drafts", () => {
+  const lesson = "003-drafts";
+  const anchor = { exact: "one owner", prefix: "has ", suffix: ".", occurrence: 0 };
+  const put = (body: Record<string, unknown>) =>
+    fetch(`${baseUrl}/api/draft`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ classroom: "rust", lesson, ...body }),
+    });
+  const drafts = async () =>
+    (
+      (await (await get(`/api/state?classroom=rust&lesson=${lesson}`)).json()) as {
+        drafts: Record<string, unknown>;
+      }
+    ).drafts;
+
+  beforeAll(() => {
+    fixture.write(`rust/${lesson}/lesson.html`, lessonHtml("Drafts"));
+  });
+
+  it("saves each draft under its key and returns them from /api/state", async () => {
+    const quiz = { q1: { checked: ["a"] }, q2: { text: "half an ans" }, q3: { order: ["b", "a"] } };
+    expect((await put({ key: "quiz:check-1", value: quiz })).status).toBe(200);
+    expect((await put({ key: "reflect:explain-1", value: "I think" })).status).toBe(200);
+    expect((await put({ key: "ask", value: { anchor, text: "Why" } })).status).toBe(200);
+    expect(await drafts()).toEqual({
+      "quiz:check-1": quiz,
+      "reflect:explain-1": "I think",
+      ask: { anchor, text: "Why" },
+    });
+
+    expect((await put({ key: "reflect:explain-1", value: null })).status).toBe(200);
+    expect(Object.keys(await drafts())).toEqual(["quiz:check-1", "ask"]);
+  });
+
+  it("refuses an unknown key, a bad value, and an unknown lesson", async () => {
+    const refused = async (body: Record<string, unknown>) => {
+      const res = await put(body);
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      return ((await res.json()) as { error: string }).error;
+    };
+    expect(await refused({ key: "notes", value: "x" })).toContain("Unknown draft key");
+    expect(await refused({ key: "followup:not-a-uuid", value: "x" })).toContain(
+      "Unknown draft key",
+    );
+    expect(await refused({ key: "teacher", value: 3 })).toContain("must be text");
+    expect(await refused({ key: "quiz:check-1", value: { q1: { guess: "a" } } })).toContain(
+      "unknown field guess",
+    );
+    expect(await refused({ key: "ask", value: { text: "Why" } })).toContain("needs an anchor");
+    expect(await refused({ lesson: "nope", key: "teacher", value: "x" })).toBe("Unknown lesson");
+    expect(Object.keys(await drafts())).not.toContain("teacher");
+  });
+
+  it("removes a draft when the server accepts the text it held", async () => {
+    const card = (await (
+      await post("/api/ask", { classroom: "rust", lesson, question: "Why?", anchor })
+    ).json()) as store.Annotation;
+    applyAnswer(card.id, "Because.");
+    await put({ key: `followup:${card.id}`, value: "And then?" });
+    await put({ key: "reflect:explain-1", value: "Each value" });
+    await put({ key: "quiz:check-1", value: { q1: { text: "own" } } });
+    expect(Object.keys(await drafts()).sort()).toEqual([
+      `followup:${card.id}`,
+      "quiz:check-1",
+      "reflect:explain-1",
+    ]);
+
+    await post(`/api/annotations/${card.id}/follow-up`, {
+      classroom: "rust",
+      lesson,
+      question: "And then?",
+    });
+    await post("/api/reflect", {
+      classroom: "rust",
+      lesson,
+      reflectId: "explain-1",
+      prompt: "Explain.",
+      text: "Each value has one owner.",
+    });
+    await post("/api/quiz/submit", {
+      classroom: "rust",
+      lesson,
+      quizId: "check-1",
+      kind: "check",
+      answers: [termAnswer("q1", "owner")],
+    });
+    expect(await drafts()).toEqual({});
+  });
+
+  it("saves nothing when the draft file cannot be read", async () => {
+    fixture.write(`rust/${lesson}/drafts.json`, "{");
+    const before = store.listReflections("rust", lesson).length;
+    const res = await post("/api/reflect", {
+      classroom: "rust",
+      lesson,
+      reflectId: "explain-2",
+      prompt: "Explain.",
+      text: "Each value has one owner.",
+    });
+    expect(res.status).toBe(500);
+    expect(store.listReflections("rust", lesson)).toHaveLength(before);
+    expect(reflected).toHaveLength(0);
+    fixture.write(`rust/${lesson}/drafts.json`, "{}");
+  });
+
+  it("removes a card's follow-up draft with the card", async () => {
+    const card = (await (
+      await post("/api/ask", { classroom: "rust", lesson, question: "Why?", anchor })
+    ).json()) as store.Annotation;
+    await put({ key: `followup:${card.id}`, value: "And then?" });
+    await fetch(`${baseUrl}/api/annotations/${card.id}?classroom=rust&lesson=${lesson}`, {
+      method: "DELETE",
+    });
+    expect(await drafts()).toEqual({});
   });
 });
