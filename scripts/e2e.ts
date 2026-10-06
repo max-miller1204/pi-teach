@@ -1,4 +1,5 @@
 /** Real host and dedicated teacher evaluation. All material is a temporary fixture. */
+import { highlightText } from "./browser-actions.ts";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -116,16 +117,28 @@ async function main(): Promise<void> {
     log(`initiating host exited; service remains at ${base}`);
     await playwright(browser, root, "open", `${base}/c/${CLASSROOM}/${LESSON}`);
     browserOpen = true;
-    await playwrightCode(
+    const question = await playwrightCode<any>(
       browser,
       root,
       `async page => {
       await page.waitForSelector('form.cl-quiz');
-      const response = await page.request.post('${base}/api/ask', {data:{classroom:'rust',lesson:'001-ownership',question:'Why does Rust allow only one owner?',anchor:{exact:'one owner',prefix:'has ',suffix:'.'}}});
-      if(response.status() !== 201) throw new Error(await response.text());
-      return true;
+      await (${highlightText.toString()})(page, 'main > p', 'one owner');
+      await page.locator('.cl-ask-pill').click();
+      await page.locator('[data-cl-question]').fill('Why does Rust allow only one owner?');
+      const response = page.waitForResponse(r => r.url().endsWith('/api/ask') && r.request().method() === 'POST');
+      await page.getByRole('button', {name:'Ask your teacher', exact:true}).click();
+      const result = await response;
+      if(result.status() !== 201) throw new Error(await result.text());
+      const annotation = await result.json();
+      if (!annotation.anchor.exact.includes('one owner')) throw new Error('The composer lost its highlight.');
+      return annotation;
     }`,
     );
+    if (artifacts)
+      fs.writeFileSync(
+        path.join(artifacts, "composer-submission.json"),
+        JSON.stringify(question, null, 2),
+      );
     async function state(): Promise<any> {
       return (await fetch(`${base}/api/state?classroom=rust&lesson=001-ownership`)).json();
     }
@@ -146,6 +159,16 @@ async function main(): Promise<void> {
         s.annotations[0]?.status === "answered" &&
         s.teacher.requests.every((r: any) => r.status === "done"),
     );
+    const savedAnnotation = JSON.parse(
+      fs.readFileSync(path.join(root, CLASSROOM, LESSON, "annotations.json"), "utf8"),
+    ).find((annotation: any) => annotation.id === question.id);
+    if (savedAnnotation.question !== question.question || savedAnnotation.status !== "answered")
+      throw new Error("The composer question or its answer was not saved.");
+    if (artifacts)
+      fs.writeFileSync(
+        path.join(artifacts, "composer-annotation.json"),
+        JSON.stringify(savedAnnotation, null, 2),
+      );
     log(`dedicated session ${answered.teacher.identity.sessionId} answered the card`);
     await playwrightCode(
       browser,
@@ -194,10 +217,32 @@ async function main(): Promise<void> {
     if (lessons.length !== 1) throw new Error("Teacher advanced without agreement.");
     if ((await fetch(`${base}/c/rust/001-ownership/quiz/key.json`)).status !== 404)
       throw new Error("Rubric is public.");
+    if (artifacts)
+      fs.writeFileSync(
+        path.join(artifacts, "stored-teacher-state.json"),
+        JSON.stringify(
+          {
+            checked,
+            savedAnnotation,
+            grade: JSON.parse(
+              fs.readFileSync(path.join(root, CLASSROOM, LESSON, "quiz/grades", grades[0]), "utf8"),
+            ),
+          },
+          null,
+          2,
+        ),
+      );
     log(
       "PASS: host exit, idle wake, answer, grade, locked quiz, teacher reply, stable session, private rubric",
     );
   } finally {
+    if (artifacts) {
+      fs.writeFileSync(path.join(artifacts, "host-stdout.log"), stdout);
+      fs.writeFileSync(path.join(artifacts, "host-stderr.log"), stderr);
+      const serviceLog = path.join(root, ".pi-teach-service/service.log");
+      if (fs.existsSync(serviceLog))
+        fs.copyFileSync(serviceLog, path.join(artifacts, "service.log"));
+    }
     clearTimeout(timer);
     child.kill();
     if ((await serviceStatus()).running) {
