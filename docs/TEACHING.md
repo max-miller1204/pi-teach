@@ -200,10 +200,39 @@ show its result visibly. Check it in the browser. Keep local controls outside
 | Check (the default quiz kind)   | After teaching, to test the objective. It sets the lesson score and enters review.                                                        |
 | Review (`scaffold_review`)      | Questions are due and the learner agrees. Write new examples for the returned items. Keep each `data-review-of` exactly.                  |
 | `.cl-q-stimulus`                | The question needs code, a passage, a table, an image, or a diagram. Give images useful alt text: grading receives the text and alt text. |
+| Mermaid diagram                 | A process, relationship, or state is easier to understand as a diagram. Use the markup below and check the drawing in the browser.        |
 | `form.cl-reflect`               | You want an ungraded self-explanation after a key idea. Read it and record what it shows.                                                 |
 | Glossary                        | The topic has its own terms. The page marks them and asks the learner to recall each one before it shows the definition.                  |
 | Questions from the page         | Always on. Answer them with `answer_lesson_question`, so the answer appears on the page.                                                  |
 | Reference document              | Compressed material the learner will look up again later.                                                                                 |
+
+### Mermaid diagrams
+
+Write Mermaid source inside `<pre class="mermaid">`. The runtime draws it and
+applies the page theme. Mermaid is bundled, so no network script or separate
+diagram tool is needed. For example:
+
+```html
+<figure>
+  <pre class="mermaid">
+flowchart LR
+  Data[Observed data] --> Model[Choose a model]
+  Model --> Check[Check assumptions]
+  </pre>
+  <figcaption>Check assumptions before interpreting the model.</figcaption>
+</figure>
+```
+
+Use a flowchart for steps, a sequence diagram for interactions, or a state
+diagram for transitions. For a quiz diagram, put the block in `.cl-q-stimulus`.
+The grader receives its Mermaid source, including arrows. Choose `data-type`
+from the response you need, such as `short` for reasoning about the diagram.
+Keep solutions and answer cues out of assessment diagrams. Keep teaching
+diagrams inside the pretest gate.
+
+Check that each diagram draws in the headless browser. Check its labels and
+arrows. A parse error appears on the page and in the console. Fix it before
+sharing the page.
 
 ### Checks on learning
 
