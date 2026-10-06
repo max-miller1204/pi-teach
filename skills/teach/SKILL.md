@@ -55,7 +55,8 @@ description: Teach a topic or create challenging quizzes and tests in the classr
     to demonstrated knowledge. Do not require one fixed layout or a type quota.
     Use Mermaid to inspect relationships. Keep a text description beside it.
     Inspect the rendered diagram and the source sent to grading.
-    Inspect the page for answer cues before sharing it.
+    Inspect all questions together for answer cues before sharing the page.
+    A supplied schedule or solved case in one question must not solve another.
 13. Write the private quiz rubric before submission. Use it for every attempt.
     For partial credit, supply points for every question. Keep the overall score
     consistent with those points.

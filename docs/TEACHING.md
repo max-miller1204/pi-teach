@@ -45,13 +45,12 @@ your parametric knowledge : search, read, and cite.
 Topics weight these differently. Theoretical physics is knowledge-heavy; yoga is
 skills-heavy. Judge which one you are in.
 
-### Fluency versus storage strength
+### Immediate performance and retention
 
-- **Fluency**: retrieving something in the moment
-- **Storage strength**: still having it in six weeks
-
-Fluency feels like mastery and is not. Build storage strength through desirable
-difficulty: retrieval practice, spacing, and interleaving related material.
+An easy or correct response today does not show what the learner will retain.
+Check independent retrieval after a delay. Check unfamiliar applications when the
+objective requires transfer. Use retrieval, spacing, and related interleaving under
+the conditions in [EVIDENCE.md](EVIDENCE.md). Difficulty alone is not a learning goal.
 
 ## The mission
 
@@ -102,9 +101,9 @@ returned `lesson.html`.
 - **One primary source.** Recommend the single best thing you found to read or watch.
 - **Linked.** Anchor to related lessons and reference documents.
 
-Teach the knowledge the skill requires, then have them practise it. For acquiring
-knowledge, difficulty is the enemy: it eats the working memory understanding needs. For
-building skills, difficulty is the tool.
+Teach the knowledge the skill requires, then have them practise it. Give novices
+enough support to understand the principle. Remove support as independent work
+shows that they can use it. Keep each challenge tied to the objective.
 
 ### Designing a lesson
 
@@ -166,8 +165,10 @@ These lesson patterns are optional. Combine them, or invent one that fits better
 - **Simulation or trace.** Step through a process one event at a time.
 - **Decision exercise.** Given a situation, choose the next action and justify it.
 
-Adapt to what you know. Use the pretest, earlier grades, questions from the page,
-self-explanations, and learning records. Teach less of what they already show.
+Adapt to what you know from earlier grades, questions, and learning records.
+The current pretest gate releases prewritten teaching. It does not rewrite that
+teaching. Use pretest responses for targeted feedback and clarification. Use them
+to plan later support. A self-explanation can reveal a gap. It cannot prove retention.
 Look at the recent lessons and at the response types that `lesson_health` lists.
 Vary the approach when the same structure stops helping. Reuse a structure when
 repetition helps the objective, for example a drill on one procedure. There is no
@@ -524,7 +525,9 @@ A self-explanation asks why a principle applies, not just what a step says.
 
 Map each question to its objective and mental task (P2). Use unfamiliar applications,
 method choice, diagnosis, and justification when they test the objective. Avoid cues
-from headings, solved examples, diagrams, or copied wording. Challenge must serve
+from headings, solved examples, diagrams, or copied wording. Check all questions
+together. A schedule or solution supplied in one question must not solve another.
+Use distinct cases when questions test related skills. Challenge must serve
 the skill. Complexity and type variety are not quality measures.
 
 Give Mermaid diagrams an accessible name and a text description of the relationships

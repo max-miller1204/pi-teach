@@ -54,7 +54,7 @@ fixture.write(
       </li>
     </ol>
   </form>
-  <form class="cl-quiz" data-quiz-id="instant" data-title="Immediate grade" data-confidence="on">
+  <form class="cl-quiz" data-quiz-id="instant" data-title="Immediate grade" data-confidence="optional" data-evidence="report">
     <ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="term">
       <p class="cl-q-prompt">Name the owner.</p><input type="text">
     </li></ol>
@@ -73,7 +73,7 @@ fixture.write(
     `
   <section>
     <p>The borrow checker runs before code generation.</p>
-    <figure><pre class="mermaid">${flowchart}</pre><figcaption>Where the check runs.</figcaption></figure>
+    <figure><pre class="mermaid" aria-label="Borrow check" aria-describedby="borrow-description">${flowchart}</pre><figcaption id="borrow-description">The source passes through the borrow check before code generation.</figcaption></figure>
     <pre class="mermaid">flowchart LR
       A --> </pre>
   </section>
@@ -269,11 +269,9 @@ try {
   const review = store.reviewItems("rust");
   if (
     review.length !== 16 ||
-    review.some(
-      (item) => item.box !== (item.quizId === "partial" && item.questionId !== "q1" ? 0 : 1),
-    )
+    review.some((item) => item.box !== 0 || item.progress === "retained-evidence")
   )
-    throw new Error("Correct answers did not advance spaced review");
+    throw new Error("Immediate answers must not advance retention evidence");
 } catch (error) {
   if (artifacts)
     fs.writeFileSync(

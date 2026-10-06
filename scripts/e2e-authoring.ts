@@ -34,6 +34,8 @@
  * classrooms root and any CODEX_HOME are temporary directories, deleted at the end.
  */
 
+import { evaluateContent } from "./authoring-evaluator.ts";
+import { parseTeachingPlan } from "../src/teaching-plan.ts";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -238,6 +240,7 @@ interface LessonReport {
   tables: number;
   images: number;
   rubric: boolean;
+  semanticEvaluation?: Awaited<ReturnType<typeof evaluateContent>>;
   problems: string[];
 }
 
@@ -262,6 +265,11 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
   if (!rubric) problems.push("The lesson has no quiz/key.json rubric.");
   else JSON.parse(fs.readFileSync(keyFile, "utf8"));
 
+  try {
+    parseTeachingPlan(fs.readFileSync(path.join(dir, "quiz", "plan.json"), "utf8"), html);
+  } catch (err) {
+    problems.push(`Teaching alignment: ${(err as Error).message}`);
+  }
   const quizzes = [
     ...body.matchAll(/<form\b[^>]*class="[^"]*\bcl-quiz\b[^"]*"[^>]*>[\s\S]*?<\/form>/g),
   ].map((match) => ({
@@ -362,7 +370,7 @@ const SUBMIT_LESSON = `async page => {
         }
       }
       if (type === 'cloze') for (const blank of await q.locator('input[data-blank]').all()) await blank.fill('x');
-      if (type === 'match') for (const select of await q.locator('select').all()) await select.selectOption({ index: 1 });
+      if (type === 'match') for (const select of await q.locator('select.cl-match-select').all()) await select.selectOption({ index: 1 });
       if (type === 'locate') await selectLocateAnswer(q.locator('.cl-segment').first());
     }
     const saved = await form.evaluate((f) => ({
@@ -525,12 +533,39 @@ async function main(): Promise<void> {
           path.join(dir, "lesson.html"),
           path.join(artifacts, `${harness}-${report.lesson}.html`),
         );
+        const planFile = path.join(dir, "quiz", "plan.json");
+        if (fs.existsSync(planFile))
+          fs.copyFileSync(planFile, path.join(artifacts, `${harness}-${report.lesson}-plan.json`));
         if (report.rubric) {
           fs.copyFileSync(
             path.join(dir, "quiz", "key.json"),
             path.join(artifacts, `${harness}-${report.lesson}-key.json`),
           );
         }
+      }
+    }
+
+    // A separate evaluator reads question content, teaching, and rubric before submission.
+    for (const [i, report] of reports.entries()) {
+      const dir = path.join(root, CLASSROOM, report.lesson);
+      try {
+        report.semanticEvaluation = await evaluateContent(harness, root, {
+          objective: report.objective,
+          mode: i < 2 ? "lesson" : "quiz",
+          html: fs.readFileSync(path.join(dir, "lesson.html"), "utf8"),
+          rubric: fs.readFileSync(path.join(dir, "quiz", "key.json"), "utf8"),
+          plan: fs.readFileSync(path.join(dir, "quiz", "plan.json"), "utf8"),
+        });
+        for (const judgment of report.semanticEvaluation.judgments)
+          if (judgment.verdict === "fail")
+            report.problems.push(`Content ${judgment.criterion}: ${judgment.reason}`);
+        if (artifacts)
+          fs.writeFileSync(
+            path.join(artifacts, `${harness}-${report.lesson}-semantic.json`),
+            JSON.stringify(report.semanticEvaluation, null, 2),
+          );
+      } catch (err) {
+        report.problems.push(`Semantic evaluator: ${(err as Error).message}`);
       }
     }
 
@@ -643,6 +678,7 @@ async function main(): Promise<void> {
     const summary = {
       harness,
       agentSummary: finalText(authoring.stream()),
+      humanLearningEvidence: false,
       browserCommands: pageChecks,
       lessons: reports.map((r) => ({ ...r, submitted: undefined })),
       variety: {

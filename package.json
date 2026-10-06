@@ -1,6 +1,6 @@
 {
   "name": "pi-teach",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "private": true,
   "description": "Interactive HTML lessons for Pi, Claude Code, and Codex, with passage questions and graded quizzes.",
   "type": "module",
@@ -35,6 +35,8 @@
     "e2e:codex": "node scripts/e2e.ts codex",
     "e2e:browser": "node scripts/e2e-browser.ts",
     "e2e:pi": "node scripts/e2e-pi.ts",
+    "e2e:quality": "node scripts/e2e-quality.ts",
+    "e2e:feedback": "node scripts/e2e-feedback.ts",
     "e2e:authoring": "node scripts/e2e-authoring.ts",
     "check": "tsc --noEmit",
     "audit": "npm audit --omit=dev --audit-level=moderate",

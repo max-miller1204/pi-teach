@@ -4,7 +4,9 @@
 
 Use isolated classrooms. Preserve real attempts and the running learner service.
 Run `npm run check` and `npm test`. Run browser, Pi, Claude, and Codex E2E checks.
-Run authoring evaluations for Claude and Codex. Keep every report, including failures.
+Run authoring evaluations for Claude and Codex. Run `e2e:quality` on both hosts
+to test a structurally valid lesson with unrelated prequestions and exposed answers.
+Run `e2e:feedback` on both hosts for fixed grading cases. Keep every report, including failures.
 An agent answering its own questions is not evidence of human learning.
 
 Use structural checks for objective coverage, teaching targets, question identities,
