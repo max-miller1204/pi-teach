@@ -141,7 +141,9 @@ describe("persistent teacher", () => {
     teacher.chat("rust", location.lesson, "Hello", randomUUID());
     await teacher.idle();
     const state = readTeacherState("rust")!;
-    expect(state.requests[0].error).toBe("Claude authentication expired.");
+    expect(state.requests[0].error).toBe(
+      `claude chat request ${state.requests[0].id} in rust/001-ownership: Claude authentication expired.`,
+    );
     teacher.attach("rust", "claude");
     await teacher.idle();
     expect(runs).toBe(1);

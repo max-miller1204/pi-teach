@@ -13,6 +13,8 @@ export interface TeacherRequest {
   turn?: string;
   prompt: string;
   at: number;
+  startedAt?: number;
+  finishedAt?: number;
   status: "queued" | "running" | "planned" | "done" | "failed";
   error?: string;
   plan?: TeacherPlan;
