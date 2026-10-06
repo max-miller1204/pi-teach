@@ -58,6 +58,38 @@ fixture.write(
   </form>${allTypes}${partialQuiz}${invalidOptionsQuiz}`,
   ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
 );
+const flowchart = `
+      flowchart LR
+        accTitle: Borrow check
+        Source["fn main()"] -->|borrow checker| Check{"x &lt; y?"}
+        Check --> Done`;
+fixture.write(
+  "rust/002-diagrams/lesson.html",
+  lessonHtml(
+    "Diagrams",
+    `
+  <section>
+    <p>The borrow checker runs before code generation.</p>
+    <figure><pre class="mermaid">${flowchart}</pre><figcaption>Where the check runs.</figcaption></figure>
+    <pre class="mermaid">flowchart LR
+      A --> </pre>
+  </section>
+  <form class="cl-quiz" data-quiz-id="diagram-check" data-title="Diagram check">
+    <ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="term">
+      <div class="cl-q-stimulus"><p>Read the chart.</p><pre class="mermaid">
+        sequenceDiagram
+          Caller->>Owner: borrow
+          Owner-->>Caller: reference
+      </pre></div>
+      <p class="cl-q-prompt">Who returns the reference?</p><input type="text">
+    </li></ol>
+  </form>`,
+  ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
+);
+fixture.write(
+  "rust/reference/diagrams.html",
+  lessonHtml("Diagram reference", `<pre class="mermaid">stateDiagram-v2\n  [*] --> Owned</pre>`),
+);
 
 server.setHooks({
   delivery: "wait",

@@ -32,6 +32,7 @@
 import { gradePointsNotice, gradeSummary, questionGradeLabel, questionOutcome } from "./grade.mjs";
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
 import { draftId, draftKind } from "./draft.mjs";
+import { diagramSource, initDiagrams } from "./diagrams.mjs";
 import { findTerms, firstUses } from "./glossary.mjs";
 import { initLinks } from "./links.mjs";
 import { QUIZ_KINDS, isContractId, isQuizKind, parseNumber, questionErrors } from "./quiz.mjs";
@@ -98,6 +99,8 @@ function init() {
   // After buildHeader: the toggle it wires up is the button the header just created.
   initTheme();
   initLinks();
+  // Before anything indexes the text: this swaps each diagram source for its drawing.
+  initDiagrams(contentRoot).catch((err) => console.error("[classroom] diagrams failed", err));
 
   buildAskPill();
   buildComposer();
@@ -195,7 +198,7 @@ function buildTextIndex(root) {
       // anchor into them (and a lesson with no <main> makes contentRoot the body).
       if (
         parent.closest(
-          "script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error",
+          "script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram",
         )
       ) {
         return NodeFilter.FILTER_REJECT;
@@ -315,6 +318,8 @@ function onSelectionSettled() {
     ) {
       return hideAskPill();
     }
+    // Diagram text is not in the text index, so a highlight could not anchor there.
+    if (inDiagram(range.startContainer) || inDiagram(range.endContainer)) return hideAskPill();
     if (normalizeText(range.toString()).length < 2) return hideAskPill();
 
     pendingRange = range.cloneRange();
@@ -326,6 +331,11 @@ function onSelectionSettled() {
       rect.top - askPill.offsetHeight - 8,
     );
   }, 0);
+}
+
+function inDiagram(node) {
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  return Boolean(element?.closest(".cl-diagram"));
 }
 
 /** Place an absolutely-positioned element at viewport coords, clamped on-screen. */
@@ -1288,13 +1298,25 @@ function enhanceLocate(form, question) {
   }
 }
 
-/** Plain text of a stimulus block. Line breaks are kept, because code needs them. */
+/**
+ * Plain text of a stimulus block. Line breaks are kept, because code needs them.
+ *
+ * A diagram is sent as its Mermaid source, because the SVG labels omit the arrows.
+ * The diagrams are hidden while the text is read, and shown again before the browser
+ * can paint.
+ */
 function stimulusText(element) {
+  const diagrams = [...element.querySelectorAll(".cl-diagram")];
+  for (const diagram of diagrams) diagram.hidden = true;
   const text = (element.innerText || element.textContent || "").trim();
+  for (const diagram of diagrams) diagram.hidden = false;
   const images = [...element.querySelectorAll("img")].map(
     (img) => `[image: ${img.getAttribute("alt") || "no alt text"}]`,
   );
-  return [text, ...images].filter(Boolean).join("\n");
+  const sources = diagrams.map(
+    (diagram) => `[diagram, Mermaid source:\n${diagramSource(diagram)}]`,
+  );
+  return [text, ...images, ...sources].filter(Boolean).join("\n");
 }
 
 /** A cloze passage as text, with each blank written as `[[<blank id>]]`. */
@@ -2088,7 +2110,7 @@ function glossarySections() {
 const NO_TERMS =
   "script, style, pre, code, a, button, label, select, h1, h2, h3, h4, h5, h6, " +
   "form.cl-quiz, form.cl-reflect, .cl-header, .cl-card-panel, .cl-ask-pill, " +
-  ".cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, mark.cl-hl";
+  ".cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, .cl-diagram, mark.cl-hl";
 
 function markTerms(section, terms) {
   const nodes = [];

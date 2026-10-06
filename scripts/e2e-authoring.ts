@@ -14,9 +14,10 @@
  *   3. Check that the agent opened its pages in a browser tool. Claude Code may run
  *      playwright-cli. Codex runs without a sandbox in temporary directories.
  *   4. Inspect each lesson: its outline, quiz kinds, response types, stimuli,
- *      self-explanations, local controls, and private rubric.
+ *      self-explanations, diagrams, local controls, and private rubric.
  *   5. Open each lesson in a real browser with this script's own classroom server.
- *      Check for contract errors and page errors. Press each local control. Answer
+ *      Wait for its diagrams to draw. Check for contract errors, which include a
+ *      diagram that did not render, and page errors. Press each local control. Answer
  *      every quiz and submit it.
  *   6. Grading session: a second agent session opens the classroom, which restores
  *      the ungraded submissions from disk. It grades each one from its rubric.
@@ -38,7 +39,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as net from "node:net";
-import { control, serviceStatus } from "../src/service-client.ts";
+import { control, servicePaths, serviceStatus } from "../src/service-client.ts";
 
 import { _overrideClassroomsDir } from "../src/paths.ts";
 import { authoredQuestions, typeCounts } from "../src/quiz-authoring.ts";
@@ -222,6 +223,7 @@ interface LessonReport {
   quizzes: Array<{ id: string; kind: string; types: string[] }>;
   typeCounts: string;
   stimuli: number;
+  diagrams: number;
   reflections: number;
   inlineScripts: number;
   localControls: Array<{ label: string; keyboard: boolean; changed: boolean }>;
@@ -275,6 +277,7 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
     quizzes,
     typeCounts: typeCounts(types),
     stimuli: count(body, /class="[^"]*\bcl-q-stimulus\b/g),
+    diagrams: count(body, /<pre\b[^>]*class="[^"]*\bmermaid\b/g),
     reflections: count(body, /class="[^"]*\bcl-reflect\b/g),
     inlineScripts: count(body, /<script\b(?![^>]*type="application\/json")/g),
     localControls: [],
@@ -291,9 +294,15 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
 /** Load a lesson, check it, press its local controls, then answer and submit each quiz. */
 const SUBMIT_LESSON = `async page => {
   const errors = [];
+  const consoleErrors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  const requests = [];
+  page.on('request', (r) => { if (r.url().endsWith('/api/quiz/submit')) requests.push('sent ' + new Date().toISOString()); });
+  page.on('requestfailed', (r) => { if (r.url().endsWith('/api/quiz/submit')) requests.push('failed ' + r.failure()?.errorText); });
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every((f) => f.dataset.state));
+  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy]'), null, { timeout: 30000 });
   const contract = await page.locator('.cl-contract-error').allInnerTexts();
   const outline = await page.evaluate(() =>
     [...document.querySelector('main[data-cl-content]').children].map((el) => {
@@ -357,7 +366,9 @@ const SUBMIT_LESSON = `async page => {
     }));
     const response = page.waitForResponse((r) => r.url().endsWith('/api/quiz/submit') && r.request().method() === 'POST');
     await form.getByRole('button', { name: 'Submit for grading', exact: true }).click();
-    const result = await response;
+    const result = await response.catch(async (error) => {
+      throw new Error(error.message + ' Quiz ' + (await form.getAttribute('data-quiz-id')) + ' sent no submission. Page errors: ' + JSON.stringify(errors) + ' Console errors: ' + JSON.stringify(consoleErrors) + ' Submit requests: ' + JSON.stringify(requests) + ' Form state: ' + (await form.getAttribute('data-state')) + ' Status: ' + JSON.stringify(await form.locator('.cl-quiz-status, [role=status]').allInnerTexts()));
+    });
     submitted.push({ quizId: await form.getAttribute('data-quiz-id'), status: result.status(), body: result.status() === 201 ? null : await result.text(), saved });
   }
   return { errors, contract, outline, controls: [...controls.values()], submitted };
@@ -369,6 +380,7 @@ const READ_GRADED = `async page => {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every((f) => f.dataset.state));
+  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy]'), null, { timeout: 30000 });
   const quizzes = await page.evaluate(() => [...document.querySelectorAll('form.cl-quiz')].map((f) => ({
     quizId: f.dataset.quizId,
     state: f.dataset.state,
@@ -476,6 +488,22 @@ async function main(): Promise<void> {
       throw new Error(`Expected ${OBJECTIVES.length} new lessons, found: ${lessons.join(", ")}`);
     }
     const reports = lessons.map((lesson, i) => inspectLesson(root, lesson, OBJECTIVES[i]!));
+    // Save the lessons before the browser drives them, so a later failure keeps them.
+    if (artifacts) {
+      for (const report of reports) {
+        const dir = path.join(root, CLASSROOM, report.lesson);
+        fs.copyFileSync(
+          path.join(dir, "lesson.html"),
+          path.join(artifacts, `${harness}-${report.lesson}.html`),
+        );
+        if (report.rubric) {
+          fs.copyFileSync(
+            path.join(dir, "quiz", "key.json"),
+            path.join(artifacts, `${harness}-${report.lesson}-key.json`),
+          );
+        }
+      }
+    }
 
     // Browser: check, press, answer, submit.
     const service = await serviceStatus();
@@ -568,16 +596,6 @@ async function main(): Promise<void> {
         }
       }
       await screenshot(browser, root, `${harness}-${report.lesson}-graded.png`);
-      if (artifacts) {
-        fs.copyFileSync(
-          path.join(root, CLASSROOM, report.lesson, "lesson.html"),
-          path.join(artifacts, `${harness}-${report.lesson}.html`),
-        );
-        fs.copyFileSync(
-          path.join(root, CLASSROOM, report.lesson, "quiz", "key.json"),
-          path.join(artifacts, `${harness}-${report.lesson}-key.json`),
-        );
-      }
     }
 
     // Report.
@@ -595,6 +613,7 @@ async function main(): Promise<void> {
           .length,
         lessonsWithLocalControls: reports.filter((r) => r.localControls.length > 0).length,
         lessonsWithReflection: reports.filter((r) => r.reflections > 0).length,
+        lessonsWithDiagrams: reports.filter((r) => r.diagrams > 0).length,
       },
     };
     for (const r of reports) {
@@ -606,7 +625,7 @@ async function main(): Promise<void> {
         `   quizzes: ${r.quizzes.map((q) => `${q.id} [${q.kind}] ${q.types.join(", ")}`).join("; ")}`,
       );
       log(
-        `   stimuli ${r.stimuli}, reflections ${r.reflections}, scripts ${r.inlineScripts}, details ${r.details}, tables ${r.tables}, images ${r.images}`,
+        `   stimuli ${r.stimuli}, diagrams ${r.diagrams}, reflections ${r.reflections}, scripts ${r.inlineScripts}, details ${r.details}, tables ${r.tables}, images ${r.images}`,
       );
       log(
         `   local controls: ${r.localControls.map((c) => `${c.label}${c.changed ? "" : " (no visible change)"}`).join(", ") || "none"}`,
@@ -632,6 +651,10 @@ async function main(): Promise<void> {
     if ((await serviceStatus()).running) {
       await control("/stop", {});
       await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    // Keep the service log: it is the only record of a teacher or request failure.
+    if (artifacts && fs.existsSync(servicePaths().log)) {
+      fs.copyFileSync(servicePaths().log, path.join(artifacts, `${harness}-service.log`));
     }
     fs.rmSync(root, { recursive: true, force: true });
     if (home) fs.rmSync(home, { recursive: true, force: true });

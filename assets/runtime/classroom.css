@@ -1394,6 +1394,45 @@ mark.cl-hl.cl-hl-pending {
   padding-left: 1.1rem;
 }
 
+.cl-contract-error pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ── Diagrams ─────────────────────────────────────────────────────────────── */
+
+/* diagrams.mjs swaps each <pre class="mermaid"> for this box and draws into it. */
+.cl-diagram {
+  margin: 1.4rem 0;
+  overflow-x: auto;
+}
+
+.cl-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.cl-diagram[aria-busy="true"] {
+  min-height: 4rem;
+}
+
+.cl-q-stimulus .cl-diagram {
+  margin: 0;
+}
+
+figure:has(> .cl-diagram) {
+  margin: 1.4rem 0;
+}
+
+figure:has(> .cl-diagram) figcaption {
+  font-family: var(--cl-sans);
+  font-size: 0.9rem;
+  color: var(--cl-text-muted);
+  text-align: center;
+}
+
 /* ── Self-explanations ────────────────────────────────────────────────────── */
 
 .cl-reflect {
