@@ -101,6 +101,7 @@ it("keeps HTTP and submissions alive after MCP exit, reconnects, and preserves g
   const first = client();
   await first.call("initialize", { clientInfo: { name: "codex-test" } });
   const tools = await first.call("tools/list");
+  expect(tools.result.tools.map((t: any) => t.name)).toContain("classroom_phone");
   expect(tools.result.tools.map((t: any) => t.name)).not.toContain("wait_for_learner");
   expect((await serviceStatus()).running).toBe(false);
   const opened = await first.call("tools/call", {

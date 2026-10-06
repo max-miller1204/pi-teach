@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { control, ensureService, serviceStatus } from "./service-client.ts";
 import { McpSession, LearnerInbox, type JsonRpcMessage } from "./mcp.ts";
 import { serviceToolDefinitions } from "./service-tools.ts";
+import { PhoneAccess } from "./phone-access.ts";
 import type { Backend } from "./teacher.ts";
 
 const local = new McpSession(new LearnerInbox(), {
@@ -76,6 +77,20 @@ lines.on("line", (line) => {
         });
         return;
       }
+    }
+    if (
+      message.params?.name === "classroom_phone" &&
+      ["status", "stop"].includes(message.params?.arguments?.action)
+    ) {
+      const phone = new PhoneAccess();
+      const value =
+        message.params.arguments.action === "status" ? await phone.status() : await phone.stop();
+      write({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { content: [{ type: "text", text: JSON.stringify(value) }], isError: false },
+      });
+      return;
     }
     await attach();
     const response = await control("/rpc", { client, backend, message });

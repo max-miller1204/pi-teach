@@ -40,7 +40,8 @@
     "audit": "npm audit --omit=dev --audit-level=moderate",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "service": "node scripts/classroom-service.ts"
+    "service": "node scripts/classroom-service.ts",
+    "e2e:phone": "node scripts/e2e-phone.ts"
   },
   "dependencies": {
     "marked": "^15.0.12"

@@ -12,4 +12,20 @@ export const serviceToolDefinitions: Array<Omit<ClassroomTool, "execute">> = [
       required: ["action"],
     },
   },
+  {
+    name: "classroom_phone",
+    label: "Classroom Phone Access",
+    description:
+      "Opt in to tailnet-only phone access. Return a checked complete classroom or lesson URL. Inspect or remove only this service's Serve route.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["start", "status", "stop"] },
+        classroom: { type: "string" },
+        lesson: { type: "string" },
+        https_port: { type: "integer" },
+      },
+      required: ["action"],
+    },
+  },
 ];

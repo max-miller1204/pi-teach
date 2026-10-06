@@ -52,7 +52,7 @@ export const SERVICE_BRIEF = `## Persistent classroom service
 
 Call open_classroom before giving a URL. The service survives this MCP connection. Browser requests start work in a dedicated teacher session. The teacher backend and session identity appear on the lesson page. Answer and grade writes belong to that teacher. Use the teacher panel for retrieval questions and learner replies. Keep quizzes locked after grading. Preserve historical grades and learning records. Do not start another lesson without learner agreement.
 
-Use classroom_service with action status, start, or stop. Stop is explicit and affects all classrooms owned by this service.`;
+Use classroom_service with action status, start, or stop. Stop is explicit and affects all classrooms owned by this service. Use classroom_phone with action start only when the learner requests phone access. It returns a checked tailnet-only URL. Use its status and stop actions to inspect and remove the owned route.`;
 
 // ── Learner inbox ─────────────────────────────────────────────────────────────
 
