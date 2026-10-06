@@ -21,7 +21,8 @@
  *   POST   /api/annotations/<id>/follow-up    ask a follow-up inside an existing card
  *   POST   /api/quiz/submit                   submit quiz answers for grading
  *   POST   /api/reflect                       save a self-explanation (never graded)
- *   GET    /api/state                         annotations, quiz attempts, reflections
+ *   PUT    /api/draft                         save or remove one unsent draft
+ *   GET    /api/state                         annotations, quiz attempts, reflections, drafts
  *   GET    /api/glossary                      the classroom's GLOSSARY.md, parsed
  *   DELETE /api/annotations/<id>              remove a question
  *   GET    /api/events                        SSE: answer, grade, reload
@@ -51,6 +52,7 @@ import {
 import { AnswerError, parseAnswers } from "./quiz.ts";
 import { isDue, summarize } from "./review.ts";
 import { isContractId, isQuizKind } from "../assets/runtime/quiz.mjs";
+import { draftErrors, isDraftKey } from "../assets/runtime/draft.mjs";
 import * as store from "./store.ts";
 
 // ── Callbacks into the extension ──────────────────────────────────────────────
@@ -415,6 +417,7 @@ async function handleApi(
       return sendJson(res, { error: "Invalid teacher reply." }, 400);
     if (!hooks?.onTeacherChat) return sendJson(res, { error: "No dedicated teacher." }, 409);
     hooks.onTeacherChat(classroom, lesson, text.trim(), id);
+    store.clearDraft(classroom, lesson, "teacher");
     return sendJson(res, { saved: true }, 201);
   }
   if (route === "teacher/retry" && req.method === "POST") {
@@ -431,6 +434,7 @@ async function handleApi(
   if (route === "ask" && req.method === "POST") return handleAsk(req, res);
   if (route === "quiz/submit" && req.method === "POST") return handleQuizSubmit(req, res);
   if (route === "reflect" && req.method === "POST") return handleReflect(req, res);
+  if (route === "draft" && req.method === "PUT") return handleDraft(req, res);
   if (route === "glossary" && req.method === "GET") return handleGlossary(res, url);
   if (rest[0] === "annotations" && rest.length === 2 && req.method === "DELETE") {
     return handleDeleteAnnotation(res, rest[1], url);
@@ -478,6 +482,7 @@ function handleState(res: http.ServerResponse, url: URL): void {
     annotations: store.listAnnotations(params.classroom, params.lesson),
     quizzes: store.latestQuizStates(params.classroom, params.lesson),
     reflections: store.latestReflections(params.classroom, params.lesson),
+    drafts: store.readDrafts(params.classroom, params.lesson),
     teacher: hooks?.teacherState?.(params.classroom, params.lesson),
   });
 }
@@ -533,6 +538,7 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
     anchor,
   });
 
+  store.clearDraft(classroom, lesson, "ask");
   hooks?.onAsk(annotation);
   sendJson(res, annotation, 201);
 }
@@ -564,6 +570,7 @@ async function handleFollowUp(
   const added = store.addFollowUp(annotationId, question.slice(0, 4000));
   if (!added) return sendJson(res, { error: "Could not save the follow-up" }, 500);
 
+  store.clearDraft(existing.classroom, existing.lesson, `followup:${annotationId}`);
   hooks?.onFollowUp(added.annotation, added.followUp);
   sendJson(res, added.annotation, 201);
 }
@@ -632,6 +639,7 @@ async function handleQuizSubmit(
     answers,
   });
 
+  store.clearDraft(classroom, lesson, `quiz:${quizId}`);
   hooks?.onQuizSubmit(submission);
   sendJson(res, submission, 201);
 }
@@ -667,14 +675,47 @@ async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse
     text: text.slice(0, 8000),
   });
 
+  store.clearDraft(classroom, lesson, `reflect:${reflectId}`);
   hooks?.onReflect(reflection);
   sendJson(res, reflection, 201);
+}
+
+/**
+ * Save one draft, or remove it when `value` is null.
+ *
+ * Drafts never reach the teacher. They exist so a reload does not lose what the
+ * learner typed. The handlers that send text remove the matching draft.
+ */
+async function handleDraft(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body: Record<string, unknown>;
+  try {
+    body = (await readJsonBody(req)) as Record<string, unknown>;
+  } catch (err) {
+    return sendJson(res, { error: (err as Error).message }, 400);
+  }
+
+  const { classroom, lesson, key, value } = body;
+  if (!isValidSlug(classroom) || !isValidSlug(lesson)) {
+    return sendJson(res, { error: "Unknown classroom or lesson" }, 400);
+  }
+  if (!store.readLesson(classroom, lesson)) return sendJson(res, { error: "Unknown lesson" }, 404);
+  if (!isDraftKey(key))
+    return sendJson(res, { error: `Unknown draft key ${JSON.stringify(key)}.` }, 400);
+  if (value === null) {
+    store.clearDraft(classroom, lesson, key);
+    return sendJson(res, { saved: false });
+  }
+  const errors = draftErrors(key, value);
+  if (errors.length > 0) return sendJson(res, { error: errors.join(" ") }, 400);
+  store.saveDraft(classroom, lesson, key, value);
+  sendJson(res, { saved: true });
 }
 
 function handleDeleteAnnotation(res: http.ServerResponse, id: string, url: URL): void {
   const params = lessonParams(url);
   if (!params) return sendJson(res, { error: "classroom and lesson are required" }, 400);
   const removed = store.deleteAnnotation(params.classroom, params.lesson, id);
+  if (removed) store.clearDraft(params.classroom, params.lesson, `followup:${id}`);
   sendJson(res, { removed });
 }
 

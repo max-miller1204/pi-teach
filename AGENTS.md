@@ -114,6 +114,8 @@ Browser side (`assets/runtime/`):
   The server imports it too, so the page and the server enforce the same rules.
 - `glossary.mjs` (+ `.d.mts`): pure glossary term matching. The server imports it for
   the avoided-word check.
+- `draft.mjs` (+ `.d.mts`): the draft contract: draft keys and the values each one
+  accepts. The server imports it to check `PUT /api/draft`.
 - `theme.mjs` - the light/dark toggle.
 - `shell.js` - the landing/classroom/document pages (just the toggle).
 - `classroom.css` - one stylesheet for every page and every lesson.
@@ -178,6 +180,12 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
 - **The review schedule is derived, never stored.** `store.reviewItems()` rebuilds it
   from every graded answer and linked chat retrieval check. Pretests are left out. A review question names its item
   with `data-review-of`, and the server refuses a key that was never graded.
+- **Unsent text is a draft, not a submission.** The page saves quiz answers,
+  self-explanations, follow-ups, the open question composer, and the teacher reply to
+  `<lesson>/drafts.json` as the learner types, and restores them once on load. Drafts
+  never reach the teacher and never wake the agent. The handler that accepts the text
+  removes its draft. A restored quiz draft only fills a form that is still `fresh`. A
+  reconnect must not replace typed text, so drafts are not applied again.
 - **`quiz/` is never a static route.** It holds submissions and any answer key. Adding a
   route that serves lesson directories wholesale would leak it; the media route is
   deliberately narrow (`<lesson>/media/*` only).

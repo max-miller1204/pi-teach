@@ -950,6 +950,12 @@ mark.cl-hl.cl-hl-pending {
   font-size: 0.75rem;
 }
 
+.cl-draft-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.75rem;
+}
+
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 
 .cl-button {

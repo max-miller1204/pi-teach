@@ -9,6 +9,7 @@ Learners submit typed quiz answers. Grades lock the saved attempt. Stored grades
 - `quiz.lock`: Keep a graded attempt locked after reload.
 - `quiz.review`: Derive review state from stored results.
 - `quiz.authoring`: Use quizzes produced by a real authoring host.
+- `quiz.drafts`: Keep unsent answers and an unsent question through a reload.
 
 ## How to get to it (user POV)
 
@@ -24,6 +25,7 @@ Learners submit typed quiz answers. Grades lock the saved attempt. Stored grades
 Preconditions: Require the browser CLI and repository dependencies. Each harness creates and removes its own fixture.
 
 - **Controls:** Run `node scripts/e2e-browser.ts "$PI_VERIFY_RUN/evidence/quizzes" > "$PI_VERIFY_RUN/evidence/quizzes.log" 2>&1`. Immediately run `printf '%s\n' "$?" > "$PI_VERIFY_RUN/evidence/quizzes.exit"`. Require exit 0. Inspect the screenshots and log. The harness checks stored submissions, grades, and review values before it removes the fixture.
+- **Drafts:** The same harness fills every answer type, waits for the saved draft, and reloads before it submits. It requires each answer back, a `fresh` form, and no draft after the submission. It also reloads an open question composer and requires its text and highlight back. Inspect `restored-draft.png` and `restored-question-draft.png`. To test that a reconnect keeps unsaved text, restart the service with `npm run service -- stop` and `start` while the page stays open. Playwright offline mode does not close an open event stream to `127.0.0.1`, so it causes no reconnect.
 - **Selectors:** Use `form[data-quiz-id="check-1"]`, `[data-question-id]`, `[data-segment]`, and the exact button name `Submit for grading`. The maintained drive is `test/browser.playwright.js`.
 - **Real grading:** Use the teacher feature's Claude and Codex recipes. They submit an incorrect choice through the UI. Require a saved wrong grade, locked page after reload, and unchanged grade after a panel reply.
 - **Authoring:** Run `node scripts/e2e-authoring.ts claude "$PI_VERIFY_RUN/evidence/authoring-claude"` or `node scripts/e2e-authoring.ts codex "$PI_VERIFY_RUN/evidence/authoring-codex"`. Capture each command's output and exit code. Inspect the generated HTML, private key, report JSON, and submitted/graded screenshots. Check authentication first.

@@ -22,12 +22,16 @@
  *   4. Glossary terms. The first use of each GLOSSARY.md term in each section is
  *      marked. A click asks the learner to recall the meaning, then shows it.
  *
+ *   5. Drafts. Text and answers the learner has typed but not sent are saved on the
+ *      server as they type, and put back after a reload.
+ *
  * No bundler, no dependencies. Answer and feedback markdown is rendered to HTML
  * server-side, so nothing here needs a markdown parser.
  */
 
 import { gradePointsNotice, gradeSummary, questionGradeLabel, questionOutcome } from "./grade.mjs";
 import { createSelector, findSelector, normalizeText } from "./anchor.mjs";
+import { draftId, draftKind } from "./draft.mjs";
 import { findTerms, firstUses } from "./glossary.mjs";
 import { initLinks } from "./links.mjs";
 import { QUIZ_KINDS, isContractId, isQuizKind, parseNumber, questionErrors } from "./quiz.mjs";
@@ -55,6 +59,12 @@ let askPill = null;
 let composer = null;
 /** Range captured when the ask pill was shown, before focus moves to the composer. */
 let pendingRange = null;
+/** Text-quote selector of the open composer's highlight, saved with its draft. */
+let composerAnchor = null;
+/** Drafts are put back once. A reconnect must not replace what the learner typed since. */
+let draftsRestored = false;
+/** The saved question draft, held until the glossary has wrapped its terms. */
+let askDraft = null;
 
 const MINIMISED_KEY = `pi-classroom-minimised:${location.pathname}`;
 
@@ -92,11 +102,17 @@ function init() {
   hydrateQuizzes();
   hydrateReflections();
   // The glossary waits for the saved highlights: they anchor to the lesson text, and
-  // must be restored before terms are wrapped.
-  loadState().then(() =>
-    initGlossary().catch((err) => console.error("[classroom] glossary failed", err)),
-  );
+  // must be restored before terms are wrapped. The question draft waits for the
+  // glossary: wrapping a term moves text nodes, which would collapse its range.
+  loadState()
+    .then(() => initGlossary().catch((err) => console.error("[classroom] glossary failed", err)))
+    .then(restoreAskDraft);
   connectEvents();
+  // A reload can come before a draft's timer fires. Send what is waiting first.
+  window.addEventListener("pagehide", sendWaitingDrafts);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") sendWaitingDrafts();
+  });
 
   document.addEventListener("mouseup", onSelectionSettled);
   document.addEventListener("keyup", (event) => {
@@ -106,7 +122,7 @@ function init() {
     if (askPill && !askPill.contains(event.target)) hideAskPill();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeComposer();
+    if (event.key === "Escape") cancelComposer();
   });
 }
 
@@ -362,12 +378,14 @@ function buildComposer() {
           <span class="cl-hint">⌘/Ctrl + Enter to send</span>
           <button type="submit" class="cl-button">Ask your teacher</button>
         </div>
+        <p class="cl-draft-error" role="alert" data-cl-draft-error hidden></p>
       </form>
     </div>`;
   document.body.appendChild(composer);
 
-  composer.querySelector("[data-cl-cancel]").addEventListener("click", closeComposer);
+  composer.querySelector("[data-cl-cancel]").addEventListener("click", cancelComposer);
   composer.querySelector("[data-cl-ask-form]").addEventListener("submit", onAskSubmit);
+  composer.querySelector("[data-cl-question]").addEventListener("input", saveAskDraft);
   composer.querySelector("[data-cl-question]").addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -379,17 +397,70 @@ function buildComposer() {
 function openComposer() {
   if (!pendingRange) return;
   hideAskPill();
+  showComposer("");
+  composer.querySelector("[data-cl-question]").focus();
+}
+
+/** Show the composer at `pendingRange`, holding `text`. */
+function showComposer(text) {
   const rect = pendingRange.getBoundingClientRect();
   composer.querySelector("[data-cl-quote]").textContent = normalizeText(pendingRange.toString());
-  composer.querySelector("[data-cl-question]").value = "";
+  composer.querySelector("[data-cl-question]").value = text;
+  composerAnchor = selectorFor(pendingRange);
   composer.hidden = false;
   position(composer, rect.left, rect.bottom + 10);
-  composer.querySelector("[data-cl-question]").focus();
 }
 
 function closeComposer() {
   if (composer) composer.hidden = true;
   pendingRange = null;
+  composerAnchor = null;
+}
+
+/** Close the composer and throw its question away. */
+function cancelComposer() {
+  if (!composer || composer.hidden) return;
+  closeComposer();
+  saveDraftNow(
+    "ask",
+    () => null,
+    (err) => {
+      if (err) alert(`Could not remove your question draft: ${err.message}`);
+    },
+  );
+}
+
+function saveAskDraft() {
+  const field = composer.querySelector("[data-cl-question]");
+  scheduleDraft(
+    "ask",
+    () =>
+      field.value.trim() && composerAnchor ? { anchor: composerAnchor, text: field.value } : null,
+    draftStatus((text) => showDraftError(composer, text), ""),
+  );
+}
+
+/** Put the saved question draft back in the composer, at its highlight. */
+function restoreAskDraft() {
+  if (!askDraft) return;
+  const draft = askDraft;
+  askDraft = null;
+  const index = buildTextIndex(contentRoot);
+  const match = findSelector(index.text, draft.anchor);
+  const range = match ? rangeFromOffsets(index, match.start, match.end) : null;
+  if (!range) {
+    console.error("[classroom] The saved question draft no longer matches the lesson text.", draft);
+    return;
+  }
+  pendingRange = range;
+  showComposer(draft.text);
+}
+
+/** A text-quote selector for a range, or null when the range is outside the lesson. */
+function selectorFor(range) {
+  const index = buildTextIndex(contentRoot);
+  const offsets = offsetsFromRange(index, range);
+  return offsets ? createSelector(index.text, offsets.start, offsets.end) : null;
 }
 
 async function onAskSubmit(event) {
@@ -397,14 +468,13 @@ async function onAskSubmit(event) {
   const question = composer.querySelector("[data-cl-question]").value.trim();
   if (!question || !pendingRange) return;
 
-  const index = buildTextIndex(contentRoot);
-  const offsets = offsetsFromRange(index, pendingRange);
-  if (!offsets) {
+  const selector = selectorFor(pendingRange);
+  if (!selector) {
     closeComposer();
     return;
   }
-  const selector = createSelector(index.text, offsets.start, offsets.end);
   const range = pendingRange.cloneRange();
+  await flushDraft("ask");
   closeComposer();
 
   const submit = composer.querySelector('button[type="submit"]');
@@ -554,6 +624,7 @@ function createPanel(annotationId, mark) {
         <span class="cl-hint">⌘/Ctrl + Enter to send</span>
         <button type="submit" class="cl-button">Ask</button>
       </div>
+      <p class="cl-draft-error" role="alert" data-cl-draft-error hidden></p>
     </form>`;
 
   if (mark) placeCardInFlow(panel, mark);
@@ -568,12 +639,20 @@ function createPanel(annotationId, mark) {
 
   const form = panel.querySelector("[data-cl-followup-form]");
   form.addEventListener("submit", (event) => onFollowUpSubmit(event, annotationId));
-  form.querySelector("[data-cl-followup]").addEventListener("keydown", (event) => {
+  const field = form.querySelector("[data-cl-followup]");
+  field.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
       form.requestSubmit();
     }
   });
+  field.addEventListener("input", () =>
+    scheduleDraft(
+      `followup:${annotationId}`,
+      () => (field.value.trim() ? field.value : null),
+      draftStatus((text) => showDraftError(form, text), ""),
+    ),
+  );
   return panel;
 }
 
@@ -633,6 +712,7 @@ async function onFollowUpSubmit(event, annotationId) {
   if (!question) return;
 
   submit.disabled = true;
+  await flushDraft(`followup:${annotationId}`);
   try {
     const response = await fetch(`/api/annotations/${encodeURIComponent(annotationId)}/follow-up`, {
       method: "POST",
@@ -817,6 +897,10 @@ async function loadState() {
     for (const quiz of state.quizzes) applyQuizState(quiz);
     for (const reflection of state.reflections) applyReflection(reflection);
     if (state.teacher) renderTeacher(state.teacher);
+    if (!draftsRestored) {
+      draftsRestored = true;
+      restoreDrafts(state.drafts);
+    }
   } catch (err) {
     console.warn("[classroom] could not load lesson state", err);
   }
@@ -1018,6 +1102,16 @@ function hydrateQuizzes() {
     for (const question of form.querySelectorAll(".cl-q")) enhanceQuestion(form, question);
     form.dataset.state = "fresh";
     form.addEventListener("submit", (event) => onQuizSubmit(event, form));
+    const saveQuiz = () => {
+      if (form.dataset.state !== "fresh") return;
+      scheduleDraft(
+        `quiz:${form.dataset.quizId}`,
+        () => quizDraft(form),
+        draftStatus((text) => setQuizStatus(form, text), "Draft saved."),
+      );
+    };
+    form.addEventListener("input", saveQuiz);
+    form.addEventListener("change", saveQuiz);
   }
 }
 
@@ -1027,10 +1121,7 @@ function enhanceQuestion(form, question) {
     case "numeric":
       for (const input of question.querySelectorAll("input.cl-number")) {
         input.setAttribute("inputmode", "decimal");
-        input.addEventListener("input", () => {
-          const invalid = input.value.trim() !== "" && parseNumber(input.value) === null;
-          input.setAttribute("aria-invalid", String(invalid));
-        });
+        input.addEventListener("input", () => markNumber(input));
       }
       break;
     case "order":
@@ -1043,6 +1134,11 @@ function enhanceQuestion(form, question) {
       enhanceLocate(form, question);
       break;
   }
+}
+
+function markNumber(input) {
+  const invalid = input.value.trim() !== "" && parseNumber(input.value) === null;
+  input.setAttribute("aria-invalid", String(invalid));
 }
 
 function enhanceOrder(question) {
@@ -1065,6 +1161,8 @@ function enhanceOrder(question) {
       if (button.dataset.clMove === "-1") sibling.before(item);
       else sibling.after(item);
       button.focus();
+      // A move is a change of answer, like a click on a native control.
+      item.dispatchEvent(new Event("change", { bubbles: true }));
     });
   }
 }
@@ -1113,6 +1211,7 @@ function enhanceLocate(form, question) {
         }
       }
       segment.setAttribute("aria-pressed", String(pressed));
+      segment.dispatchEvent(new Event("change", { bubbles: true }));
     };
     segment.addEventListener("click", toggle);
     segment.addEventListener("keydown", (event) => {
@@ -1264,6 +1363,9 @@ async function onQuizSubmit(event, form) {
 
   setQuizState(form, "submitted");
   form.dataset.activeAttempt = String(Number(form.dataset.attempts ?? "0") + 1);
+  // Save the last keystrokes before the submission. The server removes the draft
+  // only when it accepts the submission.
+  await flushDraft(`quiz:${form.dataset.quizId}`);
   setQuizStatus(form, '<span class="cl-spinner"></span> Sent to your teacher for grading…', true);
 
   let response;
@@ -1557,6 +1659,18 @@ function hydrateReflections() {
       continue;
     }
     form.addEventListener("submit", (event) => onReflectSubmit(event, form));
+    const field = form.querySelector("textarea");
+    field.addEventListener("input", () => {
+      form.dataset.clDraft = "true";
+      scheduleDraft(
+        `reflect:${id}`,
+        () => (field.value.trim() ? field.value : null),
+        draftStatus(
+          (text) => setQuizStatus(form, text),
+          "Draft saved. Click Save to send it to your teacher.",
+        ),
+      );
+    });
   }
 }
 
@@ -1570,6 +1684,7 @@ async function onReflectSubmit(event, form) {
   }
   const save = form.querySelector('button[type="submit"]');
   save.disabled = true;
+  await flushDraft(`reflect:${form.dataset.reflectId}`);
   try {
     const response = await fetch("/api/reflect", {
       method: "POST",
@@ -1587,6 +1702,7 @@ async function onReflectSubmit(event, form) {
       throw new Error(body.error);
     }
     const reflection = await response.json();
+    delete form.dataset.clDraft;
     setQuizStatus(
       form,
       `Saved ${new Date(reflection.savedAt).toLocaleString()}. Your teacher will read it.`,
@@ -1607,8 +1723,272 @@ function applyReflection(reflection) {
     );
     return;
   }
+  // A reconnect loads the state again. It must not replace text the learner has not saved.
+  if (form.dataset.clDraft === "true") return;
   form.querySelector("textarea").value = reflection.text;
   setQuizStatus(form, `Saved ${new Date(reflection.savedAt).toLocaleString()}.`);
+}
+
+// ── Drafts ────────────────────────────────────────────────────────────────────
+
+/**
+ * Text and answers the learner has typed but not sent are saved as they type, so a
+ * reload does not lose them. Each place on the page has one draft key (see draft.mjs).
+ * The saves for one key run one at a time, so an older save never lands after a newer
+ * one. The server removes a draft when it accepts the text the draft held.
+ */
+const DRAFT_DELAY_MS = 400;
+
+/** draft key → { read, report, timer, running, again } */
+const draftJobs = new Map();
+
+/**
+ * Save a draft soon. `read` returns the value to save, or null to remove the draft.
+ * `report(err, value)` shows the result.
+ */
+function scheduleDraft(key, read, report) {
+  let job = draftJobs.get(key);
+  if (!job) {
+    job = { timer: null, running: null, again: false };
+    draftJobs.set(key, job);
+  }
+  job.read = read;
+  job.report = report;
+  clearTimeout(job.timer);
+  job.timer = setTimeout(() => void flushDraft(key), DRAFT_DELAY_MS);
+}
+
+/** Save a draft now. */
+function saveDraftNow(key, read, report) {
+  scheduleDraft(key, read, report);
+  return flushDraft(key);
+}
+
+/** Send a waiting save of a draft now, and wait until every save of it is done. */
+function flushDraft(key) {
+  const job = draftJobs.get(key);
+  if (!job) return Promise.resolve();
+  const waiting = job.timer !== null;
+  clearTimeout(job.timer);
+  job.timer = null;
+  if (job.running) {
+    if (waiting) job.again = true;
+    return job.running;
+  }
+  if (!waiting) return Promise.resolve();
+  job.running = (async () => {
+    do {
+      job.again = false;
+      const value = job.read();
+      try {
+        const response = await draftRequest(key, value, false);
+        const result = await response.json();
+        if (!response.ok)
+          throw new Error(result.error || `PUT /api/draft returned ${response.status}`);
+        job.report(null, value);
+      } catch (err) {
+        console.error(`[classroom] could not save the draft ${key}`, err);
+        job.report(err, value);
+      }
+    } while (job.again);
+    job.running = null;
+  })();
+  return job.running;
+}
+
+/**
+ * Send every waiting draft while the page goes away. `keepalive` lets the request
+ * finish after the page is gone, so nobody is left to read its result.
+ */
+function sendWaitingDrafts() {
+  for (const [key, job] of draftJobs) {
+    if (job.timer === null) continue;
+    clearTimeout(job.timer);
+    job.timer = null;
+    draftRequest(key, job.read(), true).catch((err) =>
+      console.error(`[classroom] could not save the draft ${key}`, err),
+    );
+  }
+}
+
+function draftRequest(key, value, keepalive) {
+  return fetch("/api/draft", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ classroom: config.classroom, lesson: config.lesson, key, value }),
+    keepalive,
+  });
+}
+
+/** A `report` for scheduleDraft that writes the result with `show`. */
+function draftStatus(show, savedText) {
+  return (err, value) => {
+    if (err) show(`Could not save your draft: ${err.message}`);
+    else show(value === null ? "" : savedText);
+  };
+}
+
+function showDraftError(container, text) {
+  const line = container.querySelector("[data-cl-draft-error]");
+  line.textContent = text;
+  line.hidden = !text;
+}
+
+/** The unsubmitted answers of a quiz, or null when it has none. */
+function quizDraft(form) {
+  const draft = {};
+  for (const question of form.querySelectorAll(".cl-q")) {
+    const entry = questionDraft(question);
+    if (entry) draft[question.dataset.questionId] = entry;
+  }
+  return Object.keys(draft).length > 0 ? draft : null;
+}
+
+/** One question's answer as the learner left it, or null when it is untouched. */
+function questionDraft(question) {
+  const some = (entry) => (Object.keys(entry).length > 0 ? entry : null);
+  const filled = (pairs) => Object.fromEntries(pairs.filter(([, value]) => value));
+  switch (question.dataset.type) {
+    case "choice":
+    case "multi": {
+      const checked = own(question, "input[type=radio], input[type=checkbox]")
+        .filter((input) => input.checked)
+        .map((input) => input.value);
+      return checked.length > 0 ? { checked } : null;
+    }
+    case "term":
+    case "short": {
+      const field = own(question, "textarea, input[type=text], input:not([type])")[0];
+      return field.value ? { text: field.value } : null;
+    }
+    case "numeric":
+      return some(
+        filled([
+          ["text", question.querySelector("input.cl-number").value],
+          ["unit", question.querySelector(".cl-unit")?.value],
+        ]),
+      );
+    case "cloze": {
+      const blanks = filled(
+        [...question.querySelectorAll("input[data-blank]")].map((blank) => [
+          blank.dataset.blank,
+          blank.value,
+        ]),
+      );
+      return Object.keys(blanks).length > 0 ? { blanks } : null;
+    }
+    case "order": {
+      const list = question.querySelector(".cl-order");
+      const order = [...list.children].map((item) => item.dataset.item);
+      return order.join(" ") === list.dataset.clInitial ? null : { order };
+    }
+    case "match": {
+      const pairs = filled(
+        [...question.querySelectorAll("select.cl-match-select")].map((select) => [
+          select.dataset.matchFor,
+          select.value,
+        ]),
+      );
+      return Object.keys(pairs).length > 0 ? { pairs } : null;
+    }
+    case "locate": {
+      const segments = [...question.querySelectorAll(".cl-segment[aria-pressed=true]")].map(
+        (segment) => segment.dataset.segment,
+      );
+      return segments.length > 0 ? { segments } : null;
+    }
+  }
+  throw new Error(`Question type ${question.dataset.type} has no draft.`);
+}
+
+/** Put a quiz draft back into a fresh form. */
+function restoreQuizDraft(form, draft) {
+  for (const [questionId, entry] of Object.entries(draft)) {
+    const question = form.querySelector(`.cl-q[data-question-id="${cssEscape(questionId)}"]`);
+    if (!question) {
+      console.error(
+        `[classroom] A draft answer belongs to question "${questionId}", which is not in quiz "${form.dataset.quizId}".`,
+      );
+      continue;
+    }
+    for (const value of entry.checked ?? []) {
+      const choice = own(question, "input[type=radio], input[type=checkbox]").find(
+        (input) => input.value === value,
+      );
+      if (choice) choice.checked = true;
+    }
+    if (entry.text !== undefined) {
+      const field =
+        question.querySelector("input.cl-number") ??
+        own(question, "textarea, input[type=text], input:not([type])")[0];
+      field.value = entry.text;
+      if (field.matches(".cl-number")) markNumber(field);
+    }
+    if (entry.unit !== undefined) question.querySelector(".cl-unit").value = entry.unit;
+    for (const [id, value] of Object.entries(entry.blanks ?? {})) {
+      const blank = question.querySelector(`input[data-blank="${cssEscape(id)}"]`);
+      if (blank) blank.value = value;
+    }
+    if (entry.order) reorder(question.querySelector(".cl-order"), entry.order);
+    for (const [left, right] of Object.entries(entry.pairs ?? {})) {
+      const select = question.querySelector(`select[data-match-for="${cssEscape(left)}"]`);
+      if (select) select.value = right;
+    }
+    for (const id of entry.segments ?? []) {
+      const segment = question.querySelector(`.cl-segment[data-segment="${cssEscape(id)}"]`);
+      if (segment) segment.setAttribute("aria-pressed", "true");
+    }
+  }
+  setQuizStatus(form, "Draft restored. Submit when you are ready.");
+}
+
+/** Put every saved draft back where it was typed. */
+function restoreDrafts(drafts) {
+  for (const [key, value] of Object.entries(drafts)) {
+    const id = draftId(key);
+    switch (draftKind(key)) {
+      case "quiz": {
+        const form = quizForms().find((f) => f.dataset.quizId === id);
+        if (!form)
+          console.error(`[classroom] A draft belongs to quiz "${id}", which is not on this page.`);
+        // A submitted or graded quiz keeps the answers it was sent with.
+        else if (form.dataset.state === "fresh") restoreQuizDraft(form, value);
+        break;
+      }
+      case "reflect": {
+        const form = reflectForms().find((f) => f.dataset.reflectId === id);
+        if (!form) {
+          console.error(
+            `[classroom] A draft belongs to self-explanation "${id}", which is not on this page.`,
+          );
+          break;
+        }
+        form.querySelector("textarea").value = value;
+        form.dataset.clDraft = "true";
+        setQuizStatus(form, "Draft restored. Click Save to send it to your teacher.");
+        break;
+      }
+      case "followup": {
+        const card = cards.get(id);
+        if (!card)
+          console.error(
+            `[classroom] A draft belongs to question card "${id}", which is not on this page.`,
+          );
+        else card.panel.querySelector("[data-cl-followup]").value = value;
+        break;
+      }
+      case "teacher":
+        if (!teacherPanel)
+          console.error(
+            "[classroom] A teacher reply draft exists, but this page has no teacher panel.",
+          );
+        else teacherPanel.querySelector("textarea").value = value;
+        break;
+      case "ask":
+        askDraft = value;
+        break;
+    }
+  }
 }
 
 // ── Glossary terms ────────────────────────────────────────────────────────────
@@ -1776,6 +2156,7 @@ function renderTeacher(state) {
         button = teacherPanel.querySelector('button[type="submit"]');
       teacherReplyId ??= crypto.randomUUID();
       button.disabled = true;
+      await flushDraft("teacher");
       try {
         await teacherPost("chat", { text: field.value, id: teacherReplyId });
         field.value = "";
@@ -1787,8 +2168,16 @@ function renderTeacher(state) {
         button.disabled = false;
       }
     });
-    teacherPanel.querySelector("textarea").addEventListener("input", () => {
+    teacherPanel.querySelector("textarea").addEventListener("input", (event) => {
       teacherReplyId = null;
+      const field = event.currentTarget;
+      scheduleDraft(
+        "teacher",
+        () => (field.value.trim() ? field.value : null),
+        draftStatus((text) => {
+          teacherPanel.querySelector(".cl-teacher-error").textContent = text;
+        }, ""),
+      );
     });
   }
   teacherPanel.querySelector(".cl-teacher-identity").textContent =

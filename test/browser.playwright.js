@@ -60,6 +60,16 @@ async function browserRegression(page) {
   const assert = (condition, message) => {
     if (!condition) throw new Error(message);
   };
+  const stateUrl = new URL("/api/state?classroom=rust&lesson=001-ownership", page.url()).href;
+  const serverDrafts = async () => (await (await page.request.get(stateUrl)).json()).drafts;
+  /** Wait until the saved drafts match, because drafts are saved after a short delay. */
+  const waitDrafts = async (predicate, message) => {
+    for (let i = 0; i < 50; i++) {
+      if (predicate(await serverDrafts())) return;
+      await page.waitForTimeout(100);
+    }
+    throw new Error(`${message}: ${JSON.stringify(await serverDrafts())}`);
+  };
 
   assert((await page.locator(".cl-confidence").count()) === 0, "The page has confidence controls");
   assert(
@@ -233,6 +243,46 @@ async function browserRegression(page) {
   );
   await screenshot("all-graded-quizzes");
   await page.unroute("**/api/quiz/submit");
+
+  // An unsent question keeps its text and its highlight through a reload.
+  await page.evaluate(() => {
+    const walker = document.createTreeWalker(
+      document.querySelector("section"),
+      NodeFilter.SHOW_TEXT,
+    );
+    let node = walker.nextNode();
+    while (node && !node.nodeValue.includes("checks again")) node = walker.nextNode();
+    const start = node.nodeValue.indexOf("checks again");
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + "checks again".length);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    document.dispatchEvent(new MouseEvent("mouseup"));
+  });
+  await page.locator(".cl-ask-pill").click();
+  await page.locator("[data-cl-question]").fill("Why does it check twice?");
+  await waitDrafts(
+    (drafts) => drafts.ask?.text === "Why does it check twice?",
+    "The unsent question was not saved as a draft",
+  );
+  await page.reload();
+  await page.locator("[data-cl-question]").waitFor();
+  assert(
+    (await page.locator("[data-cl-question]").inputValue()) === "Why does it check twice?" &&
+      (await page.locator("[data-cl-quote]").first().innerText()) === "checks again",
+    "Reload lost the unsent question or its highlight",
+  );
+  await screenshot("restored-question-draft");
+  await page.keyboard.press("Escape");
+  await waitDrafts((drafts) => !Object.hasOwn(drafts, "ask"), "Cancel kept the question draft");
+  await page.reload();
+  await page.locator('[data-quiz-id="all-types"]').waitFor();
+  await page.waitForFunction(() => document.querySelector("section .cl-term"));
+  assert(
+    await page.locator("[data-cl-question]").isHidden(),
+    "A cancelled question came back after reload",
+  );
   const allTypes = page.locator('[data-quiz-id="all-types"]');
   await allTypes.locator('[data-type="choice"] input[value="a"]').check();
   await allTypes.locator('[data-type="multi"] input[value="b"]').check();
@@ -247,6 +297,33 @@ async function browserRegression(page) {
   for (const select of await allTypes.locator('[data-type="match"] select').all())
     await select.selectOption("r2");
   await allTypes.locator('[data-segment="s3"]').click();
+  const answersOf = (form) => ({
+    text: [...form.querySelectorAll('input[type="text"], textarea')].map((field) => field.value),
+    order: [...form.querySelectorAll(".cl-order > li")].map((li) => li.dataset.item),
+    pairs: [...form.querySelectorAll("select")].map((field) => field.value),
+    checked: [...form.querySelectorAll("input:checked")].map((input) => input.value),
+    segments: [...form.querySelectorAll('[aria-pressed="true"]')].map((s) => s.dataset.segment),
+  });
+  const typed = await allTypes.evaluate(answersOf);
+  await waitDrafts(
+    (drafts) => JSON.stringify(drafts["quiz:all-types"] ?? {}).includes('"segments":["s3"]'),
+    "The unsent answers were not saved as a draft",
+  );
+  await page.reload();
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-quiz-id="all-types"] [data-cl-quiz-status]')
+      ?.textContent.startsWith("Draft restored"),
+  );
+  assert(
+    JSON.stringify(await allTypes.evaluate(answersOf)) === JSON.stringify(typed),
+    "Reload lost an unsent answer",
+  );
+  assert(
+    (await allTypes.getAttribute("data-state")) === "fresh",
+    "A restored draft locked the quiz",
+  );
+  await screenshot("restored-draft");
   const typesResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/quiz/submit") && r.request().method() === "POST",
   );
@@ -254,6 +331,10 @@ async function browserRegression(page) {
   const typesResult = await typesResponse;
   assert(typesResult.status() === 201, await typesResult.text());
   const typedSubmission = await typesResult.json();
+  assert(
+    !Object.hasOwn(await serverDrafts(), "quiz:all-types"),
+    "The submission left its draft on the server",
+  );
   assert(
     new Set(typedSubmission.answers.map((a) => a.type)).size === 9,
     "The runtime lost a supported response type",
@@ -343,6 +424,7 @@ async function browserRegression(page) {
       "invalid option values block submission",
       "grade before response",
       "all nine response types submit and restore",
+      "unsent answers and questions survive a reload",
       "partial credit display and reload",
       "MCP delivery explanation",
     ],

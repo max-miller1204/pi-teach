@@ -95,6 +95,10 @@ export function reflectionsFile(classroom: string, lesson: string): string {
   return path.join(lessonDir(classroom, lesson), "reflections.json");
 }
 
+export function draftsFile(classroom: string, lesson: string): string {
+  return path.join(lessonDir(classroom, lesson), "drafts.json");
+}
+
 /**
  * Extension-bundled assets (runtime JS/CSS, lesson templates, docs).
  *
