@@ -112,6 +112,13 @@ Browser side (`assets/runtime/`):
 - `anchor.mjs` (+ `.d.mts`) - pure text-quote anchoring.
 - `quiz.mjs` (+ `.d.mts`): the quiz contract: question types, kinds, and markup checks.
   The server imports it too, so the page and the server enforce the same rules.
+- `diagrams.mjs` (+ `.d.mts`): draws each `<pre class="mermaid">` with the vendored
+  Mermaid build. Lessons and reference documents both load it. The build loads only
+  on a page that has a diagram.
+- `vendor/mermaid/`: `mermaid.min.js`, its `LICENSE`, and `VERSION`. Update it with
+  `node scripts/vendor-mermaid.ts <version>`. It is vendored, not an npm dependency,
+  because the package installs about 200 MB of Node modules that the browser build
+  does not use.
 - `glossary.mjs` (+ `.d.mts`): pure glossary term matching. The server imports it for
   the avoided-word check.
 - `draft.mjs` (+ `.d.mts`): the draft contract: draft keys and the values each one
@@ -188,6 +195,11 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   restored question comes back as a marker at its highlight, not as an open composer,
   because the composer floats over the lesson. A reconnect must not replace typed text,
   so drafts are not applied again.
+- **A diagram is drawn, not highlighted.** `initDiagrams()` swaps each
+  `pre.mermaid` for a `div.cl-diagram` before anything indexes the text. The text
+  index, the glossary, and the ask pill all skip `.cl-diagram`, so an anchor never
+  depends on whether a diagram has finished drawing. A stimulus sends the Mermaid
+  source to grading, not the SVG labels.
 - **`quiz/` is never a static route.** It holds submissions and any answer key. Adding a
   route that serves lesson directories wholesale would leak it; the media route is
   deliberately narrow (`<lesson>/media/*` only).

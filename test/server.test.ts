@@ -138,10 +138,11 @@ describe("pages", () => {
     expect(html).toContain('href="/doc/rust/NOTES.md"');
   });
 
-  it("gives reference documents the link behaviour", async () => {
+  it("gives reference documents the link behaviour and the diagrams", async () => {
     fixture.write("rust/reference/syntax.html", "<html><head></head><body>Ref</body></html>");
     const html = await (await get("/r/rust/syntax.html")).text();
     expect(html).toContain("/static/links.mjs");
+    expect(html).toContain("/static/diagrams.mjs");
   });
 
   it("serves the bundled runtime assets", async () => {
@@ -158,6 +159,14 @@ describe("pages", () => {
     expect((await get("/static/theme.mjs")).status).toBe(200);
     expect((await get("/static/links.mjs")).status).toBe(200);
     expect((await get("/static/draft.mjs")).status).toBe(200);
+    expect((await get("/static/diagrams.mjs")).status).toBe(200);
+  });
+
+  it("serves the vendored Mermaid build that diagrams.mjs loads", async () => {
+    const res = await get("/static/vendor/mermaid/mermaid.min.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/javascript/);
+    expect(await res.text()).toContain('globalThis["mermaid"]');
   });
 });
 

@@ -381,13 +381,14 @@ function handleReference(res: http.ServerResponse, rest: string[]): void {
   const file = safeJoin(path.join(classroomDir(name), "reference"), tail.join("/"));
   if (!file || !file.endsWith(".html") || !isFile(file)) return sendNotFound(res, "Not found");
 
-  // Reference docs get the stylesheet, the theme bootstrap, and the link behaviour,
-  // but not the lesson runtime: there is no quiz to submit and nothing to anchor
+  // Reference docs get the stylesheet, the theme bootstrap, the link behaviour, and
+  // the diagrams, but not the lesson runtime: there is no quiz to submit and nothing to anchor
   // questions to.
   const html = fs.readFileSync(file, "utf8");
   const head = `<link rel="stylesheet" href="/static/classroom.css">
 <script>try{var t=localStorage.getItem("pi-classroom-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
-<script type="module">import{initLinks}from"/static/links.mjs";initLinks();</script>`;
+<script type="module">import{initLinks}from"/static/links.mjs";initLinks();</script>
+<script type="module">import{initDiagrams}from"/static/diagrams.mjs";initDiagrams(document.body);</script>`;
   const idx = html.search(/<\/head\s*>/i);
   sendHtml(res, idx === -1 ? head + html : html.slice(0, idx) + head + html.slice(idx));
 }

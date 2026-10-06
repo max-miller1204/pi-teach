@@ -426,6 +426,85 @@ async function browserRegression(page) {
     "Reload lost partial points",
   );
   await screenshot("partial-credit-and-all-types");
+
+  const diagramErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") diagramErrors.push(message.text());
+  });
+  await page.goto(page.url().replace("/001-ownership", "/002-diagrams"));
+  const drawn = page.locator(".cl-diagram svg");
+  await page.waitForFunction(
+    () => document.querySelectorAll(".cl-diagram:not([aria-busy])").length === 3,
+  );
+  assert((await drawn.count()) === 2, `Expected 2 drawn diagrams, got ${await drawn.count()}`);
+  assert((await page.locator("pre.mermaid").count()) === 0, "A diagram source was left in place");
+  assert(
+    (await page.locator(".cl-diagram .cl-contract-error").innerText()).includes(
+      "Diagram did not render",
+    ),
+    "A broken diagram shows no error",
+  );
+  assert(
+    diagramErrors.some((text) => text.includes("Diagram did not render")),
+    "A broken diagram logs no console error",
+  );
+  assert(
+    (await page.locator(".cl-diagram .cl-term").count()) === 0,
+    "The glossary marked a term inside a diagram",
+  );
+  assert(
+    (await page.locator("section > p .cl-term").count()) === 1,
+    "The glossary skipped the prose next to a diagram",
+  );
+  const label = page.locator("figure .cl-diagram svg").getByText("x < y?");
+  assert((await label.count()) === 1, "An escaped label did not draw");
+  await label.selectText();
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  assert(await page.locator(".cl-ask-pill").isHidden(), "The ask pill offers diagram text");
+  const firstSvg = await page.locator("figure .cl-diagram svg").getAttribute("id");
+  const lightFill = await page
+    .locator("figure .cl-diagram svg .node rect, figure .cl-diagram svg .node polygon")
+    .first()
+    .evaluate((node) => getComputedStyle(node).fill);
+  await screenshot("diagrams-light");
+  await page.locator("[data-cl-theme-toggle]").click();
+  await page.waitForFunction(
+    (id) => document.querySelector("figure .cl-diagram svg")?.id !== id,
+    firstSvg,
+  );
+  const darkFill = await page
+    .locator("figure .cl-diagram svg .node rect, figure .cl-diagram svg .node polygon")
+    .first()
+    .evaluate((node) => getComputedStyle(node).fill);
+  assert(lightFill !== darkFill, `The theme change kept the node fill ${lightFill}`);
+  await screenshot("diagrams-dark");
+  await page.locator("[data-cl-theme-toggle]").click();
+
+  let sentStimulus = null;
+  await page.route("**/api/quiz/submit", async (route) => {
+    sentStimulus = route.request().postDataJSON().answers[0].stimulus;
+    await route.abort();
+  });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  const diagramQuiz = page.locator('form[data-quiz-id="diagram-check"]');
+  await diagramQuiz.locator('input[type="text"]').fill("Owner");
+  await diagramQuiz.getByRole("button", { name: "Submit for grading", exact: true }).click();
+  for (let i = 0; i < 50 && sentStimulus === null; i++) await page.waitForTimeout(100);
+  await page.unroute("**/api/quiz/submit");
+  assert(
+    sentStimulus ===
+      "Read the chart.\n[diagram, Mermaid source:\nsequenceDiagram\n  Caller->>Owner: borrow\n  Owner-->>Caller: reference]",
+    `Wrong stimulus text: ${JSON.stringify(sentStimulus)}`,
+  );
+  assert(
+    (await diagramQuiz.locator(".cl-diagram svg").count()) === 1,
+    "Reading the stimulus hid its diagram",
+  );
+
+  await page.goto(page.url().replace("/c/rust/002-diagrams", "/r/rust/diagrams.html"));
+  await page.locator(".cl-diagram svg").waitFor();
+  await screenshot("diagram-reference");
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
   await observer.close();
   return {
@@ -444,6 +523,7 @@ async function browserRegression(page) {
       "unsent answers and questions survive a reload",
       "partial credit display and reload",
       "MCP delivery explanation",
+      "diagrams draw, fail loudly, follow the theme, and send their source",
     ],
   };
 }
