@@ -1,6 +1,7 @@
 /** Run one request at a time for each classroom. Persist plans before writes. */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import { applyTurnAnswer } from "./bridge.ts";
 import { classroomDir, lessonDir } from "./paths.ts";
 import { stageLesson } from "./pretest.ts";
@@ -159,6 +160,13 @@ export class TeacherService {
     const state = this.states.get(classroom),
       r = state?.requests.find((r) => r.id === id);
     if (!state || !r || r.status !== "failed") throw new Error("This request cannot be retried.");
+    if (r.kind === "quiz" && r.plan && !(r.applied ?? 0)) {
+      const submission = store.findSubmission(r.target);
+      if (submission?.rubricDigest && r.planRubricDigest !== submission.rubricDigest) {
+        delete r.plan;
+        delete r.planRubricDigest;
+      }
+    }
     r.status = r.plan ? "planned" : "queued";
     delete r.error;
     saveTeacherState(classroom, state);
@@ -203,6 +211,17 @@ export class TeacherService {
     const rubric = path.join(lessonDir(r.classroom, r.lesson), "quiz", "key.json");
     if (r.kind === "quiz" && !fs.existsSync(rubric))
       throw new Error("Private quiz rubric is missing. Write quiz/key.json before grading.");
+    const privateRubric = fs.existsSync(rubric) ? fs.readFileSync(rubric, "utf8") : null;
+    if (r.kind === "quiz") {
+      const submission = store.findSubmission(r.target);
+      if (!submission) throw new Error("The submitted quiz no longer exists.");
+      const digest = createHash("sha256").update(privateRubric!).digest("hex");
+      if (submission.rubricDigest && digest !== submission.rubricDigest)
+        throw new Error(
+          "The private rubric changed after submission. Restore it before teacher work.",
+        );
+      r.planRubricDigest = digest;
+    }
     const context = {
       lesson: stageLesson(
         fs.readFileSync(lesson.htmlPath, "utf8"),
@@ -213,7 +232,7 @@ export class TeacherService {
             .map((s) => s.quizId),
         ),
       ).html,
-      privateRubric: fs.existsSync(rubric) ? fs.readFileSync(rubric, "utf8") : null,
+      privateRubric,
       records: store.readLearningRecords(r.classroom),
       messages: state.messages.filter((m) => m.lesson === r.lesson),
       grades: store.latestGrades(r.classroom, r.lesson),
@@ -338,6 +357,11 @@ export class TeacherService {
           throw new Error(`Teacher omitted ${key}.`);
       return { name: c.name, args, tool };
     });
+    const quiz = r.kind === "quiz" ? store.findSubmission(r.target) : null;
+    if (quiz?.rubricDigest && r.planRubricDigest !== quiz.rubricDigest)
+      throw new Error(
+        "The saved grading plan has no matching rubric. Retry to request a new plan.",
+      );
     const pretest = r.kind === "quiz" && store.findSubmission(r.target)?.kind === "pretest";
     if (
       plan.learning_record.trim() &&

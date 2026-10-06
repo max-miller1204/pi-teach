@@ -298,3 +298,51 @@ it("preserves a pretest grade and records only demonstrated prior knowledge", as
   expect(store.listLearningRecords("rust")).toHaveLength(1);
   expect(store.reviewItems("rust")).toHaveLength(0);
 });
+
+it("refuses teacher work from a changed rubric before generating a plan", async () => {
+  const original = fs.readFileSync(path.join(f.root, "rust/001-ownership/quiz/key.json"), "utf8");
+  const s = submission();
+  f.write("rust/001-ownership/quiz/key.json", '{"q1":"forever"}');
+  let runs = 0;
+  const teacher = new TeacherService(async () => {
+    runs++;
+    return plan([grade(s.id)]);
+  });
+  teacher.attach("rust", "codex");
+  await teacher.idle();
+  expect(runs).toBe(0);
+  const request = readTeacherState("rust")!.requests[0];
+  expect(request.status).toBe("failed");
+  expect(request.plan).toBeUndefined();
+  f.write("rust/001-ownership/quiz/key.json", original);
+  teacher.retry("rust", request.id);
+  await teacher.idle();
+  expect(runs).toBe(1);
+  expect(store.latestGrades("rust", location.lesson)[0].score).toBe(0);
+});
+
+it("requires a new plan on explicit retry when saved rubric evidence is absent", async () => {
+  const s = submission();
+  const teacher = new TeacherService(async () => plan([grade(s.id)]));
+  teacher.attach("rust", "codex");
+  await teacher.idle();
+  const state = readTeacherState("rust")!;
+  const request = state.requests[0];
+  request.status = "planned";
+  request.applied = 0;
+  delete request.planRubricDigest;
+  saveTeacherState("rust", state);
+  let runs = 0;
+  const restarted = new TeacherService(async () => {
+    runs++;
+    return plan([grade(s.id)]);
+  });
+  restarted.restore();
+  await restarted.idle();
+  expect(runs).toBe(0);
+  expect(readTeacherState("rust")!.requests[0].status).toBe("failed");
+  restarted.retry("rust", request.id);
+  await restarted.idle();
+  expect(runs).toBe(1);
+  expect(store.latestGrades("rust", location.lesson)).toHaveLength(1);
+});
