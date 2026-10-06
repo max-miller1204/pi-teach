@@ -253,6 +253,13 @@ submits. Set `correct` to true only for full credit. Supply `points_earned` and
 `points_possible` for every question when using partial credit or weights. The
 overall score is the earned points divided by the possible points, times 100.
 
+New scaffolded pages use assessment contract version 1. The server checks the
+authored quiz kind, question ids, response types, and complete rubric before it
+saves an attempt. The rubric uses quiz ids, then question ids. Each entry needs
+`expected`, positive `points`, `full`, and `partial`. Allocate points to named
+reasoning components. The server rejects altered point limits and a rubric changed
+after submission. Older lesson metadata and saved attempts retain their existing
+contract. Do not rewrite their questions or grades during an upgrade.
 Integer rounding is allowed. Without points, grading uses equal-weight binary
 results. Do not mix grading methods during a quiz.
 

@@ -88,6 +88,13 @@
 
   ── The private rubric ────────────────────────────────────────────────────────────
 
+    Newly scaffolded pages use assessment contract version 1. Keep that metadata.
+    The server checks every authored quiz and question before saving an attempt.
+    A rubric entry must have expected, positive points, full, and partial.
+    Allocate points to named reasoning components. Supply points for every grade.
+    The maximum must match points in the rubric. Do not change the rubric after
+    submission. Do not place generic criteria on every question just to fill fields.
+
     Before the learner submits, write <lesson>/quiz/key.json. The server never serves
     the quiz/ directory. For each question, state the expected answer, the points
     possible, and the criteria for full and partial credit. For example:

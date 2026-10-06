@@ -34,6 +34,7 @@ export interface LessonHealthInput {
   questions?: AuthoredQuestion[];
   /** Whether the lesson has a private `quiz/key.json` rubric. */
   hasRubric?: boolean;
+  rubricError?: string;
 }
 
 /** How many recent lessons the response type summary lists. */
@@ -127,6 +128,7 @@ export function lessonHealthLines(
     ...unfinishedQuestionLines(questions),
     ...quizDiversityLines(questionTypes(input)),
   ];
+  if (input.rubricError) lines.push(`- **Invalid private rubric:** ${input.rubricError}`);
   if (questions.length > 0 && input.hasRubric === false) {
     lines.push(
       "- **No private rubric:** `quiz/key.json` is missing. Write the expected answers, points, and full and partial credit criteria before the learner submits.",

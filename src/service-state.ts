@@ -18,6 +18,7 @@ export interface TeacherRequest {
   status: "queued" | "running" | "planned" | "done" | "failed";
   error?: string;
   plan?: TeacherPlan;
+  planRubricDigest?: string;
   applied?: number;
   recordFile?: string;
 }

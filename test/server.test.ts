@@ -132,6 +132,97 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+it("binds a new review answer to its authored original item", async () => {
+  const classroom = "review-contract";
+  fixture.write(`${classroom}/classroom.json`, JSON.stringify({ title: "Review", createdAt: 1 }));
+  fixture.write(`${classroom}/001-original/lesson.html`, lessonHtml("Original", "Original items."));
+  writeGradedAttempt({
+    classroom,
+    lesson: "001-original",
+    quizId: "check",
+    at: 1,
+    answers: [termAnswer("a", "wrong"), termAnswer("b", "wrong")],
+    correct: { a: false, b: false },
+  });
+  const lesson = "002-review";
+  fixture.write(
+    `${classroom}/${lesson}/lesson.json`,
+    JSON.stringify({ title: "Review", assessmentContract: 1 }),
+  );
+  fixture.write(
+    `${classroom}/${lesson}/lesson.html`,
+    '<form class="cl-quiz" data-quiz-id="review" data-kind="review"><li class="cl-q" data-question-id="r1" data-type="term" data-review-of="001-original/check/a"></li></form>',
+  );
+  fixture.write(
+    `${classroom}/${lesson}/quiz/key.json`,
+    JSON.stringify({
+      review: {
+        r1: {
+          expected: "owner",
+          points: 1,
+          full: "Names the owner.",
+          partial: "No partial credit.",
+        },
+      },
+    }),
+  );
+  const body = {
+    classroom,
+    lesson,
+    quizId: "review",
+    kind: "review",
+    answers: [termAnswer("r1", "owner", { reviewOf: "001-original/check/b" })],
+  };
+  expect((await post("/api/quiz/submit", body)).status).toBe(400);
+  expect(store.listSubmissions(classroom, lesson)).toHaveLength(0);
+  body.answers[0].reviewOf = "001-original/check/a";
+  expect((await post("/api/quiz/submit", body)).status).toBe(201);
+  expect(store.listSubmissions(classroom, lesson)[0].answers[0].reviewOf).toBe(
+    "001-original/check/a",
+  );
+});
+
+it("validates newly authored assessment identities, kinds, types, and rubric coverage", async () => {
+  const lesson = "097-contract";
+  fixture.write(
+    `rust/${lesson}/lesson.json`,
+    JSON.stringify({ title: "Contract", summary: "", createdAt: 1, assessmentContract: 1 }),
+  );
+  fixture.write(
+    `rust/${lesson}/lesson.html`,
+    '<form class="cl-quiz" data-quiz-id="quiz" data-kind="check"><li class="cl-q" data-question-id="q1" data-type="term"></li></form>',
+  );
+  const key = JSON.stringify({
+    quiz: {
+      q1: { expected: "owner", points: 2, full: "Names the owner.", partial: "No partial credit." },
+    },
+  });
+  fixture.write(`rust/${lesson}/quiz/key.json`, key);
+  const body = {
+    classroom: "rust",
+    lesson,
+    quizId: "quiz",
+    kind: "check",
+    answers: [termAnswer("q1", "owner")],
+  };
+  for (const invalid of [
+    { ...body, quizId: "unknown" },
+    { ...body, kind: "pretest" },
+    { ...body, answers: [] },
+    { ...body, answers: [{ ...termAnswer("q1", "owner"), type: "short" }] },
+  ])
+    expect((await post("/api/quiz/submit", invalid)).status).toBe(400);
+  fixture.write(`rust/${lesson}/quiz/key.json`, "{}");
+  expect((await post("/api/quiz/submit", body)).status).toBe(400);
+  expect(store.listSubmissions("rust", lesson)).toHaveLength(0);
+  fixture.write(`rust/${lesson}/quiz/key.json`, key);
+  const accepted = await post("/api/quiz/submit", body);
+  expect(accepted.status).toBe(201);
+  const s = await accepted.json();
+  expect(s.assessmentContract).toBe(1);
+  expect(s.rubricDigest).toMatch(/^[a-f0-9]{64}$/);
+});
+
 /** Read Server-Sent Events until `predicate` matches or the deadline passes. */
 async function nextEvent(
   url: string,

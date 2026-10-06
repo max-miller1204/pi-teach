@@ -87,6 +87,72 @@ function tool(name: string) {
 }
 
 describe("grade_lesson_quiz", () => {
+  it("rejects changed rubrics and altered weights for new assessments", async () => {
+    const page = await tool("scaffold_lesson").execute({
+      classroom: "rust",
+      name: "strict",
+      title: "Strict",
+      mode: "quiz",
+    });
+    const lesson = page.details["lesson"] as string;
+    const htmlPath = page.details["path"] as string;
+    fs.writeFileSync(
+      htmlPath,
+      '<form class="cl-quiz" data-quiz-id="assessment-1"><li class="cl-q" data-question-id="q1" data-type="term"></li></form>',
+    );
+    const rubric = JSON.stringify({
+      "assessment-1": {
+        q1: {
+          expected: "owner",
+          points: 2,
+          full: "Names the owner.",
+          partial: "No partial credit.",
+        },
+      },
+    });
+    fixture.write(`rust/${lesson}/quiz/key.json`, rubric);
+    const s = store.createSubmission({
+      classroom: "rust",
+      lesson,
+      quizId: "assessment-1",
+      quizTitle: "Strict",
+      kind: "check",
+      answers: [termAnswer("q1", "owner")],
+    });
+    const args = {
+      submission_id: s.id,
+      score: 100,
+      feedback_markdown: "Correct.",
+      questions: [
+        {
+          question_id: "q1",
+          correct: true,
+          feedback: "Correct.",
+          points_earned: 3,
+          points_possible: 3,
+        },
+      ],
+    };
+    expect((await tool("grade_lesson_quiz").execute(args)).content[0].text).toContain(
+      "Use the rubric points",
+    );
+    fixture.write(`rust/${lesson}/lesson.json`, JSON.stringify({ title: "Strict" }));
+    expect((await tool("grade_lesson_quiz").execute(args)).content[0].text).toContain(
+      "Use the rubric points",
+    );
+    fixture.write(`rust/${lesson}/quiz/key.json`, rubric + "\n");
+    expect((await tool("grade_lesson_quiz").execute(args)).content[0].text).toContain(
+      "changed after submission",
+    );
+    expect(store.listGrades("rust", lesson)).toHaveLength(0);
+    fixture.write(`rust/${lesson}/quiz/key.json`, rubric);
+    const result = await tool("grade_lesson_quiz").execute({
+      ...args,
+      questions: [{ ...args.questions[0], points_earned: 2, points_possible: 2 }],
+    });
+    expect(result.details["error"]).toBeUndefined();
+    expect(store.listGrades("rust", lesson)).toHaveLength(1);
+  });
   function submit(kind: store.QuizKind, answers: store.QuizAnswer[]) {
     return store.createSubmission({
       classroom: "rust",

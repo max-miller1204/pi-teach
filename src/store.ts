@@ -9,7 +9,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { questionCredit } from "../assets/runtime/grade.mjs";
 import { reviewKey } from "../assets/runtime/quiz.mjs";
@@ -67,6 +67,7 @@ export interface LessonMeta {
   createdAt: number;
   /** Absent on lessons written before review sessions existed. */
   kind?: LessonKind;
+  assessmentContract?: 1;
 }
 
 export interface Lesson {
@@ -82,6 +83,7 @@ export interface Lesson {
   /** Numeric ordering prefix on the directory name, if any. */
   order: number | null;
   kind: LessonKind;
+  assessmentContract?: 1;
   annotationCount: number;
   /** Grade of the most recent graded submission that is not a pretest, when one exists. */
   latestScore: number | null;
@@ -146,6 +148,9 @@ export interface QuizSubmission {
   attempt?: number;
   answers: QuizAnswer[];
   submittedAt: number;
+  /** The private rubric bytes when this attempt was saved. Absent in older attempts. */
+  rubricDigest?: string;
+  assessmentContract?: 1;
 }
 
 export interface QuizQuestionGrade {
@@ -328,6 +333,8 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
   if (!htmlPath) return null;
 
   const meta = readJson<LessonMeta>(path.join(dir, "lesson.json"));
+  if (meta?.assessmentContract !== undefined && meta.assessmentContract !== 1)
+    throw new Error("Unsupported assessment contract version.");
   const grades = latestGrades(classroom, lesson);
   const submissions = listSubmissions(classroom, lesson);
   const gradedIds = new Set(grades.map((g) => g.submissionId));
@@ -347,6 +354,7 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
     classroom,
     title: meta?.title ?? titleFromHtml(htmlPath) ?? titleFromSlug(lesson),
     summary: meta?.summary ?? "",
+    assessmentContract: meta?.assessmentContract,
     htmlPath,
     createdAt: meta?.createdAt ?? mtime(htmlPath),
     updatedAt: mtime(htmlPath),
@@ -568,7 +576,18 @@ export function createSubmission(
   const submittedAt = Math.max(Date.now(), last + 1);
   const attempt = previous.filter((s) => s.quizId === input.quizId).length + 1;
 
-  const submission: QuizSubmission = { ...input, id: randomUUID(), attempt, submittedAt };
+  const rubric = path.join(lessonDir(input.classroom, input.lesson), "quiz", "key.json");
+  const rubricDigest = fs.existsSync(rubric)
+    ? createHash("sha256").update(fs.readFileSync(rubric)).digest("hex")
+    : undefined;
+  const submission: QuizSubmission = {
+    ...input,
+    id: randomUUID(),
+    attempt,
+    submittedAt,
+    rubricDigest,
+    assessmentContract: readLesson(input.classroom, input.lesson)?.assessmentContract,
+  };
   // Timestamp-prefixed so the directory listing is chronological.
   const file = path.join(
     submissionsDir(input.classroom, input.lesson),

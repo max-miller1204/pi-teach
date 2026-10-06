@@ -35,6 +35,8 @@ import * as path from "node:path";
 import { readConfig, resolveConfiguredPort } from "./config.ts";
 import { injectLessonRuntime } from "./lesson-html.ts";
 import { stageLesson } from "./pretest.ts";
+import { authoredQuizzes } from "./quiz-authoring.ts";
+import { parseRubric } from "./rubric.ts";
 import {
   classroomDir,
   isFile,
@@ -637,6 +639,39 @@ async function handleQuizSubmit(
   } catch (err) {
     if (err instanceof AnswerError) return sendJson(res, { error: err.message }, 400);
     throw err;
+  }
+
+  if (page.assessmentContract === 1) {
+    try {
+      const html = fs.readFileSync(page.htmlPath, "utf8");
+      const quizzes = authoredQuizzes(html).filter((q) => q.id === quizId);
+      if (quizzes.length !== 1) throw new Error("Submit an authored quiz id exactly once.");
+      const authored = quizzes[0];
+      if (kind !== authored.kind)
+        throw new Error("Quiz kind does not match the authored assessment.");
+      if (
+        answers.length !== authored.questions.length ||
+        new Set(authored.questions.map((q) => q.id)).size !== authored.questions.length
+      )
+        throw new Error("Answer every authored question exactly once.");
+      for (const question of authored.questions) {
+        const answer = answers.find((a) => a.questionId === question.id);
+        if (!answer || answer.type !== question.type)
+          throw new Error(`Answer type or id does not match authored question ${question.id}.`);
+        if (kind === "review" && answer.reviewOf !== question.reviewOf)
+          throw new Error(`Review identity does not match authored question ${question.id}.`);
+      }
+      parseRubric(
+        fs.readFileSync(path.join(lessonDir(classroom, lesson), "quiz", "key.json"), "utf8"),
+        html,
+      );
+    } catch (err) {
+      return sendJson(
+        res,
+        { error: `Invalid assessment contract: ${(err as Error).message}` },
+        400,
+      );
+    }
   }
 
   // A review question must name an item the learner was graded on before. Otherwise

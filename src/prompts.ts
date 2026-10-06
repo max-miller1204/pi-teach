@@ -290,6 +290,11 @@ export function gradePrompt(
     answers,
     "",
     "Read the lesson and its private quiz/key.json rubric before grading. Use the criteria set before submission. Do not change the rubric between attempts. For an incomplete answer, name the missing idea and award only the points specified by the rubric. If no rubric exists, report the authoring gap and stop. Ask the teacher to supply the rubric before grading.",
+    ...(submission.assessmentContract === 1
+      ? [
+          "This assessment uses the validated contract. Supply points_earned and points_possible for every question. points_possible must equal the private rubric's points. The server rejects altered weights or a rubric changed after submission.",
+        ]
+      : []),
     "",
     `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. Set \`correct\` to true only for full credit. For partial credit or weighted questions, supply \`points_earned\` and \`points_possible\` for every question. The score must equal 100 times total earned points divided by total possible points. Integer rounding is allowed. With no points, answers use equal-weight binary grading. That is what renders the grade on their page.`,
     "",

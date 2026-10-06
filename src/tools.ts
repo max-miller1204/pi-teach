@@ -12,6 +12,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 
 import { reviewKey } from "../assets/runtime/quiz.mjs";
 import { applyAnswer, applyGrade } from "./bridge.ts";
@@ -26,6 +27,7 @@ import {
   QUIZ_FOLLOW_UP,
 } from "./prompts.ts";
 import { authoredQuestions } from "./quiz-authoring.ts";
+import { parseRubric } from "./rubric.ts";
 import { answersByQuestion, kindOf } from "./quiz.ts";
 import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
 import * as server from "./server.ts";
@@ -255,10 +257,49 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         }>;
       }) {
         const submission = store.findSubmission(params.submission_id);
+        if (submission?.rubricDigest) {
+          const rubric = path.join(
+            lessonDir(submission.classroom, submission.lesson),
+            "quiz",
+            "key.json",
+          );
+          if (
+            !fs.existsSync(rubric) ||
+            createHash("sha256").update(fs.readFileSync(rubric)).digest("hex") !==
+              submission.rubricDigest
+          )
+            return fail(
+              "The private rubric changed after submission. Restore the original rubric before grading.",
+            );
+        }
         if (!submission) {
           return fail(`No such submission: ${params.submission_id}`, {
             submissionId: params.submission_id,
           });
+        }
+
+        const lesson = store.readLesson(submission.classroom, submission.lesson);
+        if (submission.assessmentContract === 1) {
+          try {
+            if (!lesson) throw new Error("The submitted lesson no longer exists.");
+            const rubric = parseRubric(
+              fs.readFileSync(
+                path.join(lessonDir(submission.classroom, submission.lesson), "quiz", "key.json"),
+                "utf8",
+              ),
+              fs.readFileSync(lesson.htmlPath, "utf8"),
+            );
+            for (const question of params.questions) {
+              const expected = rubric[submission.quizId]?.[question.question_id];
+              if (!expected) throw new Error("The question is missing from the private rubric.");
+              if (question.points_possible !== expected.points)
+                throw new Error(
+                  `Use the rubric points for ${question.question_id}: ${expected.points}. Supply points for every question.`,
+                );
+            }
+          } catch (err) {
+            return fail(`Invalid assessment rubric: ${(err as Error).message}`);
+          }
         }
 
         const submitted = new Set(submission.answers.map((a) => a.questionId));
@@ -460,6 +501,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           title: params.title,
           summary: params.summary ?? "",
           createdAt: Date.now(),
+          assessmentContract: 1,
         });
 
         const url = server.urlFor(params.classroom, slug);
@@ -539,6 +581,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           summary: summaryLine,
           createdAt: now,
           kind: "review",
+          assessmentContract: 1,
         });
 
         const listing = picked.map((item, i) =>
@@ -604,10 +647,22 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
         const checks = store.listRetrievalChecks(params.classroom);
         const inputs: LessonHealthInput[] = lessons.map((lesson) => {
           const html = fs.readFileSync(lesson.htmlPath, "utf8");
+          let rubricError: string | undefined;
+          if (lesson.assessmentContract === 1) {
+            const rubric = path.join(lessonDir(params.classroom, lesson.name), "quiz", "key.json");
+            if (fs.existsSync(rubric)) {
+              try {
+                parseRubric(fs.readFileSync(rubric, "utf8"), html);
+              } catch (err) {
+                rubricError = (err as Error).message;
+              }
+            }
+          }
           return {
             lesson: lesson.name,
             title: lesson.title,
             questions: authoredQuestions(html),
+            rubricError,
             hasRubric: fs.existsSync(
               path.join(lessonDir(params.classroom, lesson.name), "quiz", "key.json"),
             ),
