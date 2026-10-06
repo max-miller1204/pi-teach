@@ -152,6 +152,10 @@ control. Make each control work with the keyboard, label it, and
 show its result visibly. Check it in the browser. Keep local controls outside
 `form.cl-quiz`. You do not need to change the runtime for a new lesson pattern.
 
+A lesson or a reference document can also show a diagram. Write Mermaid source in a
+`<pre class="mermaid">`, and the page draws it. Read `DIAGRAM-FORMAT.md` before you
+draw one.
+
 ### Choosing what to use
 
 | Feature                         | Use it when                                                                                                                               |
@@ -162,6 +166,7 @@ show its result visibly. Check it in the browser. Keep local controls outside
 | `.cl-q-stimulus`                | The question needs code, a passage, a table, an image, or a diagram. Give images useful alt text: grading receives the text and alt text. |
 | `form.cl-reflect`               | You want an ungraded self-explanation after a key idea. Read it and record what it shows.                                                 |
 | Glossary                        | The topic has its own terms. The page marks them and asks the learner to recall each one before it shows the definition.                  |
+| Diagram (`pre.mermaid`)         | The idea has a shape: a process, messages over time, states, or a structure. See `DIAGRAM-FORMAT.md`.                                     |
 | Questions from the page         | Always on. Answer them with `answer_lesson_question`, so the answer appears on the page.                                                  |
 | Reference document              | Compressed material the learner will look up again later.                                                                                 |
 

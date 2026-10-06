@@ -137,7 +137,7 @@ export function teachingPrompt(
   parts.push(
     "Reference documents you can read when you need them, in the extension's `docs/` directory " +
       `(${docsDir()}): MISSION-FORMAT.md, RESOURCES-FORMAT.md, GLOSSARY-FORMAT.md, NOTES-FORMAT.md, ` +
-      "LEARNING-RECORD-FORMAT.md.",
+      "LEARNING-RECORD-FORMAT.md, DIAGRAM-FORMAT.md.",
   );
 
   return parts.filter(Boolean).join("\n\n");
