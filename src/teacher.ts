@@ -204,7 +204,7 @@ async function runCodex(
     child.kill("SIGKILL");
   }, 180_000);
   try {
-    await request("initialize", { clientInfo: { name: "pi_teach_teacher", version: "0.5.1" } });
+    await request("initialize", { clientInfo: { name: "pi_teach_teacher", version: "0.6.0" } });
     child.stdin.write('{"method":"initialized","params":{}}\n');
     const config = {
       cwd,
