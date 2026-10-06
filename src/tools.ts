@@ -204,7 +204,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       description:
         "Grade a quiz a learner submitted from a classroom lesson. The grade is written to the lesson's quiz/grades directory and rendered inline on their page. " +
         "Only call it with a submission_id you were given in a quiz submission notification. " +
-        "After a wrong answer, check the missed idea with a new question in chat before moving to another lesson.",
+        "For a check or review, check a missed idea with a new question in chat. For a pretest, treat errors as diagnostic and continue to teaching without a retrieval check.",
       parameters: object({
         submission_id: str("The submission id from the notification."),
         score: {
@@ -402,7 +402,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       name: "scaffold_lesson",
       label: "Scaffold Lesson",
       description:
-        "Create a lesson directory from the canonical template and return its path. " +
+        "Create a numbered page and return its path. Use mode lesson for teaching with a pretest, quiz for a quiz-only request, or pretest for a standalone diagnostic. " +
         "The template is a shell with optional example sections, not a fixed lesson script. " +
         "The result lists the authoring steps: read the current quiz contract, state the objective, choose the lesson experience and response types, write the questions, write the private rubric, and check the page. " +
         "Lessons are numbered in the order they are created.",
@@ -412,10 +412,25 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           name: str("Short lesson name; slugified and given a numeric prefix."),
           title: str("Lesson title, shown in the classroom's lesson list."),
           summary: str("One line describing the single win of this lesson."),
+          mode: {
+            type: "string",
+            enum: ["lesson", "quiz", "pretest"],
+            description:
+              "Default lesson. Use quiz for a quiz or test request. Use pretest for diagnosis only.",
+          },
         },
-        ["summary"],
+        ["summary", "mode"],
       ),
-      async execute(params: { classroom: string; name: string; title: string; summary?: string }) {
+      async execute(params: {
+        classroom: string;
+        name: string;
+        title: string;
+        summary?: string;
+        mode?: "lesson" | "quiz" | "pretest";
+      }) {
+        const mode = params.mode ?? "lesson";
+        if (!["lesson", "quiz", "pretest"].includes(mode))
+          return fail(`Unknown page mode: ${mode}.`);
         if (!isValidSlug(params.classroom) || !fs.existsSync(classroomDir(params.classroom))) {
           return fail(`No such classroom: ${params.classroom}. Call scaffold_classroom first.`);
         }
@@ -427,13 +442,17 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
 
         fs.mkdirSync(dir, { recursive: true });
 
-        const template = fs.readFileSync(path.join(templatesDir(), "lesson.html"), "utf8");
+        const template = fs.readFileSync(
+          path.join(templatesDir(), mode === "lesson" ? "lesson.html" : "assessment.html"),
+          "utf8",
+        );
         const htmlPath = path.join(dir, "lesson.html");
         fs.writeFileSync(
           htmlPath,
           template
             .replace(/\{\{LESSON_TITLE\}\}/g, params.title)
-            .replace(/\{\{ONE_LINE_SUMMARY\}\}/g, params.summary ?? ""),
+            .replace(/\{\{ONE_LINE_SUMMARY\}\}/g, params.summary ?? "")
+            .replace(/\{\{QUIZ_KIND\}\}/g, mode === "pretest" ? "pretest" : "check"),
           "utf8",
         );
 
@@ -450,7 +469,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             `Edit: ${htmlPath}`,
             url ? `URL: ${url}` : host.browseHint,
             "",
-            authoringSteps("lesson", htmlPath, host.checkPage),
+            authoringSteps(mode, htmlPath, host.checkPage),
           ].join("\n"),
           { classroom: params.classroom, lesson: slug, path: htmlPath, url },
         );

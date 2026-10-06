@@ -1,6 +1,6 @@
 ---
 name: teach
-description: Teach the user a topic one short interactive lesson at a time, in a local web UI where they can highlight any passage to ask about it and hand in quizzes to be graded. Use when the user asks to learn, study, or be taught something, or to continue their lessons.
+description: Teach a topic or create challenging quizzes and tests in the classroom web UI. Use when the user asks to learn, study, continue lessons, or make a quiz, test, or pretest.
 ---
 
 # Teach
@@ -20,7 +20,7 @@ description: Teach the user a topic one short interactive lesson at a time, in a
    The initiating chat can end. Do not run a wait loop or a looping subagent.
 7. The dedicated teacher answers and grades through the service. Its results reach
    the page through the service's SSE connection.
-8. After a wrong answer, use the teacher panel on the lesson page for the retrieval
+8. After a wrong answer on a check or review, use the teacher panel on the lesson page for the retrieval
    question and learner reply. Keep the graded quiz locked. Preserve grades and
    attempts. Record learning only after demonstrated understanding.
 9. Do not start the next lesson without learner agreement. Use `classroom_service`
@@ -31,6 +31,10 @@ description: Teach the user a topic one short interactive lesson at a time, in a
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.
 12. Create each lesson with `scaffold_lesson` and each review with `scaffold_review`.
+    Use mode quiz for an explicit quiz or test request. Keep it assessment-only.
+    Use mode pretest for a standalone diagnostic. New lessons start with a pretest
+    by default. Keep teaching and later checks behind its server gate.
+    Treat pretest errors as diagnostic. Do not run a retrieval check after them.
     Follow the authoring steps they return. Read the current quiz contract each time.
     Check each lesson in a headless browser before giving the learner its link.
     Follow the scaffold instructions for the headless config and test session.
@@ -38,6 +42,9 @@ description: Teach the user a topic one short interactive lesson at a time, in a
     State when controls were not checked.
     The lesson template is a shell. Design the lesson from its objective and the
     learner. Choose response types that fit each skill.
+    Plan the mental work before choosing types. Test recall, reasoning, and transfer
+    with new situations. Do not build a test from copied sentences or easy blanks.
+    Inspect the page for answer cues before sharing it.
 13. Write the private quiz rubric before submission. Use it for every attempt.
     For partial credit, supply points for every question. Keep the overall score
     consistent with those points.

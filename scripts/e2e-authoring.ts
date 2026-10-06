@@ -43,6 +43,7 @@ import { control, servicePaths, serviceStatus } from "../src/service-client.ts";
 
 import { _overrideClassroomsDir } from "../src/paths.ts";
 import { authoredQuestions, typeCounts } from "../src/quiz-authoring.ts";
+import { stageLesson } from "../src/pretest.ts";
 import { isQuestionType, type QuestionType } from "../assets/runtime/quiz.mjs";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
@@ -141,8 +142,11 @@ ${[1, 2, 3].map((i) => `<li class="cl-q" data-question-id="q${i}" data-type="sho
 const AUTHORING_PROMPT = [
   "This is an automated authoring run in a temporary classroom.",
   `Call begin_teaching with topic "${CLASSROOM}". The mission and notes are written, so do not interview the learner.`,
-  "The learner has agreed to these lessons. Write one lesson for each objective, in this order:",
-  ...OBJECTIVES.map((objective, i) => `${i + 1}. ${objective}`),
+  "The learner has agreed to the following requests. Create one page for each, in this order:",
+  ...OBJECTIVES.map(
+    (objective, i) =>
+      `${i + 1}. ${i === 2 ? "Make a challenging quiz only, with no teaching, to test this objective:" : "Teach a new lesson with this objective:"} ${objective}`,
+  ),
   "Create each lesson with scaffold_lesson and follow the authoring steps it returns. Write the files with your file tools.",
   "Do not call wait_for_learner and do not ask the learner anything. Nobody will reply during this run.",
   // Reason: a real session knows its own browser tool. This run has only a shell
@@ -447,7 +451,7 @@ async function main(): Promise<void> {
       ["begin_teaching", "list_classrooms", "lesson_health", "scaffold_lesson", "open_classroom"],
       // Reason: this evaluation explicitly requests browser checks.
       // Claude Code runs with an allowlist, so allow the browser CLI explicitly.
-      ["Read", "Write", "Edit", "Glob", "Grep", "Bash(playwright-cli:*)"],
+      ["Read", "Write", "Edit", "Glob", "Grep", "Bash(playwright-cli:*)", "Bash(node:*)"],
       env,
       root,
     );
@@ -491,6 +495,20 @@ async function main(): Promise<void> {
       throw new Error(`Expected ${OBJECTIVES.length} new lessons, found: ${lessons.join(", ")}`);
     }
     const reports = lessons.map((lesson, i) => inspectLesson(root, lesson, OBJECTIVES[i]!));
+    for (const [i, report] of reports.entries()) {
+      const html = fs.readFileSync(
+        path.join(root, CLASSROOM, report.lesson, "lesson.html"),
+        "utf8",
+      );
+      const staged = stageLesson(html, new Set());
+      if (i < 2 && staged.pendingPretests.length === 0)
+        report.problems.push("New teaching has no server-gated pretest.");
+      if (
+        i === 2 &&
+        (staged.pendingPretests.length > 0 || report.quizzes.some((q) => q.kind === "pretest"))
+      )
+        report.problems.push("The quiz-only request became teaching or a pretest.");
+    }
     // Save the lessons before the browser drives them, so a later failure keeps them.
     if (artifacts) {
       for (const report of reports) {
@@ -526,37 +544,43 @@ async function main(): Promise<void> {
     });
     const base = service.url;
     let submissions = 0;
-    for (const report of reports) {
-      const url = `${base}/c/${CLASSROOM}/${report.lesson}`;
-      if (!browserOpen) {
-        await playwright(browser, root, "open", url);
-        browserOpen = true;
-      } else {
-        await playwright(browser, root, "goto", url);
+    async function submitPages() {
+      for (const report of reports) {
+        const url = `${base}/c/${CLASSROOM}/${report.lesson}`;
+        if (!browserOpen) {
+          await playwright(browser, root, "open", url);
+          browserOpen = true;
+        } else {
+          await playwright(browser, root, "goto", url);
+        }
+        const result = await playwrightCode<{
+          errors: string[];
+          contract: string[];
+          outline: string[];
+          controls: LessonReport["localControls"];
+          submitted: Submitted[];
+        }>(browser, root, SUBMIT_LESSON);
+        report.outline = result.outline;
+        report.localControls = result.controls;
+        for (const error of result.errors) report.problems.push(`Page error: ${error}`);
+        for (const error of result.contract) report.problems.push(`Contract error: ${error}`);
+        for (const control of result.controls) {
+          if (!control.keyboard)
+            report.problems.push(
+              `Control "${control.label}" stayed disabled or cannot take focus.`,
+            );
+        }
+        for (const quiz of result.submitted) {
+          if (quiz.status !== 201)
+            report.problems.push(`Quiz ${quiz.quizId} was refused: ${quiz.body}`);
+          else submissions += 1;
+        }
+        const saved = report as LessonReport & { submitted?: Submitted[] };
+        saved.submitted = [...(saved.submitted ?? []), ...result.submitted];
+        await screenshot(browser, root, `${harness}-${report.lesson}-submitted.png`);
       }
-      const result = await playwrightCode<{
-        errors: string[];
-        contract: string[];
-        outline: string[];
-        controls: LessonReport["localControls"];
-        submitted: Submitted[];
-      }>(browser, root, SUBMIT_LESSON);
-      report.outline = result.outline;
-      report.localControls = result.controls;
-      for (const error of result.errors) report.problems.push(`Page error: ${error}`);
-      for (const error of result.contract) report.problems.push(`Contract error: ${error}`);
-      for (const control of result.controls) {
-        if (!control.keyboard)
-          report.problems.push(`Control "${control.label}" stayed disabled or cannot take focus.`);
-      }
-      for (const quiz of result.submitted) {
-        if (quiz.status !== 201)
-          report.problems.push(`Quiz ${quiz.quizId} was refused: ${quiz.body}`);
-        else submissions += 1;
-      }
-      (report as LessonReport & { submitted?: Submitted[] }).submitted = result.submitted;
-      await screenshot(browser, root, `${harness}-${report.lesson}-submitted.png`);
     }
+    await submitPages();
     log(`submitted ${submissions} quizzes`);
     if (submissions === 0) throw new Error("No quiz could be submitted.");
 
@@ -566,13 +590,19 @@ async function main(): Promise<void> {
         const graded = new Set(store.latestGrades(CLASSROOM, lesson).map((g) => g.submissionId));
         return store.listSubmissions(CLASSROOM, lesson).filter((s) => !graded.has(s.id));
       });
-    await until("every grade", GRADING_TIMEOUT_MS, () => {
-      const stateFile = path.join(root, CLASSROOM, ".teacher.json");
-      const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-      const failed = state.requests.find((r: { status: string }) => r.status === "failed");
-      if (failed) throw new Error(`Dedicated teacher failed: ${failed.error}`);
-      return ungraded().length === 0 ? true : null;
-    });
+    async function waitForGrades() {
+      await until("every grade", GRADING_TIMEOUT_MS, () => {
+        const stateFile = path.join(root, CLASSROOM, ".teacher.json");
+        const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+        const failed = state.requests.find((r: { status: string }) => r.status === "failed");
+        if (failed) throw new Error(`Dedicated teacher failed: ${failed.error}`);
+        return ungraded().length === 0 ? true : null;
+      });
+    }
+    await waitForGrades();
+    // Graded pretests release the teaching and its checks. Submit those checks next.
+    await submitPages();
+    await waitForGrades();
     // Reload: each quiz shows its grade and its answers.
     for (const report of reports) {
       await playwright(browser, root, "goto", `${base}/c/${CLASSROOM}/${report.lesson}`);

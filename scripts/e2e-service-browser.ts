@@ -49,8 +49,8 @@ readline.createInterface({input:process.stdin}).on('line', line => {
   const ask = /annotation_id: "([^"]+)"/.exec(m.params.input[0].text);
   const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] : [];
   send({id:m.id,result:{turn:{id:'browser-turn'}}});
-  send({method:'item/completed',params:{item:{type:'agentMessage',text:JSON.stringify({calls,message:'What changes when the value moves?',learning_record:'',notes_markdown:''})}}});
-  send({method:'turn/completed',params:{turn:{id:'browser-turn',status:'completed'}}});
+  send({method:'item/completed',params:{threadId:m.params.threadId,turnId:'browser-turn',item:{type:'agentMessage',text:JSON.stringify({calls,message:'What changes when the value moves?',learning_record:'',notes_markdown:''})}}});
+  send({method:'turn/completed',params:{threadId:m.params.threadId,turn:{id:'browser-turn',status:'completed'}}});
  }
 });
 `,
@@ -231,7 +231,8 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     if (
       failed.requests.length !== 1 ||
       failed.requests[0].status !== "failed" ||
-      failed.requests[0].error !== "Fixture teacher failure"
+      failed.requests[0].error !==
+        `codex ask request ${failed.requests[0].id} in rust/001-ownership: Fixture teacher failure`
     )
       throw new Error("The first failure was not saved.");
     snapshot("failed-request");

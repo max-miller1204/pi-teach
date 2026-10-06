@@ -184,12 +184,13 @@ describe("scaffold_lesson", () => {
       classroom: "rust",
       lesson: "002-borrowing",
     });
-    expect(health.content[0].text).toContain('**Unfinished questions:** `q1` ("CHOOSE-A-TYPE")');
+    expect(health.content[0].text).toContain('`q1` ("CHOOSE-A-TYPE")');
+    expect(health.content[0].text).toContain('`p1` ("CHOOSE-A-TYPE")');
     expect(health.content[0].text).toContain("**No private rubric:**");
 
     fs.writeFileSync(
       htmlPath,
-      html.replace('data-type="CHOOSE-A-TYPE"', 'data-type="numeric"'),
+      html.replaceAll('data-type="CHOOSE-A-TYPE"', 'data-type="numeric"'),
       "utf8",
     );
     fixture.write("rust/002-borrowing/quiz/key.json", "{}");
@@ -197,7 +198,32 @@ describe("scaffold_lesson", () => {
     expect(fixed.content[0].text).not.toContain("Unfinished questions");
     expect(fixed.content[0].text).not.toContain("No private rubric");
     expect(fixed.content[0].text).toContain("## Response types in recent lessons");
-    expect(fixed.content[0].text).toContain("- `002-borrowing`: 1 numeric");
+    expect(fixed.content[0].text).toContain("- `002-borrowing`: 2 numeric");
+  });
+  it.each(["quiz", "pretest"] as const)("creates an assessment-only shell for %s", async (mode) => {
+    const result = await tool("scaffold_lesson").execute({
+      classroom: "rust",
+      name: mode,
+      title: "Assessment",
+      mode,
+    });
+    const html = fs.readFileSync(result.details["path"] as string, "utf8");
+    expect(html).toContain(`data-kind="${mode === "quiz" ? "check" : "pretest"}"`);
+    expect(html).not.toContain("{{");
+    expect(html).not.toContain("data-cl-after-pretest");
+    expect(result.content[0].text).toContain("Do not add teaching");
+    expect(result.content[0].text).toContain("transfer");
+  });
+  it("rejects an unknown mode before creating a page", async () => {
+    const before = store.listLessons("rust").length;
+    const result = await tool("scaffold_lesson").execute({
+      classroom: "rust",
+      name: "bad",
+      title: "Bad",
+      mode: "unknown",
+    });
+    expect(result.details["error"]).toBe(true);
+    expect(store.listLessons("rust")).toHaveLength(before);
   });
 });
 

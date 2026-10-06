@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { applyTurnAnswer } from "./bridge.ts";
 import { classroomDir, lessonDir } from "./paths.ts";
+import { stageLesson } from "./pretest.ts";
 import {
   askPrompt,
   followUpPrompt,
@@ -203,7 +204,15 @@ export class TeacherService {
     if (r.kind === "quiz" && !fs.existsSync(rubric))
       throw new Error("Private quiz rubric is missing. Write quiz/key.json before grading.");
     const context = {
-      lesson: fs.readFileSync(lesson.htmlPath, "utf8"),
+      lesson: stageLesson(
+        fs.readFileSync(lesson.htmlPath, "utf8"),
+        new Set(
+          store
+            .latestQuizStates(r.classroom, r.lesson)
+            .filter((s) => s.submission.kind === "pretest" && s.grade)
+            .map((s) => s.quizId),
+        ),
+      ).html,
       privateRubric: fs.existsSync(rubric) ? fs.readFileSync(rubric, "utf8") : null,
       records: store.readLearningRecords(r.classroom),
       messages: state.messages.filter((m) => m.lesson === r.lesson),

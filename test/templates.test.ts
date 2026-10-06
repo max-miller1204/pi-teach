@@ -16,18 +16,19 @@ const read = (name: string) => fs.readFileSync(path.join(templatesDir(), name), 
 
 describe("lesson and review shells", () => {
   it.each(["lesson.html", "review.html"])(
-    "%s keeps the runtime parts and leaves one unfinished question",
+    "%s keeps the runtime parts and leaves unfinished questions",
     (name) => {
       const html = read(name);
       expect(html).toContain('<main class="cl-lesson-shell" data-cl-content>');
       expect(html).toContain("Read the current quiz contract: assets/templates/quiz.html");
-      expect(authoredQuestions(html)).toEqual([
-        {
-          id: name === "lesson.html" ? "q1" : "r1",
-          type: "CHOOSE-A-TYPE",
-          ...(name === "review.html" ? { reviewOf: "REPLACE-lesson/quiz-id/question-id" } : {}),
-        },
-      ]);
+      expect(authoredQuestions(html)).toEqual(
+        name === "lesson.html"
+          ? [
+              { id: "p1", type: "CHOOSE-A-TYPE" },
+              { id: "q1", type: "CHOOSE-A-TYPE" },
+            ]
+          : [{ id: "r1", type: "CHOOSE-A-TYPE", reviewOf: "REPLACE-lesson/quiz-id/question-id" }],
+      );
       for (const type of QUESTION_TYPES) expect(html).toMatch(new RegExp(`^ +${type} +\\S`, "m"));
     },
   );

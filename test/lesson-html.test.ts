@@ -11,6 +11,17 @@ const config: LessonRuntimeConfig = {
 };
 
 describe("injectLessonRuntime", () => {
+  it("replaces copied config so gate state cannot cause stale or repeated reloads", () => {
+    const copied = injectLessonRuntime("<html><head></head><body></body></html>", {
+      ...config,
+      pendingPretests: ["old"],
+    });
+    const refreshed = injectLessonRuntime(copied, { ...config, pendingPretests: [] });
+    expect(refreshed).not.toContain('"old"');
+    expect(refreshed).toContain('"pendingPretests":[]');
+    expect(refreshed.match(/id="cl-config"/g)).toHaveLength(1);
+    expect(refreshed.match(/src="\/static\/classroom.js"/g)).toHaveLength(1);
+  });
   it("adds the stylesheet in <head> and the runtime before </body>", () => {
     const html =
       "<!doctype html><html><head><title>Ownership</title></head><body><p>Hi</p></body></html>";
@@ -60,5 +71,15 @@ describe("injectLessonRuntime", () => {
     const once = injectLessonRuntime("<html><head></head><body></body></html>", config);
     const twice = injectLessonRuntime(once, config);
     expect(twice).toBe(once);
+  });
+  it("keeps replacement tokens literal when refreshing copied config", () => {
+    const once = injectLessonRuntime("<html><head></head><body></body></html>", config);
+    const updated = { ...config, lessonTitle: "JS $& $` $'", pendingPretests: ["before"] };
+    const twice = injectLessonRuntime(once, updated);
+    const match = /<script type="application\/json" id="cl-config">([\s\S]*?)<\/script>/.exec(
+      twice,
+    );
+    expect(JSON.parse(match![1])).toEqual(updated);
+    expect(twice.match(/id="cl-config"/g)).toHaveLength(1);
   });
 });

@@ -1614,6 +1614,10 @@ function restoreAnswer(question, group) {
 /** Re-apply the latest attempt at a quiz (and its grade, if graded) to its form. */
 function applyQuizState(state) {
   const { submission, grade, attempts } = state;
+  if (grade && config.pendingPretests?.includes(submission.quizId)) {
+    location.reload();
+    return;
+  }
   const form = quizForms().find((f) => f.dataset.quizId === submission.quizId);
   if (!form) {
     console.error(

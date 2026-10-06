@@ -16,6 +16,7 @@ export interface LessonRuntimeConfig {
   lessonTitle: string;
   baseUrl: string;
   delivery?: "push" | "wait" | "service";
+  pendingPretests?: string[];
 }
 
 /** The `<head>` additions: shared stylesheet plus the no-flash theme bootstrap. */
@@ -68,6 +69,11 @@ function insertBeforeBodyEnd(html: string, snippet: string): string {
  * served page back to disk) is returned unchanged rather than double-wired.
  */
 export function injectLessonRuntime(html: string, config: LessonRuntimeConfig): string {
-  if (html.includes('id="cl-config"')) return html;
+  if (html.includes('id="cl-config"')) {
+    return html.replace(
+      /<script\b[^>]*\bid="cl-config"[^>]*>[\s\S]*?<\/script\s*>/i,
+      () => `<script type="application/json" id="cl-config">${toScriptJson(config)}</script>`,
+    );
+  }
   return insertBeforeBodyEnd(insertInHead(html, headInjection()), bodyInjection(config));
 }

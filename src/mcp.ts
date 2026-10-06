@@ -483,7 +483,7 @@ export class McpSession {
     const header =
       prompts.length === 1
         ? ""
-        : `${prompts.length} requests arrived. Handle each one. Follow the quiz follow-up rule before listening again. If you ask a retrieval question in chat, end your turn and wait for a chat reply.\n\n`;
+        : `${prompts.length} requests arrived. Handle each one. Follow each request's instructions. Pretests are diagnostic and must not trigger a retrieval check. If you ask a retrieval question in chat, end your turn and wait for a chat reply.\n\n`;
     return result(id, toolResult(ok(header + prompts.join("\n\n---\n\n"))));
   }
 }
