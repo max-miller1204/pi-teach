@@ -6,8 +6,8 @@ description: Open the user's classrooms in the browser, or list their classrooms
 # Classroom
 
 - To open the classrooms in a browser, call `open_classroom` from the `classroom` MCP
-  server. Pass a classroom name as `classroom` to open that classroom. Give the user the
-  URL it returns.
+  server with `open_browser: true`. Pass a classroom name as `classroom` to open
+  that classroom. Give the user the URL it returns.
 - To list classrooms and lessons in the terminal, call `list_classrooms`.
 
 Claude Code and Codex attach to a persistent local service. Closing this chat does

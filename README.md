@@ -294,7 +294,9 @@ Optional, at `~/.pi/agent/classroom.json`:
 | `port`     | ephemeral | Fixed port. An occupied or invalid port causes an error.                       |
 | `autoOpen` | `true`    | Whether `/classroom` opens your browser. `PI_CLASSROOM_AUTO_OPEN=0` overrides. |
 
-Claude Code and Codex read the same file. `autoOpen` also controls `open_classroom`.
+Claude Code and Codex read the same file. `open_classroom` returns a link by default.
+Set `open_browser: true` only for a requested browser launch. `autoOpen: false` or
+`PI_CLASSROOM_AUTO_OPEN=0` also disables that explicit launch.
 Set `PI_CLASSROOM_CONFIG` to read the settings from another file.
 
 Use a configured fixed port to keep URLs stable across session restarts. Only one

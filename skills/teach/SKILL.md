@@ -10,7 +10,9 @@ description: Teach the user a topic one short interactive lesson at a time, in a
 2. Call the `begin_teaching` tool from the `classroom` MCP server. Pass the topic as
    `topic`, or omit it to continue.
 3. Follow the method that `begin_teaching` returns. It is the full teaching brief.
-4. Before you give the learner a lesson URL, call `open_classroom`.
+4. Before you give the learner a lesson URL, call `open_classroom` with
+   `open_browser: false`. Give the learner the link. Do not open a browser when
+   starting or continuing a lesson.
 5. The persistent service selects a dedicated teacher for each classroom. Use the
    initiating host or pass teacher_backend explicitly to `open_classroom`. Do not
    change an existing classroom's backend.

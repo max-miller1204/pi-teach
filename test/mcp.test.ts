@@ -3,7 +3,7 @@
  * the full round trip from a browser question to `wait_for_learner` and back.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
   connectInbox,
@@ -15,6 +15,11 @@ import {
   waitSeconds,
   type JsonRpcResponse,
 } from "../src/mcp.ts";
+import * as config from "../src/config.ts";
+import { openUrl } from "../src/open-browser.ts";
+
+vi.mock("../src/open-browser.ts", () => ({ openUrl: vi.fn() }));
+
 import { gradePrompt, QUIZ_FOLLOW_UP } from "../src/prompts.ts";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
@@ -35,6 +40,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.mocked(openUrl).mockClear();
   inbox.reset();
   await server.close();
   fixture.cleanup();
@@ -74,6 +81,25 @@ async function askFromBrowser(question: string): Promise<store.Annotation> {
   expect(res.status).toBe(201);
   return (await res.json()) as store.Annotation;
 }
+
+describe("browser launch", () => {
+  it("returns a link without opening a browser unless requested", async () => {
+    vi.spyOn(config, "shouldAutoOpen").mockReturnValue(true);
+    const result = await call("open_classroom", { classroom: "rust" });
+    expect(text(result)).toContain(server.urlFor("rust"));
+    expect(openUrl).not.toHaveBeenCalled();
+    await call("open_classroom", { classroom: "rust", open_browser: false });
+    expect(openUrl).not.toHaveBeenCalled();
+    await call("open_classroom", { classroom: "rust", open_browser: true });
+    expect(openUrl).toHaveBeenCalledWith(server.urlFor("rust"));
+  });
+
+  it("respects the disabled auto-open setting for an explicit launch", async () => {
+    vi.spyOn(config, "shouldAutoOpen").mockReturnValue(false);
+    await call("open_classroom", { classroom: "rust", open_browser: true });
+    expect(openUrl).not.toHaveBeenCalled();
+  });
+});
 
 describe("protocol", () => {
   it("echoes a supported protocol version and declares tools", async () => {
