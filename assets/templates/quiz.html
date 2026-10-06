@@ -43,7 +43,8 @@
     * .cl-q-stimulus is optional. It holds what the learner looks at: a passage, code,
       a table, an image, a diagram. Any HTML is allowed. Its text is sent to the
       teacher with the answer. Give every image alt text: the teacher reads the alt
-      text, not the image.
+      text, not the image. A <pre class="mermaid"> diagram is sent as its Mermaid
+      source. docs/DIAGRAM-FORMAT.md describes diagrams.
     * data-review-of="<lesson>/<quiz id>/<question id>": only in a review quiz. It
       names the earlier question this one reviews. scaffold_review gives the keys.
 

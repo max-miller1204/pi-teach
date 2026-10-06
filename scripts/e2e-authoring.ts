@@ -14,9 +14,10 @@
  *   3. Check that the agent opened its pages in a browser tool. Claude Code may run
  *      playwright-cli. Codex runs without a sandbox in temporary directories.
  *   4. Inspect each lesson: its outline, quiz kinds, response types, stimuli,
- *      self-explanations, local controls, and private rubric.
+ *      self-explanations, diagrams, local controls, and private rubric.
  *   5. Open each lesson in a real browser with this script's own classroom server.
- *      Check for contract errors and page errors. Press each local control. Answer
+ *      Wait for its diagrams to draw. Check for contract errors, which include a
+ *      diagram that did not render, and page errors. Press each local control. Answer
  *      every quiz and submit it.
  *   6. Grading session: a second agent session opens the classroom, which restores
  *      the ungraded submissions from disk. It grades each one from its rubric.
@@ -222,6 +223,7 @@ interface LessonReport {
   quizzes: Array<{ id: string; kind: string; types: string[] }>;
   typeCounts: string;
   stimuli: number;
+  diagrams: number;
   reflections: number;
   inlineScripts: number;
   localControls: Array<{ label: string; keyboard: boolean; changed: boolean }>;
@@ -275,6 +277,7 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
     quizzes,
     typeCounts: typeCounts(types),
     stimuli: count(body, /class="[^"]*\bcl-q-stimulus\b/g),
+    diagrams: count(body, /<pre\b[^>]*class="[^"]*\bmermaid\b/g),
     reflections: count(body, /class="[^"]*\bcl-reflect\b/g),
     inlineScripts: count(body, /<script\b(?![^>]*type="application\/json")/g),
     localControls: [],
@@ -294,6 +297,7 @@ const SUBMIT_LESSON = `async page => {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every((f) => f.dataset.state));
+  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy]'), null, { timeout: 30000 });
   const contract = await page.locator('.cl-contract-error').allInnerTexts();
   const outline = await page.evaluate(() =>
     [...document.querySelector('main[data-cl-content]').children].map((el) => {
@@ -369,6 +373,7 @@ const READ_GRADED = `async page => {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every((f) => f.dataset.state));
+  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy]'), null, { timeout: 30000 });
   const quizzes = await page.evaluate(() => [...document.querySelectorAll('form.cl-quiz')].map((f) => ({
     quizId: f.dataset.quizId,
     state: f.dataset.state,
@@ -579,6 +584,7 @@ async function main(): Promise<void> {
           .length,
         lessonsWithLocalControls: reports.filter((r) => r.localControls.length > 0).length,
         lessonsWithReflection: reports.filter((r) => r.reflections > 0).length,
+        lessonsWithDiagrams: reports.filter((r) => r.diagrams > 0).length,
       },
     };
     for (const r of reports) {
@@ -590,7 +596,7 @@ async function main(): Promise<void> {
         `   quizzes: ${r.quizzes.map((q) => `${q.id} [${q.kind}] ${q.types.join(", ")}`).join("; ")}`,
       );
       log(
-        `   stimuli ${r.stimuli}, reflections ${r.reflections}, scripts ${r.inlineScripts}, details ${r.details}, tables ${r.tables}, images ${r.images}`,
+        `   stimuli ${r.stimuli}, diagrams ${r.diagrams}, reflections ${r.reflections}, scripts ${r.inlineScripts}, details ${r.details}, tables ${r.tables}, images ${r.images}`,
       );
       log(
         `   local controls: ${r.localControls.map((c) => `${c.label}${c.changed ? "" : " (no visible change)"}`).join(", ") || "none"}`,
