@@ -549,13 +549,20 @@ async function main(): Promise<void> {
     for (const [i, report] of reports.entries()) {
       const dir = path.join(root, CLASSROOM, report.lesson);
       try {
-        report.semanticEvaluation = await evaluateContent(harness, root, {
-          objective: report.objective,
-          mode: i < 2 ? "lesson" : "quiz",
-          html: fs.readFileSync(path.join(dir, "lesson.html"), "utf8"),
-          rubric: fs.readFileSync(path.join(dir, "quiz", "key.json"), "utf8"),
-          plan: fs.readFileSync(path.join(dir, "quiz", "plan.json"), "utf8"),
-        });
+        report.semanticEvaluation = await evaluateContent(
+          harness,
+          root,
+          {
+            objective: report.objective,
+            mode: i < 2 ? "lesson" : "quiz",
+            html: fs.readFileSync(path.join(dir, "lesson.html"), "utf8"),
+            rubric: fs.readFileSync(path.join(dir, "quiz", "key.json"), "utf8"),
+            plan: fs.readFileSync(path.join(dir, "quiz", "plan.json"), "utf8"),
+          },
+          artifacts
+            ? path.join(artifacts, `${harness}-${report.lesson}-reviewer-raw.json`)
+            : undefined,
+        );
         for (const judgment of report.semanticEvaluation.judgments)
           if (judgment.verdict === "fail")
             report.problems.push(`Content ${judgment.criterion}: ${judgment.reason}`);

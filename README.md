@@ -79,6 +79,9 @@ Your material is saved in `~/.pi/agent/classrooms/`. All three hosts use this fo
 - [Tool reference](docs/TOOLS.md): authoring tools and service controls.
 - [Development](docs/DEVELOPMENT.md): local setup, checks, and end-to-end tests.
 - [Teaching method](docs/TEACHING.md): how the teacher plans lessons and checks learning.
+- [Teaching evidence](docs/EVIDENCE.md): sources, limits, and product choices.
+- [Redesign and validation](docs/RESEARCH-REDESIGN.md): implemented behavior and evaluation limits.
+- [Evaluation protocol](docs/EVALUATION.md): software checks and delayed human learning tests.
 
 ## License
 
