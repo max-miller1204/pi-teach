@@ -3,7 +3,7 @@ import { authoringContent, htmlAttributes, TAG_ATTRIBUTES } from "./authoring-ht
 export function stageLesson(
   html: string,
   gradedPretests: ReadonlySet<string>,
-): { html: string; pendingPretests: string[]; lockedQuizIds: string[] } {
+): { html: string; gatedPretests: string[]; pendingPretests: string[]; lockedQuizIds: string[] } {
   const pending = new Set<string>();
   const locked = new Set<string>();
   const required = new Set<string>();
@@ -62,5 +62,10 @@ export function stageLesson(
     if (pretests.filter((value) => value === id).length !== 1)
       throw new Error(`Pretest gate requires one visible pretest form: ${id}.`);
   }
-  return { html: output, pendingPretests: [...pending], lockedQuizIds: [...locked] };
+  return {
+    html: output,
+    gatedPretests: [...required],
+    pendingPretests: [...pending],
+    lockedQuizIds: [...locked],
+  };
 }

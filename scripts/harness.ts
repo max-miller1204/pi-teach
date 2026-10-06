@@ -125,6 +125,61 @@ export function browserCommands(harness: Harness, events: string): string[] {
   return commands;
 }
 
+/** Recognize successful packaged checks from their execution receipts. */
+export function packagedPageChecks(
+  harness: Harness,
+  events: string,
+): Array<{ classroom: string; lesson: string }> {
+  const commands = new Map<string, string>();
+  const checks: Array<{ classroom: string; lesson: string }> = [];
+  function collect(command: string, output: string, failed: boolean): void {
+    if (failed || !/\bnode\s+["']?[^\s"']*\/scripts\/check-lesson\.ts["']?\s/.test(command)) return;
+    let receipt;
+    try {
+      receipt = JSON.parse(output);
+    } catch {
+      return;
+    }
+    if (
+      typeof receipt?.classroom === "string" &&
+      typeof receipt.lesson === "string" &&
+      receipt.learnerStateChanged === false &&
+      [receipt.initial, receipt.released].every(
+        (phase) => phase?.quizzes > 0 && phase.contractErrors === 0 && phase.pageErrors === 0,
+      )
+    )
+      checks.push({ classroom: receipt.classroom, lesson: receipt.lesson });
+  }
+  for (const line of events.split("\n").filter(Boolean)) {
+    const event = JSON.parse(line);
+    if (harness === "codex" && event.type === "item.completed") {
+      const item = event.item;
+      if (item?.type === "command_execution")
+        collect(item.command, item.aggregated_output, item.exit_code !== 0);
+    }
+    if (harness === "claude" && event.type === "assistant") {
+      for (const block of event.message.content) {
+        if (block.type === "tool_use" && block.name === "Bash")
+          commands.set(block.id, block.input.command);
+      }
+    }
+    if (harness === "claude" && event.type === "user") {
+      for (const block of event.message.content) {
+        if (block.type !== "tool_result") continue;
+        const output =
+          typeof block.content === "string"
+            ? block.content
+            : block.content
+                .filter((part: { type: string }) => part.type === "text")
+                .map((part: { text: string }) => part.text)
+                .join("\n");
+        collect(commands.get(block.tool_use_id) ?? "", output, block.is_error === true);
+      }
+    }
+  }
+  return checks;
+}
+
 export async function until<T>(what: string, timeoutMs: number, probe: () => T | null): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

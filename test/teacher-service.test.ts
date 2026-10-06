@@ -7,6 +7,7 @@ import { TeacherService } from "../src/teacher-service.ts";
 import { readTeacherState, saveTeacherState } from "../src/service-state.ts";
 import * as store from "../src/store.ts";
 import * as server from "../src/server.ts";
+import { applyGrade } from "../src/bridge.ts";
 import type { TeacherPlan } from "../src/teacher.ts";
 
 let f: Fixture;
@@ -43,6 +44,64 @@ afterEach(async () => {
   f.cleanup();
 });
 describe("persistent teacher", () => {
+  it("identifies teaching behind a pretest before and after grading without leaking it", async () => {
+    f.write(
+      "rust/001-ownership/lesson.html",
+      '<form class="cl-quiz" data-quiz-id="pretest-1" data-kind="pretest"><li class="cl-q" data-question-id="q1" data-type="term"></li></form><template data-cl-after-pretest="pretest-1"><p>Hidden teaching sentinel.</p></template>',
+    );
+    const s = store.createSubmission({
+      ...location,
+      quizId: "pretest-1",
+      quizTitle: "Pretest",
+      kind: "pretest",
+      answers: [termAnswer("q1", "forever")],
+    });
+    let runs = 0;
+    const teacher = new TeacherService(async (_identity, prompt) => {
+      const marker = "Private context:\n";
+      const context = JSON.parse(prompt.slice(prompt.lastIndexOf(marker) + marker.length));
+      expect(context.lessonStage.gatedPretests).toEqual(["pretest-1"]);
+      expect(prompt).toContain("Do not claim that teaching is missing");
+      if (runs++ === 0) {
+        expect(context.lessonStage.pendingPretests).toEqual(["pretest-1"]);
+        expect(context.lesson).not.toContain("Hidden teaching sentinel.");
+        return plan([grade(s.id)], "Continue to the teaching released after grading.");
+      }
+      expect(context.lessonStage.pendingPretests).toEqual([]);
+      expect(context.lesson).toContain("Hidden teaching sentinel.");
+      return plan([]);
+    });
+    teacher.attach("rust", "codex");
+    await teacher.idle();
+    teacher.chat("rust", location.lesson, "The teaching is visible now.", randomUUID());
+    await teacher.idle();
+    expect(runs).toBe(2);
+    expect(readTeacherState("rust")!.requests.every((request) => request.status === "done")).toBe(
+      true,
+    );
+  });
+  it("supplies indexed topic notes in a fresh teacher session", async () => {
+    f.write(
+      "rust/NOTES.md",
+      "# Notes\n\n## Index\n\n- [Current checkpoint](notes/current-checkpoint.md)\n",
+    );
+    f.write(
+      "rust/notes/current-checkpoint.md",
+      "Use course convention e = prediction minus observation. Check the unresolved sign gap.",
+    );
+    f.write("rust/notes/unrelated.md", "Unindexed private note sentinel.");
+    const teacher = new TeacherService(async (_id, prompt) => {
+      expect(prompt).toContain("prediction minus observation");
+      expect(prompt).toContain("unresolved sign gap");
+      expect(prompt).not.toContain("Unindexed private note sentinel");
+      expect(prompt).not.toContain("wait_for_learner");
+      return plan([]);
+    });
+    teacher.attach("rust", "codex");
+    teacher.chat("rust", location.lesson, "Continue this check", randomUUID());
+    await teacher.idle();
+    expect(readTeacherState("rust")?.requests[0].status).toBe("done");
+  });
   it("starts work after idle and delivers service-owned SSE writes", async () => {
     let runs = 0;
     const teacher = new TeacherService(async (_identity, prompt, _cwd, save) => {
@@ -247,7 +306,7 @@ it("leaves queued work saved when stopped and recovers it on restart", async () 
 });
 
 it("records a skipped retrieval gap once without claiming learning", async () => {
-  f.write("rust/NOTES.md", "# Notes\n\n## Preferences\n\nKeep examples short.\n");
+  f.write("rust/NOTES.md", "# Notes\n\n## Preferences\n\nKeep examples short.\n\n## Index\n");
   const teacher = new TeacherService(async () => ({
     calls: [],
     message: "The gap remains. Review it later.",
@@ -267,7 +326,12 @@ it("records a skipped retrieval gap once without claiming learning", async () =>
   await restarted.idle();
   const notes = fs.readFileSync(path.join(f.root, "rust/NOTES.md"), "utf8");
   expect(notes).toContain("Keep examples short.");
-  expect(notes.match(/## Unresolved gap/g)).toHaveLength(1);
+  expect(notes).toContain("(notes/teacher-gaps.md)");
+  expect(
+    fs
+      .readFileSync(path.join(f.root, "rust/notes/teacher-gaps.md"), "utf8")
+      .match(/## Unresolved gap/g),
+  ).toHaveLength(1);
   expect(store.listLearningRecords("rust")).toHaveLength(0);
 });
 
@@ -298,6 +362,29 @@ it("preserves a pretest grade and records only demonstrated prior knowledge", as
   expect(store.listLearningRecords("rust")).toHaveLength(1);
   expect(store.reviewItems("rust")).toHaveLength(0);
 });
+
+it.each([true, false])(
+  "records only quiz understanding backed by fully credited answers: %s",
+  async (correct) => {
+    const s = submission();
+    const call = grade(s.id);
+    const args = JSON.parse(call.arguments_json);
+    args.score = correct ? 100 : 0;
+    args.questions[0].correct = correct;
+    call.arguments_json = JSON.stringify(args);
+    const teacher = new TeacherService(async () => ({
+      calls: [call],
+      message: "Feedback.",
+      notes_markdown: "",
+      learning_record:
+        "# Ownership\n\nEvidence: check-1/q1. The learner traced the lifetime correctly.",
+    }));
+    teacher.attach("rust", "codex");
+    await teacher.idle();
+    expect(readTeacherState("rust")?.requests[0].status).toBe(correct ? "done" : "failed");
+    expect(store.listLearningRecords("rust")).toHaveLength(correct ? 1 : 0);
+  },
+);
 
 it("refuses teacher work from a changed rubric before generating a plan", async () => {
   const original = fs.readFileSync(path.join(f.root, "rust/001-ownership/quiz/key.json"), "utf8");
@@ -346,3 +433,123 @@ it("requires a new plan on explicit retry when saved rubric evidence is absent",
   expect(runs).toBe(1);
   expect(store.latestGrades("rust", location.lesson)).toHaveLength(1);
 });
+
+it.each(["check-1/q10", "check-1/q1 and check-1/q10"])(
+  "rejects learning evidence from an incorrect cited question: %s",
+  async (evidence) => {
+    const s = store.createSubmission({
+      ...location,
+      quizId: "check-1",
+      quizTitle: "Ownership",
+      kind: "check",
+      answers: [termAnswer("q1", "dropped"), termAnswer("q10", "forever")],
+    });
+    const teacher = new TeacherService(async () => ({
+      ...plan([
+        {
+          name: "grade_lesson_quiz",
+          arguments_json: JSON.stringify({
+            submission_id: s.id,
+            score: 50,
+            feedback_markdown: "One correct answer.",
+            questions: [
+              { question_id: "q1", correct: true, feedback: "Correct." },
+              { question_id: "q10", correct: false, feedback: "Review the lifetime." },
+            ],
+          }),
+        },
+      ]),
+      learning_record: `# Ownership\n\nEvidence: ${evidence}.`,
+    }));
+    teacher.attach("rust", "codex");
+    await teacher.idle();
+    expect(readTeacherState("rust")!.requests[0].status).toBe("failed");
+    expect(store.listLearningRecords("rust")).toHaveLength(0);
+    expect(store.listGrades("rust", location.lesson)).toHaveLength(0);
+  },
+);
+
+it("records reflection gaps as notes without claiming mastery", async () => {
+  f.write("rust/NOTES.md", "# Notes\n\n## Index\n");
+  const teacher = new TeacherService(async (_id, prompt) => {
+    expect(prompt).toContain("Do not write a learning record without a verified retrieval check");
+    return {
+      calls: [],
+      message: "We will check this idea with a new example.",
+      learning_record: "",
+      notes_markdown: "The self-explanation confuses ownership and borrowing.",
+    };
+  });
+  teacher.attach("rust", "codex");
+  teacher.reflection(
+    store.createReflection({
+      ...location,
+      reflectId: "explain",
+      prompt: "Explain ownership.",
+      text: "Borrowers own the value.",
+    }),
+  );
+  await teacher.idle();
+  expect(readTeacherState("rust")?.requests[0].status).toBe("done");
+  expect(fs.readFileSync(path.join(f.root, "rust/notes/teacher-gaps.md"), "utf8")).toContain(
+    "confuses ownership",
+  );
+  expect(store.listLearningRecords("rust")).toHaveLength(0);
+});
+
+it.each([true, false])(
+  "accepts retrieval evidence only for an item reviewed on the current page: %s",
+  async (reviewedHere) => {
+    const s = submission();
+    applyGrade(s, {
+      score: 0,
+      feedbackMarkdown: "Missed.",
+      questions: [{ questionId: "q1", correct: false, feedback: "Review ownership." }],
+    });
+    f.write(
+      "rust/002-review/lesson.html",
+      "<html><head></head><body><main data-cl-content>Review</main></body></html>",
+    );
+    if (reviewedHere) {
+      const review = store.createSubmission({
+        classroom: "rust",
+        lesson: "002-review",
+        quizId: "review",
+        quizTitle: "Review",
+        kind: "review",
+        answers: [{ ...termAnswer("r1", "wrong"), reviewOf: "001-ownership/check-1/q1" }],
+      });
+      applyGrade(review, {
+        score: 0,
+        feedbackMarkdown: "Missed again.",
+        questions: [{ questionId: "r1", correct: false, feedback: "Use a new example." }],
+      });
+    }
+    const reply = "The owner drops the value at the end of its scope.";
+    const teacher = new TeacherService(async () => ({
+      calls: [
+        {
+          name: "record_retrieval_check",
+          arguments_json: JSON.stringify({
+            classroom: "rust",
+            review_key: "001-ownership/check-1/q1",
+            answer: reply,
+            evidence: "Correct lifetime in a fresh example.",
+          }),
+        },
+      ],
+      message: "Correct.",
+      learning_record:
+        "# Verified ownership\n\nThe learner traced the lifetime in a fresh example.",
+      notes_markdown: "",
+    }));
+    teacher.attach("rust", "codex");
+    teacher.chat("rust", "002-review", reply, randomUUID());
+    await teacher.idle();
+    expect(readTeacherState("rust")?.requests.find((r) => r.kind === "chat")?.status).toBe(
+      reviewedHere ? "done" : "failed",
+    );
+    expect(store.listRetrievalChecks("rust")).toHaveLength(reviewedHere ? 1 : 0);
+    expect(store.listGrades("rust", location.lesson)[0].score).toBe(0);
+  },
+);

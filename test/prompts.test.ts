@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resolveClassroom } from "../src/commands.ts";
 import {
   askPrompt,
+  dedicatedTeacherPrompt,
   followUpPrompt,
   gradePrompt,
   missionStub,
@@ -29,6 +30,23 @@ afterEach(() => {
 });
 
 describe("teachingPrompt", () => {
+  it("keeps unavailable authoring and wait instructions out of service requests", () => {
+    const prompt = dedicatedTeacherPrompt("r1", "Grade this check.", {}, []);
+    expect(prompt).not.toContain("wait_for_learner");
+    expect(prompt).not.toContain("scaffold_lesson");
+    expect(prompt).not.toContain("Call `lesson_health`");
+    expect(prompt).toContain("return to the initiating chat");
+    const reflection: Reflection = {
+      id: "r1",
+      classroom: "rust",
+      lesson: "001-ownership",
+      reflectId: "explain",
+      prompt: "Explain.",
+      text: "My idea.",
+      savedAt: 1,
+    };
+    expect(reflectPrompt(reflection, "service")).not.toContain("wait_for_learner");
+  });
   it("carries the whole methodology, so nothing has to be in the system prompt", () => {
     const prompt = teachingPrompt("Rust ownership", null);
     expect(prompt).toContain("Rust ownership");

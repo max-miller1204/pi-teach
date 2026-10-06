@@ -49,6 +49,7 @@ import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
 import {
   browserCommands,
+  packagedPageChecks,
   codexHome,
   harnessCommand,
   parseHarness,
@@ -466,7 +467,6 @@ async function main(): Promise<void> {
     const launches = pageChecks.filter((command) =>
       /\bplaywright-cli(?:\s+-[^\s]+)*\s+open(?:\s|$)/.test(command),
     );
-    if (launches.length === 0) failures.push("The agent never launched a headless check session.");
     for (const command of launches) {
       if (!command.includes("--config") || !command.includes("playwright-headless.json"))
         failures.push("The agent opened a browser without the packaged headless config.");
@@ -494,6 +494,14 @@ async function main(): Promise<void> {
     if (lessons.length !== OBJECTIVES.length) {
       throw new Error(`Expected ${OBJECTIVES.length} new lessons, found: ${lessons.join(", ")}`);
     }
+    const packagedChecks = packagedPageChecks(harness, authoring.stream());
+    if (
+      launches.length === 0 &&
+      !lessons.every((lesson) =>
+        packagedChecks.some((check) => check.classroom === CLASSROOM && check.lesson === lesson),
+      )
+    )
+      failures.push("The agent did not complete headless checks for every lesson.");
     const reports = lessons.map((lesson, i) => inspectLesson(root, lesson, OBJECTIVES[i]!));
     for (const [i, report] of reports.entries()) {
       const html = fs.readFileSync(

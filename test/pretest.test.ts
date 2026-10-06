@@ -7,12 +7,14 @@ describe("pretest staging", () => {
   it("withholds teaching and scripts from source until grading", () => {
     const staged = stageLesson(html, new Set());
     expect(staged.pendingPretests).toEqual(["before"]);
+    expect(staged.gatedPretests).toEqual(["before"]);
     expect(staged.html).not.toContain("Solution");
     expect(staged.html).not.toContain("window.taught");
     expect(staged.html).toContain("Diagnostic");
     expect(staged.html).toContain("<footer>Ask</footer>");
     const released = stageLesson(html, new Set(["before"]));
     expect(released.pendingPretests).toEqual([]);
+    expect(released.gatedPretests).toEqual(["before"]);
     expect(released.html).toContain("<p>Solution</p><script>window.taught = true;</script>");
     expect(released.html).not.toContain("<template");
   });
@@ -34,6 +36,7 @@ describe("pretest staging", () => {
     const source = '<template id="example"><template>ordinary</template></template><p>Lesson</p>';
     expect(stageLesson(source, new Set())).toEqual({
       html: source,
+      gatedPretests: [],
       pendingPretests: [],
       lockedQuizIds: [],
     });

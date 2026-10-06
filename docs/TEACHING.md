@@ -200,10 +200,39 @@ show its result visibly. Check it in the browser. Keep local controls outside
 | Check (the default quiz kind)   | After teaching, to test the objective. It sets the lesson score and enters review.                                                        |
 | Review (`scaffold_review`)      | Questions are due and the learner agrees. Write new examples for the returned items. Keep each `data-review-of` exactly.                  |
 | `.cl-q-stimulus`                | The question needs code, a passage, a table, an image, or a diagram. Give images useful alt text: grading receives the text and alt text. |
+| Mermaid diagram                 | A process, relationship, or state is easier to understand as a diagram. Use the markup below and check the drawing in the browser.        |
 | `form.cl-reflect`               | You want an ungraded self-explanation after a key idea. Read it and record what it shows.                                                 |
 | Glossary                        | The topic has its own terms. The page marks them and asks the learner to recall each one before it shows the definition.                  |
 | Questions from the page         | Always on. Answer them with `answer_lesson_question`, so the answer appears on the page.                                                  |
 | Reference document              | Compressed material the learner will look up again later.                                                                                 |
+
+### Mermaid diagrams
+
+Write Mermaid source inside `<pre class="mermaid">`. The runtime draws it and
+applies the page theme. Mermaid is bundled, so no network script or separate
+diagram tool is needed. For example:
+
+```html
+<figure>
+  <pre class="mermaid">
+flowchart LR
+  Data[Observed data] --> Model[Choose a model]
+  Model --> Check[Check assumptions]
+  </pre>
+  <figcaption>Check assumptions before interpreting the model.</figcaption>
+</figure>
+```
+
+Use a flowchart for steps, a sequence diagram for interactions, or a state
+diagram for transitions. For a quiz diagram, put the block in `.cl-q-stimulus`.
+The grader receives its Mermaid source, including arrows. Choose `data-type`
+from the response you need, such as `short` for reasoning about the diagram.
+Keep solutions and answer cues out of assessment diagrams. Keep teaching
+diagrams inside the pretest gate.
+
+Check that each diagram draws in the headless browser. Check its labels and
+arrows. A parse error appears on the page and in the console. Fix it before
+sharing the page.
 
 ### Checks on learning
 
@@ -400,6 +429,21 @@ community, respect it and note it in `RESOURCES.md`.
 
 ## Tools
 
+Use the tools available to the active host. Pi registers all seven shared tools
+and receives browser requests through its live session. Claude Code and Codex
+authoring agents receive the four scaffold and health tools, the three session
+tools, and the two service tools. They do not grade browser requests themselves.
+The dedicated teacher can answer passage questions, grade quizzes, and record
+verified retrieval checks through a service plan. It cannot create lessons,
+browse sources, or edit arbitrary files. The authoring agent must research and
+write source-grounded material and private rubrics before handing over the page.
+
+Use each feature when it serves the objective. Do not force every tool or every
+question type into one page. Glossaries, source lists, reference documents, and
+teaching notes are files, not extra MCP tools. Read their format guides and write
+them with the host's file tools. Use `lesson_health` before planning and after
+authoring. Use `scaffold_review` for due review items and preserve their keys.
+
 | Tool                     | Use it to                                                                                                          |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `begin_teaching`         | Start or continue teaching in Claude Code or Codex. It returns this method. In Pi, `/teach` does the same.         |
@@ -409,14 +453,18 @@ community, respect it and note it in `RESOURCES.md`.
 | `scaffold_lesson`        | Create a lesson shell. It returns the authoring steps.                                                             |
 | `scaffold_review`        | Create a review lesson from the due items. It returns the items and their keys.                                    |
 | `open_classroom`         | Start the server and get the URL in Claude Code or Codex. Call it before you share a URL. In Pi, use `/classroom`. |
-| `wait_for_learner`       | Receive browser requests in Claude Code or Codex: questions, follow-ups, quizzes, and self-explanations.           |
+| `wait_for_learner`       | Receive browser requests in the legacy inbox adapter. The persistent service does not expose it.                   |
 | `answer_lesson_question` | Answer a question from the page. Only this tool puts the answer on the page.                                       |
 | `grade_lesson_quiz`      | Grade a submitted quiz from its private rubric.                                                                    |
 | `record_retrieval_check` | Link a successful chat retrieval check to its review item, with an active learning record.                         |
 
-Browser requests and chat replies are different channels. `wait_for_learner`
-receives browser requests only. When you need a chat reply, end your turn and do not
-wait.
+Pi receives browser requests in its live session. Claude Code and Codex use the
+persistent dedicated teacher and its panel. Only the legacy inbox adapter uses
+`wait_for_learner`. That tool receives browser requests, not chat replies.
+
+The Codex teacher stops after three minutes without progress or five minutes
+per request. A failed request keeps its submission and does not retry itself.
+Read the error in the teacher panel. Use its retry control to retry the request.
 
 ## Working rhythm
 
