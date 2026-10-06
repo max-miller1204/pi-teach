@@ -25,9 +25,11 @@ function readDoc(name: string): string {
  * How a wake-up message reached the model. Pi pushes it into the session; Claude Code
  * and Codex receive it as the result of a `wait_for_learner` call.
  */
-export type Delivery = "push" | "wait";
+export type Delivery = "push" | "wait" | "service";
 
 function arrivalNote(delivery: Delivery): string {
+  if (delivery === "service")
+    return "The persistent classroom service delivered this request to its dedicated teacher.";
   return delivery === "push"
     ? "This notification was delivered automatically; nothing was polled."
     : "It arrived as the result of your `wait_for_learner` call.";
