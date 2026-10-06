@@ -1102,7 +1102,7 @@ function showErrors(container, heading, errors, before = null) {
 
 const KIND_NOTES = {
   pretest:
-    "Pretest. Answer before you read the lesson. Wrong answers are expected: they show your teacher what to focus on.",
+    "Before instruction, attempt the upcoming ideas. Predict, explain, or try a solution even if you do not know yet. Wrong answers are expected. These answers do not affect lesson scores or review.",
   review:
     "Review. These questions come back to ideas from earlier lessons, so you recall them after a gap.",
 };
@@ -1192,6 +1192,35 @@ function hydrateQuizzes() {
 
 /** Add the controls a question type needs. */
 function enhanceQuestion(form, question) {
+  const addReport = (name, title, options) => {
+    const label = document.createElement("label");
+    label.className = "cl-answer-report";
+    label.append(document.createTextNode(title + " "));
+    const select = document.createElement("select");
+    select.dataset[name] = "";
+    for (const [value, text] of options) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = text;
+      select.append(option);
+    }
+    label.append(select);
+    question.append(label);
+  };
+  if (form.dataset.evidence === "report")
+    addReport("clAssistance", "How did you answer?", [
+      ["", "Not reported"],
+      ["none", "Without help"],
+      ["hint", "With a hint or reference"],
+      ["solution", "After seeing a solution"],
+    ]);
+  if (question.dataset.confidence === "optional" || form.dataset.confidence === "optional")
+    addReport("clConfidence", "Confidence (optional)", [
+      ["", "Not reported"],
+      ["guess", "Guess"],
+      ["unsure", "Unsure"],
+      ["sure", "Sure"],
+    ]);
   switch (question.dataset.type) {
     case "numeric":
       for (const input of question.querySelectorAll("input.cl-number")) {
@@ -1341,6 +1370,10 @@ function collectAnswer(question) {
     type,
     prompt: normalizeText(question.querySelector(".cl-q-prompt")?.textContent ?? ""),
   };
+  const confidence = question.querySelector("[data-cl-confidence]")?.value;
+  const assistance = question.querySelector("[data-cl-assistance]")?.value;
+  if (confidence) answer.confidence = confidence;
+  if (assistance) answer.assistance = assistance;
   const stimulus = question.querySelector(".cl-q-stimulus");
   if (stimulus) answer.stimulus = stimulusText(stimulus);
   if (question.dataset.reviewOf) answer.reviewOf = question.dataset.reviewOf;
@@ -1542,6 +1575,10 @@ function reorder(list, ids) {
 /** Put a saved answer back into its question. */
 function restoreAnswer(question, group) {
   const answer = group[0];
+  const confidence = question.querySelector("[data-cl-confidence]");
+  const assistance = question.querySelector("[data-cl-assistance]");
+  if (confidence) confidence.value = answer.confidence ?? "";
+  if (assistance) assistance.value = answer.assistance ?? "";
   const byValue = (selector, value) =>
     own(question, selector).find((input) => input.value === value);
 
@@ -1937,6 +1974,15 @@ function quizDraft(form) {
 
 /** One question's answer as the learner left it, or null when it is untouched. */
 function questionDraft(question) {
+  const entry = questionResponseDraft(question) ?? {};
+  const confidence = question.querySelector("[data-cl-confidence]")?.value;
+  const assistance = question.querySelector("[data-cl-assistance]")?.value;
+  if (confidence) entry.confidence = confidence;
+  if (assistance) entry.assistance = assistance;
+  return Object.keys(entry).length ? entry : null;
+}
+
+function questionResponseDraft(question) {
   const some = (entry) => (Object.keys(entry).length > 0 ? entry : null);
   const filled = (pairs) => Object.fromEntries(pairs.filter(([, value]) => value));
   switch (question.dataset.type) {
@@ -2002,6 +2048,10 @@ function restoreQuizDraft(form, draft) {
       );
       continue;
     }
+    if (entry.confidence !== undefined)
+      question.querySelector("[data-cl-confidence]").value = entry.confidence;
+    if (entry.assistance !== undefined)
+      question.querySelector("[data-cl-assistance]").value = entry.assistance;
     for (const value of entry.checked ?? []) {
       const choice = own(question, "input[type=radio], input[type=checkbox]").find(
         (input) => input.value === value,

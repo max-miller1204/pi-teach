@@ -366,16 +366,35 @@ ended up producing.
 
 ## Spaced review
 
-Every graded question in a check or a review enters a review schedule. A correct answer
-moves the question to a longer interval: 1, 3, 7, 21, then 60 days. A wrong answer moves
-it back to one day. The schedule is
-calculated from grades and recorded chat checks on disk. Do not edit the schedule. Old confidence metadata
-is kept in saved attempts but does not affect the schedule.
+Every graded question in a check or review enters a history-derived schedule.
+Pretests never enter it. The base intervals are 1, 3, 7, 21, and 60 days. They are
+implementation choices, not a proven optimum. The first attempt starts at one day.
+Only a due, fully correct, independent answer after at least one day since the last
+practice or feedback extends the interval. Early success keeps the due date.
+Incomplete retrieval schedules one day after feedback. Assisted or unknown work
+cannot extend the interval. Confidence never changes credit or the schedule.
+
+An optional retention duration caps intervals at one quarter of that duration, with
+a one-day minimum. This is a policy to evaluate. Omit the duration when no goal exists.
+`scaffold_review` reports the policy and its reason. Do not edit a stored schedule.
+
+Progress counts retained evidence only after two delayed independent successes with
+at least seven days from the first independent success to the latest delayed success.
+Application objectives also need delayed transfer. These are product thresholds.
+They are not a definition of universal mastery. Old records retain their grades.
+Missing evidence stays unknown. Immediate chat checks can document correction,
+but cannot establish delayed retention or extend an interval.
+
+Group related strategies in private `quiz/plan.json` when review should require
+method selection. The scheduler alternates those strategies. Ungrouped items remain
+in due order. Do not mix unrelated subjects to claim interleaving. For CMDA, mix
+prediction, residual, and cost cases without naming the required method in each
+question. Use blocked, supported practice when a novice still needs it.
 
 `begin_teaching` and `/teach` tell you how many questions are due. When questions are
 due, offer the learner a review before new material. If they agree, call
 `scaffold_review`. It creates a review lesson and returns the due questions, mixed
-across lessons, with the original question, the learner's last answer, and your last
+across related strategies when authored, with the original question, the learner's last answer, and your last
 feedback. Read the current quiz contract first. For each item, write a new question
 that tests the same idea with a new example. Choose the type that fits the idea. It
 does not have to match the original type. Put the given key on it as
@@ -511,3 +530,10 @@ the skill. Complexity and type variety are not quality measures.
 Give Mermaid diagrams an accessible name and a text description of the relationships
 (P8). Check labels and arrows in the rendered page. Check that grading receives the
 source. The nine question types are capabilities. There is no variety quota.
+
+Confidence is optional (P7). Use it for feedback only. Explain a correct but uncertain
+answer. Keep useful correction for wrong answers. Never change credit from confidence.
+New pages ask how the learner answered. A hint, reference, or solution is assistance.
+Missing reports stay unknown. An authored assisted question cannot prove independence
+even when the learner reports no extra help. Self-reports are evidence limits, not
+proof that no help occurred. Label supported completion and immediate checks honestly.

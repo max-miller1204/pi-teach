@@ -69,7 +69,15 @@ describe("landingPage", () => {
 });
 
 const noProgress = {
-  review: { total: 0, due: 0, dueSoon: 0, mastered: 0, nextDueAt: null },
+  review: {
+    total: 0,
+    due: 0,
+    dueSoon: 0,
+    retained: 0,
+    transferNeeded: 0,
+    unknown: 0,
+    nextDueAt: null,
+  },
   dueByLesson: {},
   glossaryTerms: 0,
   now: 0,

@@ -329,7 +329,15 @@ describe("reviewStatusText", () => {
 
   it("asks for a review before new material when questions are due", () => {
     const text = reviewStatusText(
-      { total: 5, due: 2, dueSoon: 1, mastered: 1, nextDueAt: now + DAY_MS },
+      {
+        total: 5,
+        due: 2,
+        dueSoon: 1,
+        retained: 1,
+        transferNeeded: 0,
+        unknown: 0,
+        nextDueAt: now + DAY_MS,
+      },
       now,
     );
     expect(text).toContain("2 are due for review now");
@@ -338,7 +346,15 @@ describe("reviewStatusText", () => {
 
   it("says when the next review is due when none are due now", () => {
     const text = reviewStatusText(
-      { total: 5, due: 0, dueSoon: 1, mastered: 1, nextDueAt: now + DAY_MS },
+      {
+        total: 5,
+        due: 0,
+        dueSoon: 1,
+        retained: 1,
+        transferNeeded: 0,
+        unknown: 0,
+        nextDueAt: now + DAY_MS,
+      },
       now,
     );
     expect(text).toContain("The next one is due tomorrow.");

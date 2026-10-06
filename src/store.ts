@@ -11,6 +11,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
+import { isAssistance, type Assistance } from "./evidence.ts";
+import { parseTeachingPlan, type TeachingPlan } from "./teaching-plan.ts";
 import { questionCredit } from "../assets/runtime/grade.mjs";
 import { reviewKey } from "../assets/runtime/quiz.mjs";
 import { parseGlossary, type Glossary } from "./glossary.ts";
@@ -154,6 +156,7 @@ export interface QuizSubmission {
   rubricDigest?: string;
   assessmentContract?: 1;
   instructionalContract?: 1;
+  teachingPlan?: TeachingPlan;
 }
 
 export interface QuizQuestionGrade {
@@ -586,8 +589,40 @@ export function createSubmission(
   const rubricDigest = fs.existsSync(rubric)
     ? createHash("sha256").update(fs.readFileSync(rubric)).digest("hex")
     : undefined;
+  const page = readLesson(input.classroom, input.lesson);
+  const teachingPlan =
+    page?.instructionalContract === 1
+      ? parseTeachingPlan(
+          fs.readFileSync(
+            path.join(lessonDir(input.classroom, input.lesson), "quiz", "plan.json"),
+            "utf8",
+          ),
+          fs.readFileSync(page.htmlPath, "utf8"),
+        )
+      : undefined;
+  const answers = input.answers.map((answer) => {
+    const { learning: ignored, ...saved } = answer;
+    if (!teachingPlan) return saved;
+    const q = teachingPlan.quizzes[input.quizId]?.questions[answer.questionId];
+    if (!q) throw new Error(`No teaching mapping for ${input.quizId}/${answer.questionId}.`);
+    const original = answer.reviewOf
+      ? reviewItems(input.classroom).find((i) => i.key === answer.reviewOf)
+      : undefined;
+    return {
+      ...saved,
+      learning: {
+        objectiveId: original?.objectiveId ?? q.objective,
+        objective: original?.objective ?? teachingPlan.objectives[q.objective],
+        task: q.task,
+        support: q.support,
+        assistance: answer.assistance ?? "unknown",
+      },
+    };
+  });
   const submission: QuizSubmission = {
     ...input,
+    answers,
+    teachingPlan,
     id: randomUUID(),
     attempt,
     submittedAt,
@@ -602,6 +637,18 @@ export function createSubmission(
   );
   writeJson(file, submission);
   return submission;
+}
+
+/** Remove private method labels from learner responses and SSE events. */
+export function publicSubmission(submission: QuizSubmission): QuizSubmission {
+  const { teachingPlan: privatePlan, ...publicFields } = submission;
+  return {
+    ...publicFields,
+    answers: submission.answers.map((answer) => {
+      const { learning: privateEvidence, ...publicAnswer } = answer;
+      return publicAnswer;
+    }),
+  };
 }
 
 export function findSubmission(id: string): QuizSubmission | null {
@@ -681,10 +728,16 @@ export function previousGrade(submission: QuizSubmission): QuizGrade | null {
 export function reviewEvents(classroom: string): ReviewEvent[] {
   const events: ReviewEvent[] = [];
   for (const lesson of listLessonDirs(classroom)) {
-    const grades = new Map(latestGrades(classroom, lesson).map((g) => [g.submissionId, g]));
+    const history = listGrades(classroom, lesson);
+    const firstFeedback = new Map<string, number>();
+    for (const grade of history)
+      if (!firstFeedback.has(grade.submissionId))
+        firstFeedback.set(grade.submissionId, grade.gradedAt);
+    const grades = new Map(history.map((g) => [g.submissionId, g]));
     for (const submission of listSubmissions(classroom, lesson)) {
       const grade = grades.get(submission.id);
       if (!grade || kindOf(submission) === "pretest") continue;
+      const feedbackAt = firstFeedback.get(submission.id)!;
       for (const [questionId, group] of answersByQuestion(submission.answers)) {
         const verdict = grade.questions.find((q) => q.questionId === questionId);
         if (!verdict) continue;
@@ -692,6 +745,8 @@ export function reviewEvents(classroom: string): ReviewEvent[] {
         events.push({
           key: group[0].reviewOf ?? reviewKey(lesson, submission.quizId, questionId),
           at: submission.submittedAt,
+          feedbackAt,
+          evidence: group[0].learning,
           correct: verdict.correct,
           credit: credit.earned / credit.possible,
           prompt: group[0].prompt ?? "",
@@ -716,6 +771,7 @@ export function reviewEvents(classroom: string): ReviewEvent[] {
       feedback: check.evidence,
       source: "chat",
       learningRecord: check.learningRecord,
+      evidence: check.learning,
     });
   }
   return events;
@@ -734,6 +790,9 @@ export interface RetrievalCheck {
   answer: string;
   evidence: string;
   learningRecord: string;
+  assistance?: Assistance;
+  task?: "retrieval" | "transfer";
+  learning?: QuizAnswer["learning"];
 }
 
 export function listRetrievalChecks(classroom: string): RetrievalCheck[] {
@@ -745,7 +804,7 @@ export function listRetrievalChecks(classroom: string): RetrievalCheck[] {
 /** Preserve the quiz attempt and add later evidence of understanding. */
 export function recordRetrievalCheck(
   classroom: string,
-  input: Omit<RetrievalCheck, "id" | "at">,
+  input: Omit<RetrievalCheck, "id" | "at" | "learning">,
 ): RetrievalCheck {
   const item = reviewItems(classroom).find((item) => item.key === input.key);
   if (!item) throw new Error(`No graded review item: ${input.key}`);
@@ -765,8 +824,22 @@ export function recordRetrievalCheck(
   ) {
     throw new Error("This learning record already has a retrieval check for this item.");
   }
-  const check = {
+  if (input.assistance !== undefined && !isAssistance(input.assistance))
+    throw new Error("Retrieval check has unknown assistance.");
+  if (input.task !== undefined && !["retrieval", "transfer"].includes(input.task))
+    throw new Error("Retrieval check task must be retrieval or transfer.");
+  const check: RetrievalCheck = {
     ...input,
+    learning:
+      item.objective && item.objectiveId
+        ? {
+            objectiveId: item.objectiveId,
+            objective: item.objective,
+            task: input.task ?? "retrieval",
+            support: "independent",
+            assistance: input.assistance ?? "unknown",
+          }
+        : undefined,
     id: randomUUID(),
     at: Math.max(Date.now(), item.lastAt + 1, ...previous.map((c) => c.at + 1)),
   };

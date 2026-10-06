@@ -254,6 +254,7 @@ export class TeacherService {
         pendingPretests: staged.pendingPretests,
       },
       privateRubric,
+      teachingPlan: r.kind === "quiz" ? store.findSubmission(r.target)?.teachingPlan : undefined,
       records: store.readLearningRecords(r.classroom),
       messages: state.messages.filter((m) => m.lesson === r.lesson),
       grades: store.latestGrades(r.classroom, r.lesson),

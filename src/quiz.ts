@@ -1,3 +1,4 @@
+import { isAssistance, type Assistance, type PerformanceEvidence } from "./evidence.ts";
 /**
  * quiz.ts: quiz answers on the server side: their shape, their validation, and the
  * text the teacher reads when grading.
@@ -18,7 +19,7 @@ import {
 
 export type { QuestionType, QuizKind };
 
-/** Metadata from quiz attempts saved before confidence controls were removed. */
+/** Optional confidence informs feedback only. */
 export type Confidence = "guess" | "unsure" | "sure";
 
 /** One piece of a structured answer: a chosen option, a filled blank, an ordered item. */
@@ -56,8 +57,11 @@ export interface QuizAnswer {
   parts?: AnswerPart[];
   /** `match`: one pair for each left-hand item. */
   pairs?: AnswerPair[];
-  /** Legacy metadata. It does not affect grading or spaced review. */
+  /** Confidence never affects credit or review intervals. */
   confidence?: Confidence;
+  assistance?: Assistance;
+  /** Bound by the server from the private teaching plan. Never accepted from client JSON. */
+  learning?: PerformanceEvidence;
   /** `review` quizzes: the key of the item this question reviews. */
   reviewOf?: string;
 }
@@ -144,6 +148,11 @@ export function parseAnswer(raw: unknown, kind: QuizKind): QuizAnswer {
       );
     }
     answer.confidence = a["confidence"];
+  }
+
+  if (a["assistance"] !== undefined) {
+    if (!isAssistance(a["assistance"])) throw new AnswerError(`${where} has unknown assistance.`);
+    answer.assistance = a["assistance"];
   }
 
   if (kind === "review") {
@@ -302,6 +311,14 @@ export function answerDetail(group: QuizAnswer[]): string[] {
       break;
   }
 
+  if (answer.confidence) lines.push(`Confidence: ${answer.confidence}. Use for feedback only.`);
+  lines.push(
+    `Assistance: ${answer.assistance ?? "unknown"}. Do not infer independence from a correct answer.`,
+  );
+  if (answer.learning)
+    lines.push(
+      `Objective: ${answer.learning.objective.statement}; mental task: ${answer.learning.task}; authored support: ${answer.learning.support}.`,
+    );
   if (answer.reviewOf) lines.push(`Reviews: \`${answer.reviewOf}\``);
   return lines;
 }

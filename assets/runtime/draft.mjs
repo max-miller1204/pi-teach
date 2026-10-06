@@ -22,7 +22,17 @@ const MAX_ITEM = 2000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The fields one question draft can hold. Each question type uses some of them. */
-const QUESTION_FIELDS = ["checked", "text", "unit", "blanks", "order", "pairs", "segments"];
+const QUESTION_FIELDS = [
+  "checked",
+  "text",
+  "unit",
+  "blanks",
+  "order",
+  "pairs",
+  "segments",
+  "confidence",
+  "assistance",
+];
 
 export function isDraftKey(value) {
   if (value === "ask" || value === "teacher") return true;
@@ -126,6 +136,10 @@ function isItem(value) {
 
 function fieldIsValid(field, value) {
   switch (field) {
+    case "confidence":
+      return ["guess", "unsure", "sure"].includes(value);
+    case "assistance":
+      return ["none", "hint", "solution", "unknown"].includes(value);
     case "text":
     case "unit":
       return typeof value === "string" && value.length <= MAX_DRAFT_TEXT;

@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 
+import { ASSISTANCE, type Assistance } from "./evidence.ts";
 import { reviewKey } from "../assets/runtime/quiz.mjs";
 import { applyAnswer, applyGrade } from "./bridge.ts";
 import { avoidedUses, htmlText } from "./glossary.ts";
@@ -164,21 +165,38 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       label: "Record Retrieval Check",
       description:
         "Record demonstrated understanding after a successful chat retrieval check. Link the original review item to an active learning record. Preserve quiz grades and schedule later review. Do not use for material merely covered or an unverified answer.",
-      parameters: object({
-        classroom: str("Classroom directory name."),
-        review_key: str(
-          "Original <lesson>/<quiz id>/<question id> from the grade or review schedule.",
-        ),
-        learning_record: str("Existing active learning record file name, such as 0002-exec.md."),
-        answer: str("The learner's actual answer to the new chat question."),
-        evidence: str("The new question and why the answer demonstrates the missed idea."),
-      }),
+      parameters: object(
+        {
+          classroom: str("Classroom directory name."),
+          review_key: str(
+            "Original <lesson>/<quiz id>/<question id> from the grade or review schedule.",
+          ),
+          learning_record: str("Existing active learning record file name, such as 0002-exec.md."),
+          answer: str("The learner's actual answer to the new chat question."),
+          evidence: str("The new question and why the answer demonstrates the missed idea."),
+          assistance: {
+            type: "string",
+            enum: ASSISTANCE,
+            description:
+              "Learner-reported assistance. Use unknown unless the learner states how they answered.",
+          },
+          task: {
+            type: "string",
+            enum: ["retrieval", "transfer"],
+            description:
+              "Use transfer only for an unfamiliar situation that applies the principle.",
+          },
+        },
+        ["assistance", "task"],
+      ),
       async execute(params: {
         classroom: string;
         review_key: string;
         learning_record: string;
         answer: string;
         evidence: string;
+        assistance?: Assistance;
+        task?: "retrieval" | "transfer";
       }) {
         if (!store.readClassroom(params.classroom))
           return fail(`No such classroom: ${params.classroom}`);
@@ -188,6 +206,8 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             learningRecord: params.learning_record,
             answer: params.answer,
             evidence: params.evidence,
+            assistance: params.assistance,
+            task: params.task,
           });
           return ok(
             `Recorded chat evidence for ${check.key}. The quiz grade is preserved. Later review remains scheduled.`,
@@ -591,6 +611,9 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           [
             `${i + 1}. data-review-of="${item.key}"`,
             `   Interval: box ${item.box + 1} of ${REVIEW_INTERVALS_DAYS.length}, due ${relativeDay(item.dueAt, now)}, ${item.attempts} recorded attempt${item.attempts === 1 ? "" : "s"}.`,
+            `   Evidence: ${item.progress}; latest context ${item.context}; ${item.delayedSuccesses} delayed successes; ${item.delayedTransfers} delayed transfers.`,
+            `   Schedule policy: ${item.schedulePolicy}. ${item.scheduleReason}`,
+            `   Objective policy: ${JSON.stringify(item.objective ?? { statement: "Recover the original objective from the question. Historical context is unknown." })}`,
             `   Original question: ${item.prompt || "(question text unavailable)"}`,
             `   Their last answer (${item.lastCorrect ? "correct" : item.lastCredit > 0 ? "partial credit" : "wrong"}): ${item.lastAnswer || "(blank)"}`,
             `   Your last feedback: ${item.lastFeedback}`,

@@ -29,11 +29,11 @@
   New lessons start with a pretest (`data-kind="pretest"`). Teaching stays out of the
   served page until the pretest is graded. Explicit quiz requests get assessment-only
   pages. A pretest never counts toward
-  the score. Quiz answers do not ask for a confidence rating.
+  the score. Confidence is optional and informs feedback only. Assistance reports describe evidence.
 - **Spaced review.** Every graded question gets a review schedule: 1, 3, 7, 21, then 60
   days. The schedule is calculated from the grades on disk. `scaffold_review` builds a
   review lesson from the due questions, mixed across lessons. Correctness controls
-  the schedule. Saved confidence metadata is kept but no longer affects review.
+  the schedule. Confidence never changes the schedule. Immediate success does not extend review. Old context stays unknown.
 - **Self-explanations.** A `form.cl-reflect` asks the learner to explain an idea in
   their own words. The teacher reads it. It is never graded.
 - **Diagrams.** A `<pre class="mermaid">` block in a lesson or a reference document is
@@ -43,7 +43,7 @@
   section is underlined. A click asks the learner to recall the meaning before it
   shows the definition.
 - **Progress and lesson health.** The classroom page shows what is due, what is
-  mastered, and the glossary size. `lesson_health` tells the teacher which passages and
+  retained evidence, missing transfer evidence, and the glossary size. `lesson_health` tells the teacher which passages and
   questions did not land.
 - **A widget that says who is teaching.** While the server is up, the TUI shows
   `📚 classroom server running on port <port>` below the editor. With several Pi sessions

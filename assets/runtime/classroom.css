@@ -1567,3 +1567,14 @@ figure:has(> .cl-diagram) figcaption {
 .cl-teacher-error {
   color: #b42318;
 }
+
+/* Reports describe feedback context. They do not change question credit. */
+.cl-answer-report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: var(--cl-text-muted);
+  font-size: 0.875rem;
+}

@@ -30,8 +30,9 @@
                  this content until grading. Do not nest pretest gates.
         review   a spaced review. Made by scaffold_review. Every question needs
                  data-review-of (see below).
-    * Answer each question directly. Do not add confidence controls. Old
-      data-confidence attributes have no effect.
+    * Answer each question directly. Use data-evidence="report" on new quizzes.
+      Use data-confidence="optional" when it helps feedback. The runtime adds
+      optional reports. Confidence never changes correctness or points.
     * Do not add your own submit button. The runtime adds one. If you add one, it is
       used instead.
 
@@ -265,8 +266,13 @@ println!("{:?}", a);</code></pre>
 </form>
 
 <!--
-  A pretest, at the top of a lesson, before the teaching. Use retrieval types. Keep it
-  to two or three questions. The teacher uses the result to decide what to stress.
+  A pretest, at the top of a lesson, before the teaching. Invite attempted answers. Keep it
+  to two or three questions as a practical default, not a research optimum.
+  Ask about central UPCOMING ideas. Invite predictions, explanations, or attempted
+  solutions before instruction. Prior retrieval and prerequisite diagnosis are
+  separate tasks. Map objectives and gated teaching in private quiz/plan.json.
+  The teacher clarifies or stresses ideas in feedback. The gate releases prewritten
+  teaching. It does not rewrite the lesson.
 -->
 <form class="cl-quiz" data-quiz-id="pretest" data-kind="pretest" data-title="Before you start">
   <ol class="cl-questions">
@@ -288,3 +294,19 @@ println!("{:?}", a);</code></pre>
   </p>
   <textarea rows="4"></textarea>
 </form>
+
+<!--
+  Evidence contract. Add data-evidence="report" to each new form.cl-quiz.
+  The runtime asks how the learner answered. Missing assistance stays unknown.
+  Add data-confidence="optional" to a form or a question when feedback benefits
+  from confidence. It never changes correctness, points, or review intervals.
+  Both reports are optional. They survive drafts and saved attempts.
+  Write private quiz/plan.json. Read docs/TEACHING-PLAN.md.
+  Map questions to objectives, mental tasks, and authored support levels.
+  For upcoming prequestions, map each question to teaching inside its server gate.
+  Use equivalent solutions and component-specific partial credit in quiz/key.json.
+  Choose an interaction for its mental task. Nine types are not a variety quota.
+  A copied blank or complex puzzle is not sufficient evidence of application.
+  Use Mermaid accTitle and accDescr, or an aria-label and a text description.
+  The runtime preserves the accessible name. Check the SVG and grading source.
+-->

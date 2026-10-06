@@ -173,6 +173,9 @@ export function applyGrade(
   };
 
   store.writeGrade(grade);
-  server.pushEvent(submission.classroom, submission.lesson, "grade", { submission, grade });
+  server.pushEvent(submission.classroom, submission.lesson, "grade", {
+    submission: store.publicSubmission(submission),
+    grade,
+  });
   return grade;
 }
