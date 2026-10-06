@@ -49,6 +49,7 @@ pinned to that passage. Hand in a quiz and your teacher grades it.
 - **Diagrams.** A `<pre class="mermaid">` block in a lesson or a reference document is
   drawn as a Mermaid diagram, in the colours of the current theme. Mermaid is bundled,
   so diagrams work offline. A diagram that does not parse shows its error on the page.
+  `docs/DIAGRAM-FORMAT.md` tells the teacher when and how to draw one.
 - **Glossary terms in lessons.** The first use of each `GLOSSARY.md` term in each
   section is underlined. A click asks the learner to recall the meaning before it
   shows the definition.

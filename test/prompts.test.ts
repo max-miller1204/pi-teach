@@ -59,6 +59,7 @@ describe("teachingPrompt", () => {
     expect(prompt).toContain("MISSION-FORMAT.md");
     expect(prompt).toContain("LEARNING-RECORD-FORMAT.md");
     expect(prompt).toContain("NOTES-FORMAT.md");
+    expect(prompt).toContain("DIAGRAM-FORMAT.md");
     // The guides themselves stay out of the prompt — they are read on demand.
     expect(prompt).not.toContain("One mission per workspace.");
   });
