@@ -7,7 +7,9 @@ A dedicated Claude or Codex teacher answers saved learner requests after the ini
 - `teacher.idle`: Answer a request after host exit.
 - `teacher.card`: Render the saved answer on its card.
 - `teacher.reply`: Accept a panel reply and resume the teacher session.
-- `teacher.failure`: Show an error and an explicit retry action.
+- `teacher.failure`: Show an error and accept an explicit retry action.
+- `teacher.composer`: Select text and submit through the highlight composer.
+- `teacher.drafts`: Restore unsent card follow-ups and teacher replies.
 
 ## How to get to it (user POV)
 
@@ -26,9 +28,11 @@ Preconditions: Run the chosen host's version and login checks from the skill. Au
 - **Codex:** Run `node scripts/e2e.ts codex "$PI_VERIFY_RUN/evidence/teacher-codex" > "$PI_VERIFY_RUN/evidence/teacher-codex.log" 2>&1`. Record the exit code with `printf '%s\n' "$?" > "$PI_VERIFY_RUN/evidence/teacher-codex.exit"` immediately afterward.
 - **Observe:** Require the host-exit, answered-card, panel-reply, and session-resume assertions to pass. Inspect the teacher-panel PNG and logs. The harness reads `/api/state` and checks the saved answer and session identity.
 - **Pi:** Run `npm run e2e:pi -- "$PI_VERIFY_RUN/evidence/pi" > "$PI_VERIFY_RUN/evidence/pi.log" 2>&1`. Immediately run `printf '%s\n' "$?" > "$PI_VERIFY_RUN/evidence/pi.exit"`. The harness sets `PI_CLASSROOM_CONFIG` to a file in its fixture. A port in the learner's own `~/.pi/agent/classroom.json` cannot block it.
+- **Composer:** Both host harnesses select `one owner` with mouse actions. They click `.cl-ask-pill`, fill `[data-cl-question]`, and click `Ask your teacher`. Require HTTP 201, the selected anchor, and the answered annotation on disk. Inspect `composer-annotation.json`.
+- **Retry and drafts:** Run `node scripts/e2e-browser.ts "$PI_VERIFY_RUN/evidence/quizzes"` with output and exit capture from the quizzes recipe. This also runs `scripts/e2e-service-browser.ts` in a separate service fixture. Its mock Codex executable fails the first turn. Require the stored failure and visible error. Click the exact button `Retry request`. Require one request with the same ID, an answered annotation, and exactly one new mock turn in the same session. Inspect `service/failed-request.json`, `service/retried-request.json`, and their PNG files.
 - **Handles:** The panel uses `.cl-teacher`, `.cl-teacher-messages`, and the button named `Send reply`. Inspect `scripts/e2e.ts` for the exact API payload and waiting conditions.
-- **Drafts:** The quizzes feature's browser harness opens the composer from a highlight and reloads its draft. It does not submit the question. No harness reloads a follow-up or teacher reply draft.
+- **Drafts:** The wait-mode browser block fills `[data-cl-followup]` on a saved card and reloads. Inspect `restored-followup-draft.png` and `stored-learner-paths.json`. The service fixture fills `[data-cl-followup]` and the textbox named `Reply to your teacher`, waits for both values in `drafts.json`, then reloads. Require both values back and no submitted follow-up or chat request. Inspect `service/before-draft-reload.json` and `service/restored-card-and-teacher-drafts.png`. After the reconnect check, click `Send reply`. Require the learner message on disk and no teacher draft. Inspect `service/sent-teacher-reply.json`.
 
 ## Gotchas
 
-The first question uses `/api/ask`. This does not verify highlight selection, composer submission, or follow-up controls. The harness verifies successful replies. It does not drive error retries. State these gaps in the report. Model output can vary. Do not suppress a failed plan, switch models, or write an answer directly to make the evaluation pass. `npm run e2e:pi` covers the live Pi path. Its last run passed. An earlier run failed on a model-issued Bash call after answering and grading. Diagnose any failure before reporting Pi as verified.
+The host harnesses prove composer submission and successful replies. The mock service fixture proves the retry control. It does not prove recovery from every real backend error. No harness submits a saved-card follow-up. Keep that entry point unverified. Model output can vary. Do not suppress a failed plan, switch models, or write an answer directly to make the evaluation pass. Diagnose a failed Pi or model-host run before reporting it as verified.

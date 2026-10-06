@@ -71,6 +71,89 @@ async function browserRegression(page) {
     throw new Error(`${message}: ${JSON.stringify(await serverDrafts())}`);
   };
 
+  const selectPhrase = async (phrase, selector = "section") => {
+    await page.locator(selector).scrollIntoViewIfNeeded();
+    const box = await page.locator(selector).evaluate((element, text) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        const start = node.nodeValue.indexOf(text);
+        if (start < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, start + text.length);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }
+      throw new Error(`No lesson text matches ${text}.`);
+    }, phrase);
+    await page.mouse.move(box.x + 0.5, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 0.5, box.y + box.height / 2, { steps: 10 });
+    await page.mouse.up();
+    assert(
+      (await page.evaluate(() => getSelection().toString())) === phrase,
+      "Mouse selection lost the passage",
+    );
+  };
+  async function verifyReflectionAndFollowUpDrafts() {
+    const reflection = page.locator('form[data-reflect-id="ownership"]');
+    const text = "The owner releases the value.";
+    await reflection.locator("textarea").fill(text);
+    await waitDrafts(
+      (drafts) => drafts["reflect:ownership"] === text,
+      "The reflection draft was not saved",
+    );
+    await page.reload();
+    await page.waitForFunction(
+      (text) => document.querySelector("form.cl-reflect textarea").value === text,
+      text,
+    );
+    await screenshot("restored-reflection-draft");
+    const response = page.waitForResponse(
+      (r) => r.url().endsWith("/api/reflect") && r.request().method() === "POST",
+    );
+    await reflection.getByRole("button", { name: "Save", exact: true }).click();
+    const saved = await response;
+    assert(saved.status() === 201, await saved.text());
+    await waitDrafts(
+      (drafts) => !Object.hasOwn(drafts, "reflect:ownership"),
+      "Save kept the reflection draft",
+    );
+    await page.reload();
+    await page.waitForFunction(
+      (text) => document.querySelector("form.cl-reflect textarea").value === text,
+      text,
+    );
+    await screenshot("saved-reflection");
+
+    await selectPhrase("one owner", "[data-draft-passage]");
+    await page.locator(".cl-ask-pill").click();
+    await page.locator("[data-cl-question]").fill("Who releases the value?");
+    const asked = page.waitForResponse(
+      (r) => r.url().endsWith("/api/ask") && r.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Ask your teacher", exact: true }).click();
+    const answer = await asked;
+    assert(answer.status() === 201, await answer.text());
+    const annotation = await answer.json();
+    const followup = page.locator(`[data-annotation-id="${annotation.id}"] [data-cl-followup]`);
+    await followup.fill("Does moving change the owner?");
+    await waitDrafts(
+      (drafts) => drafts[`followup:${annotation.id}`] === "Does moving change the owner?",
+      "The follow-up draft was not saved",
+    );
+    await page.reload();
+    await page.waitForFunction(
+      (id) =>
+        document.querySelector(`[data-annotation-id="${id}"] [data-cl-followup]`)?.value ===
+        "Does moving change the owner?",
+      annotation.id,
+    );
+    await screenshot("restored-followup-draft");
+  }
+  await verifyReflectionAndFollowUpDrafts();
+
   assert((await page.locator(".cl-confidence").count()) === 0, "The page has confidence controls");
   assert(
     !(await page.locator("body").innerText()).includes("How sure are you?"),
@@ -245,22 +328,6 @@ async function browserRegression(page) {
   await page.unroute("**/api/quiz/submit");
 
   // An unsent question keeps its text and its highlight through a reload.
-  const selectPhrase = (phrase) =>
-    page.evaluate((text) => {
-      const walker = document.createTreeWalker(
-        document.querySelector("section"),
-        NodeFilter.SHOW_TEXT,
-      );
-      let node = walker.nextNode();
-      while (node && !node.nodeValue.includes(text)) node = walker.nextNode();
-      const start = node.nodeValue.indexOf(text);
-      const range = document.createRange();
-      range.setStart(node, start);
-      range.setEnd(node, start + text.length);
-      getSelection().removeAllRanges();
-      getSelection().addRange(range);
-      document.dispatchEvent(new MouseEvent("mouseup"));
-    }, phrase);
   const question = page.locator("[data-cl-question]");
   const composerQuote = page.locator(".cl-card-panel:not(.cl-card-inline) [data-cl-quote]");
   const marker = page.getByRole("button", { name: "Open your unsent question", exact: true });
@@ -509,6 +576,8 @@ async function browserRegression(page) {
   await observer.close();
   return {
     passed: [
+      "self-explanation Save and draft reload",
+      "saved card follow-up draft reload",
       "no confidence controls or submitted metadata",
       "glossary",
       "locked graded quiz",
