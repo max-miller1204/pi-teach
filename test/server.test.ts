@@ -712,6 +712,22 @@ describe("drafts", () => {
     expect(await drafts()).toEqual({});
   });
 
+  it("saves nothing when the draft file cannot be read", async () => {
+    fixture.write(`rust/${lesson}/drafts.json`, "{");
+    const before = store.listReflections("rust", lesson).length;
+    const res = await post("/api/reflect", {
+      classroom: "rust",
+      lesson,
+      reflectId: "explain-2",
+      prompt: "Explain.",
+      text: "Each value has one owner.",
+    });
+    expect(res.status).toBe(500);
+    expect(store.listReflections("rust", lesson)).toHaveLength(before);
+    expect(reflected).toHaveLength(0);
+    fixture.write(`rust/${lesson}/drafts.json`, "{}");
+  });
+
   it("removes a card's follow-up draft with the card", async () => {
     const card = (await (
       await post("/api/ask", { classroom: "rust", lesson, question: "Why?", anchor })

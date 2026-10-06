@@ -416,8 +416,8 @@ async function handleApi(
     )
       return sendJson(res, { error: "Invalid teacher reply." }, 400);
     if (!hooks?.onTeacherChat) return sendJson(res, { error: "No dedicated teacher." }, 409);
-    hooks.onTeacherChat(classroom, lesson, text.trim(), id);
     store.clearDraft(classroom, lesson, "teacher");
+    hooks.onTeacherChat(classroom, lesson, text.trim(), id);
     return sendJson(res, { saved: true }, 201);
   }
   if (route === "teacher/retry" && req.method === "POST") {
@@ -529,6 +529,9 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
   if (!store.readLesson(classroom, lesson)) return sendJson(res, { error: "Unknown lesson" }, 404);
 
   hooks?.canAccept?.(classroom);
+  // Before the save: a draft file that cannot be read must stop the request, not
+  // leave a saved question that the teacher never hears about.
+  store.clearDraft(classroom, lesson, "ask");
   const annotation = store.createAnnotation({
     classroom,
     lesson,
@@ -538,7 +541,6 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
     anchor,
   });
 
-  store.clearDraft(classroom, lesson, "ask");
   hooks?.onAsk(annotation);
   sendJson(res, annotation, 201);
 }
@@ -567,10 +569,10 @@ async function handleFollowUp(
   }
 
   hooks?.canAccept?.(existing.classroom);
+  store.clearDraft(existing.classroom, existing.lesson, `followup:${annotationId}`);
   const added = store.addFollowUp(annotationId, question.slice(0, 4000));
   if (!added) return sendJson(res, { error: "Could not save the follow-up" }, 500);
 
-  store.clearDraft(existing.classroom, existing.lesson, `followup:${annotationId}`);
   hooks?.onFollowUp(added.annotation, added.followUp);
   sendJson(res, added.annotation, 201);
 }
@@ -630,6 +632,7 @@ async function handleQuizSubmit(
   }
 
   hooks?.canAccept?.(classroom);
+  store.clearDraft(classroom, lesson, `quiz:${quizId}`);
   const submission = store.createSubmission({
     classroom,
     lesson,
@@ -639,7 +642,6 @@ async function handleQuizSubmit(
     answers,
   });
 
-  store.clearDraft(classroom, lesson, `quiz:${quizId}`);
   hooks?.onQuizSubmit(submission);
   sendJson(res, submission, 201);
 }
@@ -667,6 +669,7 @@ async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse
   if (!text) return sendJson(res, { error: "A reflection needs some text" }, 400);
 
   hooks?.canAccept?.(classroom);
+  store.clearDraft(classroom, lesson, `reflect:${reflectId}`);
   const reflection = store.createReflection({
     classroom,
     lesson,
@@ -675,7 +678,6 @@ async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse
     text: text.slice(0, 8000),
   });
 
-  store.clearDraft(classroom, lesson, `reflect:${reflectId}`);
   hooks?.onReflect(reflection);
   sendJson(res, reflection, 201);
 }
@@ -714,8 +716,8 @@ async function handleDraft(req: http.IncomingMessage, res: http.ServerResponse):
 function handleDeleteAnnotation(res: http.ServerResponse, id: string, url: URL): void {
   const params = lessonParams(url);
   if (!params) return sendJson(res, { error: "classroom and lesson are required" }, 400);
+  store.clearDraft(params.classroom, params.lesson, `followup:${id}`);
   const removed = store.deleteAnnotation(params.classroom, params.lesson, id);
-  if (removed) store.clearDraft(params.classroom, params.lesson, `followup:${id}`);
   sendJson(res, { removed });
 }
 
