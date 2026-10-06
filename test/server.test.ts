@@ -4,6 +4,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { applyAnswer, applyGrade } from "../src/bridge.ts";
 import * as server from "../src/server.ts";
@@ -56,6 +58,40 @@ const post = (path: string, body: unknown) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
+it("rejects public file and directory symlinks to private quiz files", async () => {
+  fixture.write("rust/001-ownership/quiz/private-key.json", '{"secret":"answer"}');
+  fixture.write("rust/001-ownership/media/plain.txt", "Public media");
+  fixture.write("rust/assets/plain.txt", "Public asset");
+  fixture.write("rust/reference/plain.html", "Public reference");
+  const privatePath = path.join(fixture.root, "rust/001-ownership/quiz/private-key.json");
+  for (const [dir, route] of [
+    ["rust/001-ownership/media", "/c/rust/001-ownership/media"],
+    ["rust/assets", "/c/rust/assets"],
+    ["rust/reference", "/r/rust"],
+  ]) {
+    fs.symlinkSync(privatePath, path.join(fixture.root, dir, "leaked.html"));
+    fs.symlinkSync(path.dirname(privatePath), path.join(fixture.root, dir, "linked-dir"));
+    expect((await get(`${route}/leaked.html`)).status).toBe(404);
+    expect((await get(`${route}/linked-dir/private-key.json`)).status).toBe(404);
+  }
+  expect((await get("/c/rust/001-ownership/media/plain.txt")).status).toBe(200);
+});
+
+it("rejects a private answer key linked from the learning records index", async () => {
+  const sentinel = "PRIVATE RECORD ANSWER SENTINEL";
+  fixture.write("rust/001-ownership/quiz/key.json", `# Private key\n\n${sentinel}`);
+  fixture.write("rust/learning-records/0001-public.md", "# Public record\n\nPublic evidence.");
+  fs.symlinkSync(
+    path.join(fixture.root, "rust/001-ownership/quiz/key.json"),
+    path.join(fixture.root, "rust/learning-records/0002-secret.md"),
+  );
+  const index = await get("/doc/rust/learning-records");
+  expect(index.status).toBe(500);
+  expect(await index.text()).not.toContain(sentinel);
+  expect((await get("/doc/rust/learning-records/0002-secret.md")).status).toBe(404);
+  fs.unlinkSync(path.join(fixture.root, "rust/learning-records/0002-secret.md"));
+});
 
 /** Read Server-Sent Events until `predicate` matches or the deadline passes. */
 async function nextEvent(

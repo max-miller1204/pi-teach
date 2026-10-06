@@ -22,7 +22,11 @@ describe("lesson and review shells", () => {
       expect(html).toContain('<main class="cl-lesson-shell" data-cl-content>');
       expect(html).toContain("Read the current quiz contract: assets/templates/quiz.html");
       expect(authoredQuestions(html)).toEqual([
-        { id: name === "lesson.html" ? "q1" : "r1", type: "CHOOSE-A-TYPE" },
+        {
+          id: name === "lesson.html" ? "q1" : "r1",
+          type: "CHOOSE-A-TYPE",
+          ...(name === "review.html" ? { reviewOf: "REPLACE-lesson/quiz-id/question-id" } : {}),
+        },
       ]);
       for (const type of QUESTION_TYPES) expect(html).toMatch(new RegExp(`^ +${type} +\\S`, "m"));
     },

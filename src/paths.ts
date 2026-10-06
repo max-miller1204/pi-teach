@@ -144,6 +144,25 @@ export function safeJoin(root: string, relative: string): string | null {
   return target;
 }
 
+/** Public routes must not follow symlinks into private classroom files. */
+export function safeStaticFile(root: string, relative: string): string | null {
+  const target = safeJoin(root, relative);
+  if (!target) return null;
+  let current = path.resolve(root);
+  const segments = path.relative(current, target).split(path.sep).filter(Boolean);
+  try {
+    if (fs.lstatSync(current).isSymbolicLink()) return null;
+    for (const segment of segments) {
+      current = path.join(current, segment);
+      if (fs.lstatSync(current).isSymbolicLink()) return null;
+    }
+  } catch (err) {
+    if (["ENOENT", "ENOTDIR"].includes((err as NodeJS.ErrnoException).code ?? "")) return null;
+    throw err;
+  }
+  return target;
+}
+
 /** Whether a path exists and is a directory. */
 export function isDir(p: string): boolean {
   try {
