@@ -708,6 +708,13 @@ mark.cl-hl.cl-hl-pending {
   filter: brightness(1.1);
 }
 
+/* An unsent question: outlined, so it does not look like a saved card. */
+.cl-badge-marker.cl-badge-draft {
+  border: 1px dashed var(--cl-accent);
+  background: transparent;
+  color: var(--cl-accent);
+}
+
 .cl-ask-pill {
   position: absolute;
   z-index: 60;

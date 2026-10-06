@@ -245,33 +245,50 @@ async function browserRegression(page) {
   await page.unroute("**/api/quiz/submit");
 
   // An unsent question keeps its text and its highlight through a reload.
-  await page.evaluate(() => {
-    const walker = document.createTreeWalker(
-      document.querySelector("section"),
-      NodeFilter.SHOW_TEXT,
-    );
-    let node = walker.nextNode();
-    while (node && !node.nodeValue.includes("checks again")) node = walker.nextNode();
-    const start = node.nodeValue.indexOf("checks again");
-    const range = document.createRange();
-    range.setStart(node, start);
-    range.setEnd(node, start + "checks again".length);
-    getSelection().removeAllRanges();
-    getSelection().addRange(range);
-    document.dispatchEvent(new MouseEvent("mouseup"));
-  });
+  const selectPhrase = (phrase) =>
+    page.evaluate((text) => {
+      const walker = document.createTreeWalker(
+        document.querySelector("section"),
+        NodeFilter.SHOW_TEXT,
+      );
+      let node = walker.nextNode();
+      while (node && !node.nodeValue.includes(text)) node = walker.nextNode();
+      const start = node.nodeValue.indexOf(text);
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + text.length);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.dispatchEvent(new MouseEvent("mouseup"));
+    }, phrase);
+  const question = page.locator("[data-cl-question]");
+  const composerQuote = page.locator(".cl-card-panel:not(.cl-card-inline) [data-cl-quote]");
+  const marker = page.getByRole("button", { name: "Open your unsent question", exact: true });
+  await selectPhrase("checks again");
   await page.locator(".cl-ask-pill").click();
-  await page.locator("[data-cl-question]").fill("Why does it check twice?");
+  await question.fill("Why does it check twice?");
   await waitDrafts(
     (drafts) => drafts.ask?.text === "Why does it check twice?",
     "The unsent question was not saved as a draft",
   );
   await page.reload();
-  await page.locator("[data-cl-question]").waitFor();
+  await marker.waitFor();
+  assert(await question.isHidden(), "The unsent question floats over the lesson after reload");
+  await screenshot("restored-question-marker");
+  // A new question must not replace the unsent one without asking.
+  await selectPhrase("rejects it");
+  await page.locator(".cl-ask-pill").click();
+  await page.getByRole("button", { name: "Keep it", exact: true }).click();
   assert(
-    (await page.locator("[data-cl-question]").inputValue()) === "Why does it check twice?" &&
-      (await page.locator("[data-cl-quote]").first().innerText()) === "checks again",
-    "Reload lost the unsent question or its highlight",
+    (await question.isHidden()) && (await marker.isVisible()),
+    "Keep it did not keep the unsent question",
+  );
+  await marker.click();
+  assert(
+    (await question.inputValue()) === "Why does it check twice?" &&
+      (await composerQuote.innerText()) === "checks again" &&
+      (await marker.count()) === 0,
+    "The marker did not open the unsent question at its highlight",
   );
   await screenshot("restored-question-draft");
   await page.keyboard.press("Escape");
@@ -280,7 +297,7 @@ async function browserRegression(page) {
   await page.locator('[data-quiz-id="all-types"]').waitFor();
   await page.waitForFunction(() => document.querySelector("section .cl-term"));
   assert(
-    await page.locator("[data-cl-question]").isHidden(),
+    (await question.isHidden()) && (await marker.count()) === 0,
     "A cancelled question came back after reload",
   );
   const allTypes = page.locator('[data-quiz-id="all-types"]');

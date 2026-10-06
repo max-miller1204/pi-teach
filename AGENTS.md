@@ -185,7 +185,9 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   `<lesson>/drafts.json` as the learner types, and restores them once on load. Drafts
   never reach the teacher and never wake the agent. The handler that accepts the text
   removes its draft. A restored quiz draft only fills a form that is still `fresh`. A
-  reconnect must not replace typed text, so drafts are not applied again.
+  restored question comes back as a marker at its highlight, not as an open composer,
+  because the composer floats over the lesson. A reconnect must not replace typed text,
+  so drafts are not applied again.
 - **`quiz/` is never a static route.** It holds submissions and any answer key. Adding a
   route that serves lesson directories wholesale would leak it; the media route is
   deliberately narrow (`<lesson>/media/*` only).

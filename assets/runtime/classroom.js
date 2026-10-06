@@ -65,6 +65,8 @@ let composerAnchor = null;
 let draftsRestored = false;
 /** The saved question draft, held until the glossary has wrapped its terms. */
 let askDraft = null;
+/** The marker at the highlight of a restored question draft, until it is opened. */
+let askMarker = null;
 
 const MINIMISED_KEY = `pi-classroom-minimised:${location.pathname}`;
 
@@ -394,9 +396,29 @@ function buildComposer() {
   });
 }
 
-function openComposer() {
+async function openComposer() {
   if (!pendingRange) return;
   hideAskPill();
+  // There is one question draft. A new question must not replace it without asking.
+  if (askMarker) {
+    const range = pendingRange;
+    const discard = await askConfirm({
+      title: "Replace your unsent question?",
+      body: "You have a question that you did not send. A new question removes it.",
+      confirmLabel: "Remove it",
+      cancelLabel: "Keep it",
+    });
+    if (!discard) return;
+    removeAskMarker();
+    saveDraftNow(
+      "ask",
+      () => null,
+      (err) => {
+        if (err) alert(`Could not remove your question draft: ${err.message}`);
+      },
+    );
+    pendingRange = range;
+  }
   showComposer("");
   composer.querySelector("[data-cl-question]").focus();
 }
@@ -440,20 +462,63 @@ function saveAskDraft() {
   );
 }
 
-/** Put the saved question draft back in the composer, at its highlight. */
+/**
+ * Put a marker at the highlight of the saved question draft.
+ *
+ * The draft comes back closed, like a minimised card. An open composer floats, so it
+ * would cover the lesson the learner came back to read. A click on the marker opens it.
+ */
 function restoreAskDraft() {
   if (!askDraft) return;
   const draft = askDraft;
   askDraft = null;
-  const index = buildTextIndex(contentRoot);
-  const match = findSelector(index.text, draft.anchor);
-  const range = match ? rangeFromOffsets(index, match.start, match.end) : null;
+  const range = rangeForAnchor(draft.anchor);
+  if (!range) {
+    console.error("[classroom] The saved question draft no longer matches the lesson text.", draft);
+    return;
+  }
+  askMarker = document.createElement("button");
+  askMarker.type = "button";
+  askMarker.className = "cl-badge-marker cl-badge-draft";
+  askMarker.textContent = "\u270E\uFE0E"; // the pencil as text, not as an emoji
+  askMarker.title = "Open your unsent question";
+  askMarker.setAttribute("aria-label", "Open your unsent question");
+  askMarker.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openAskDraft(draft);
+  });
+  const end = range.cloneRange();
+  end.collapse(false);
+  end.insertNode(askMarker);
+}
+
+/** Open the composer with the saved question draft, at its highlight. */
+function openAskDraft(draft) {
+  removeAskMarker();
+  const range = rangeForAnchor(draft.anchor);
   if (!range) {
     console.error("[classroom] The saved question draft no longer matches the lesson text.", draft);
     return;
   }
   pendingRange = range;
+  hideAskPill();
   showComposer(draft.text);
+  composer.querySelector("[data-cl-question]").focus();
+}
+
+function removeAskMarker() {
+  const parent = askMarker.parentNode;
+  askMarker.remove();
+  askMarker = null;
+  // insertNode split a text node to make room for the marker. Join it again.
+  parent.normalize();
+}
+
+/** The DOM range a text-quote selector names, or null when the lesson text changed. */
+function rangeForAnchor(anchor) {
+  const index = buildTextIndex(contentRoot);
+  const match = findSelector(index.text, anchor);
+  return match ? rangeFromOffsets(index, match.start, match.end) : null;
 }
 
 /** A text-quote selector for a range, or null when the range is outside the lesson. */
