@@ -54,7 +54,8 @@
 
   ── Other features ───────────────────────────────────────────────────────────────
 
-    * Pretest: a quiz with data-kind="pretest" before the teaching. Diagnostic only.
+    * Pretest: required by default for new teaching. Keep teaching inside the
+      data-cl-after-pretest template until grading. Skip only if the learner asks.
     * .cl-q-stimulus: code, a passage, a table, an image, or a diagram for a question.
       Give images useful alt text. Grading receives the stimulus text and alt text.
     * form.cl-reflect: an ungraded self-explanation. Read it. It is not proof of
@@ -95,36 +96,54 @@
         <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
       </header>
 
-      <!--
-        Optional example: a short teaching block. Cite each claim inline, like
-        <a href="https://example.com">this</a>. Replace or delete it.
-      -->
-      <section>
-        <h2>Replace this heading</h2>
-        <p>Teach toward the objective. Show a concrete case before you ask for work.</p>
-      </section>
-
-      <!--
-        REPLACE: the question below is unfinished on purpose. Its data-type is not a
-        valid type, so the page shows a contract error until you choose a type and
-        write the question. Place quizzes where they serve the lesson. A lesson can
-        have a pretest, checks between steps, or one check at the end.
-      -->
-      <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
+      <!-- KEEP for a new lesson. Use two or three diagnostic questions. -->
+      <form
+        class="cl-quiz"
+        data-quiz-id="pretest-1"
+        data-kind="pretest"
+        data-title="Before you learn"
+      >
         <ol class="cl-questions">
-          <li class="cl-q" data-question-id="q1" data-type="CHOOSE-A-TYPE">
-            <p class="cl-q-prompt">Write a question that tests the objective.</p>
+          <li class="cl-q" data-question-id="p1" data-type="CHOOSE-A-TYPE">
+            <p class="cl-q-prompt">Write a diagnostic retrieval question.</p>
           </li>
         </ol>
       </form>
 
-      <!--
+      <!-- KEEP: the server removes this content until pretest-1 is graded.
+           Keep teaching, worked examples, checks, and source links inside it.
+           Do not put answers in comments, scripts, or public files outside it. -->
+      <template data-cl-after-pretest="pretest-1">
+        <!--
+        Optional example: a short teaching block. Cite each claim inline, like
+        <a href="https://example.com">this</a>. Replace or delete it.
+      -->
+        <section>
+          <h2>Replace this heading</h2>
+          <p>Teach toward the objective. Show a concrete case before you ask for work.</p>
+        </section>
+
+        <!--
+        REPLACE: the question below is unfinished on purpose. Its data-type is not a
+        valid type, so the page shows a contract error until you choose a type and
+        write the question. Place quizzes where they serve the lesson. Keep the pretest outside its gate. Put post-teaching checks inside the gate.
+      -->
+        <form class="cl-quiz" data-quiz-id="check-1" data-title="Check on learning">
+          <ol class="cl-questions">
+            <li class="cl-q" data-question-id="q1" data-type="CHOOSE-A-TYPE">
+              <p class="cl-q-prompt">Write a question that tests the objective.</p>
+            </li>
+          </ol>
+        </form>
+
+        <!--
         Optional example: one primary source, the best thing to read or watch next.
       -->
-      <section>
-        <h2>Go deeper</h2>
-        <p><a href="https://example.com">Author, "Title"</a></p>
-      </section>
+        <section>
+          <h2>Go deeper</h2>
+          <p><a href="https://example.com">Author, "Title"</a></p>
+        </section>
+      </template>
 
       <!-- KEEP: the ask hint and the link back to the classroom. -->
       <footer>

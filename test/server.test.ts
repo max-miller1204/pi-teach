@@ -52,12 +52,6 @@ beforeEach(() => {
 });
 
 const get = (path: string) => fetch(`${baseUrl}${path}`);
-const post = (path: string, body: unknown) =>
-  fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
 
 it("rejects public file and directory symlinks to private quiz files", async () => {
   fixture.write("rust/001-ownership/quiz/private-key.json", '{"secret":"answer"}');
@@ -92,6 +86,51 @@ it("rejects a private answer key linked from the learning records index", async 
   expect((await get("/doc/rust/learning-records/0002-secret.md")).status).toBe(404);
   fs.unlinkSync(path.join(fixture.root, "rust/learning-records/0002-secret.md"));
 });
+
+it("withholds lesson content until its pretest is graded, including from page source", async () => {
+  const lesson = "099-staged";
+  fixture.write(
+    `rust/${lesson}/lesson.html`,
+    '<html><head></head><body><main data-cl-content><form class="cl-quiz" data-kind="pretest" data-quiz-id="before"></form><template data-cl-after-pretest="before"><p>PRIVATE TEACHING EXAMPLE</p><form class="cl-quiz" data-quiz-id="check"></form></template></main></body></html>',
+  );
+  const url = `/c/rust/${lesson}`;
+  expect(await (await get(url)).text()).not.toContain("PRIVATE TEACHING EXAMPLE");
+  const blocked = await post("/api/quiz/submit", {
+    classroom: "rust",
+    lesson,
+    quizId: "check",
+    kind: "check",
+    answers: [termAnswer("q1", "answer")],
+  });
+  expect(blocked.status).toBe(409);
+  expect(store.listSubmissions("rust", lesson)).toHaveLength(0);
+  const s = store.createSubmission({
+    classroom: "rust",
+    lesson,
+    quizId: "before",
+    quizTitle: "Before",
+    kind: "pretest",
+    answers: [termAnswer("q1", "wrong")],
+  });
+  expect(await (await get(url)).text()).not.toContain("PRIVATE TEACHING EXAMPLE");
+  applyGrade(s, {
+    score: 0,
+    feedbackMarkdown: "Diagnostic only.",
+    questions: [{ questionId: "q1", correct: false, feedback: "Not known yet." }],
+  });
+  const released = await (await get(url)).text();
+  expect(released).toContain("PRIVATE TEACHING EXAMPLE");
+  expect(released).toContain('data-quiz-id="check"');
+  expect(released).not.toContain("<template");
+  expect(store.readLesson("rust", lesson)?.latestScore).toBeNull();
+  expect(store.reviewItems("rust").some((item) => item.lesson === lesson)).toBe(false);
+});
+const post = (path: string, body: unknown) =>
+  fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
 /** Read Server-Sent Events until `predicate` matches or the deadline passes. */
 async function nextEvent(

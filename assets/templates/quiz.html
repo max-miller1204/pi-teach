@@ -4,7 +4,7 @@
   sessions, so do not rely on an earlier copy.
 
   Use this for quizzes, tests, pretests, reviews, and checks on learning. They are the
-  same thing at different sizes. Put a <form class="cl-quiz"> anywhere in a lesson.
+  same markup contract. Honor the request: a quiz-only page has no teaching. Put a <form class="cl-quiz"> anywhere in a lesson.
   The runtime checks it, adds the controls each question type needs, adds the submit
   button and status line, locks the form on submit, writes the answers to the lesson's
   quiz/ directory, asks the teacher to grade them, and shows the grade inline. After a
@@ -25,6 +25,9 @@
         pretest  before the teaching. Diagnostic: wrong answers are expected, the
                  score never counts as the lesson score, and the answers never enter
                  the review schedule. Put it at the top of the lesson.
+                 Wrap teaching and later checks in a template with
+                 data-cl-after-pretest="<pretest quiz id>". The server withholds
+                 this content until grading. Do not nest pretest gates.
         review   a spaced review. Made by scaffold_review. Every question needs
                  data-review-of (see below).
     * Answer each question directly. Do not add confidence controls. Old
@@ -71,6 +74,10 @@
 
   ── Rules that matter for learning ────────────────────────────────────────────────
 
+    * Keep standalone quizzes and reviews free of teaching, hints, and solutions.
+      In teaching, use a new example for each graded question.
+    * Never put the answer key in HTML, comments, scripts, data attributes, or
+      public linked files. A details reveal or CSS hiding still exposes it.
     * Never put the answer key in the HTML. The learner can read the page source, and
       grading is the teacher's job.
     * Make every option the same length, in words and if possible in characters.

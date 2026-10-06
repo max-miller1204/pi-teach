@@ -26,7 +26,9 @@
   lists optional lesson patterns and when to use each feature.
 - **Saved quizzes and pretests.** A graded quiz stays locked. Saved attempts and
   grades are kept. Missed ideas get a follow-up question and spaced review later.
-  A pretest (`data-kind="pretest"`) comes before the teaching. It never counts toward
+  New lessons start with a pretest (`data-kind="pretest"`). Teaching stays out of the
+  served page until the pretest is graded. Explicit quiz requests get assessment-only
+  pages. A pretest never counts toward
   the score. Quiz answers do not ask for a confidence rating.
 - **Spaced review.** Every graded question gets a review schedule: 1, 3, 7, 21, then 60
   days. The schedule is calculated from the grades on disk. `scaffold_review` builds a

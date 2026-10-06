@@ -101,13 +101,21 @@ export function browserCommands(harness: Harness, events: string): string[] {
       for (const block of event.message.content) {
         if (block.type !== "tool_use") continue;
         const command = typeof block.input?.command === "string" ? block.input.command : "";
-        if (block.name === "Bash" && command.includes("playwright-cli")) commands.push(command);
+        if (
+          block.name === "Bash" &&
+          (command.includes("playwright-cli") || command.includes("scripts/check-lesson.ts"))
+        )
+          commands.push(command);
         else if (browserTool.test(block.name)) commands.push(block.name);
       }
     }
     if (harness === "codex" && event.type === "item.completed") {
       const item = event.item ?? {};
-      if (item.type === "command_execution" && String(item.command).includes("playwright-cli")) {
+      if (
+        item.type === "command_execution" &&
+        (String(item.command).includes("playwright-cli") ||
+          String(item.command).includes("scripts/check-lesson.ts"))
+      ) {
         commands.push(String(item.command));
       } else if (item.type === "mcp_tool_call" && browserTool.test(`${item.server} ${item.tool}`)) {
         commands.push(`${item.server}.${item.tool}`);

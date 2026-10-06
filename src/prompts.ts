@@ -41,14 +41,14 @@ export const QUIZ_FOLLOW_UP =
 
 /** What to do after grading a pretest. Wrong answers are expected before teaching. */
 export const PRETEST_FOLLOW_UP =
-  "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to decide what the lesson stresses and what it can skip. Tell the learner briefly what the lesson will focus on. Write a learning record only for prior knowledge the pretest shows.";
+  "This was a pretest. The learner answered before the lesson taught the material, so wrong answers are expected and are not a failure. Do not run the retrieval check. Use the results to decide what the lesson stresses and what it can skip. Tell the learner briefly what the lesson will focus on. Teaching behind data-cl-after-pretest becomes available after grading. Direct the learner to that material. For a standalone pretest, ask whether they want a lesson. Write a learning record only for prior knowledge the pretest shows.";
 
 /**
  * The steps a scaffold tool returns. They repeat the method at the point of use,
  * because a long session can remember an older quiz contract.
  */
 export function authoringSteps(
-  kind: "lesson" | "review",
+  kind: "lesson" | "review" | "quiz" | "pretest",
   lessonPath: string,
   checkPage: string,
 ): string {
@@ -58,20 +58,30 @@ export function authoringSteps(
     kind === "lesson"
       ? [
           "2. State one learning objective: what the learner can do at the end.",
-          "3. Choose the lesson experience and the response types that fit the objective and this learner. The sections in lesson.html are optional examples. Change, reorder, or replace them. Use earlier answers, questions, and self-explanations. Vary the approach from recent lessons when that helps.",
-          "4. Write the lesson and its questions. Give each interaction one purpose: predict, retrieve, explain, practise, or diagnose. Replace the unfinished CHOOSE-A-TYPE question.",
+          '3. Start with two or three retrieval questions in a data-kind="pretest" form. Keep all teaching, worked examples, source recommendations, and post-teaching checks inside <template data-cl-after-pretest="pretest-1">. The server withholds that content until the pretest is graded. Do not substitute CSS hiding or a details reveal.',
+          "4. Design the teaching inside the gate from the objective and learner. Choose suitable response types. Give each interaction one purpose: predict, retrieve, explain, practise, or diagnose. Use new examples for the post-teaching check. Replace every CHOOSE-A-TYPE question. If the learner explicitly skips the pretest, remove its form and gate together.",
         ]
-      : [
-          "2. For each item below, state the idea it tests.",
-          "3. Write one new question for each item, with a new example. Choose the response type that fits the idea. It does not have to match the original type.",
-          "4. Put the given data-review-of on each question exactly. Keep the items in the order given. Replace the unfinished CHOOSE-A-TYPE question.",
-        ];
+      : kind === "review"
+        ? [
+            "2. For each item below, state the idea it tests.",
+            "3. Write one new question for each item, with a new example. Choose the response type that fits the idea. It does not have to match the original type.",
+            "4. Put the given data-review-of on each question exactly. Keep the items in the order given. Replace the unfinished CHOOSE-A-TYPE question.",
+          ]
+        : [
+            "2. State what this assessment tests. Honor the requested scope.",
+            `3. Write only instructions, question stimuli, and answer controls. Use data-kind="${kind === "pretest" ? "pretest" : "check"}". Do not add teaching, worked solutions, hints, or answer reveals.`,
+            "4. Choose response types that fit each skill. Replace every CHOOSE-A-TYPE question. Do not add a pretest to a quiz-only page.",
+          ];
   return [
     "Authoring steps:",
     `1. Read the current quiz contract: ${contract}. Read it for each ${kind}. It can change between sessions.`,
     ...middle,
-    `5. Write the private rubric in ${rubric} before the learner submits. For each question, give the expected answer, the points possible, and the full and partial credit criteria.`,
+    `5. Write the private rubric in ${rubric} before the learner submits. Key it by quiz id, then question id. Each entry needs expected, positive points, full, and partial. Allocate points to specific reasoning components. Do not reuse one generic partial-credit rule for the whole test.`,
+    "Keep expected answers out of learner HTML, comments, scripts, data attributes, and linked public files. A collapsed answer is still exposed. A teaching example must not solve a graded question with the same values.",
+    "Plan the skill, reasoning, and misconception each question tests in the private rubric. For reasoning and application objectives, include a new situation that requires transfer, method choice, diagnosis, or justification. Do not build a test from copied sentences or easy blanks. Solve every question against its rubric and inspect the page for answer cues before sharing it.",
+    "Accept equivalent valid solutions. For a constructed schedule or counterexample, solve at least two valid alternatives. Check that each earns full credit. Do not make credit depend on arbitrary thread names, step order, or wording when the question allows alternatives.",
     `6. Check the page in a headless browser. Each control must work, and no contract error may show. ${checkPage}`,
+    `For gated teaching, run node ${JSON.stringify(path.join(templatesDir(), "..", "..", "scripts", "check-lesson.ts"))} <classroom> <lesson>. It checks the initial and released page in a disposable copy. It does not change learner state. Never submit a synthetic pretest to the learner's page to reveal controls.`,
     `For playwright-cli, use a new named session and pass --config=${JSON.stringify(path.join(assetsDir(), "playwright-headless.json"))} to open. This config sets headless to true. Do not use --headed, show, an attached user browser, or a tool that opens a visible window. Close the test session when checks finish. Report a headless launch failure instead of changing browser mode.`,
   ].join("\n");
 }
@@ -133,7 +143,9 @@ export function teachingPrompt(
   parts.push(
     `The templates are in the extension's \`assets/templates/\` directory (${templatesDir()}). The quiz contract is ${path.join(templatesDir(), "quiz.html")}.`,
   );
-  parts.push(`## After grading a quiz\n\n${QUIZ_FOLLOW_UP}`);
+  parts.push(
+    `## After grading\n\nFor a pretest:\n${PRETEST_FOLLOW_UP}\n\nFor a check or review:\n${QUIZ_FOLLOW_UP}`,
+  );
   parts.push(
     "Reference documents you can read when you need them, in the extension's `docs/` directory " +
       `(${docsDir()}): MISSION-FORMAT.md, RESOURCES-FORMAT.md, GLOSSARY-FORMAT.md, NOTES-FORMAT.md, ` +
@@ -156,6 +168,7 @@ export function askPrompt(annotation: Annotation, delivery: Delivery): string {
     `Classroom: \`${annotation.classroom}\``,
     `Lesson: \`${annotation.lesson}\` (${path.join(lessonDir(annotation.classroom, annotation.lesson), "lesson.html")})`,
     "",
+    "Before an assessment is submitted, clarify instructions without solving its questions or quoting its private rubric. Do not expose answers through a passage card.",
     "They highlighted:",
     "",
     quote(annotation.selection),
@@ -211,6 +224,7 @@ export function followUpPrompt(
     "",
     quote(annotation.selection),
     "",
+    "Before an assessment is submitted, clarify instructions without solving its questions or quoting its private rubric. Do not expose answers through a follow-up card.",
     "The thread so far:",
     "",
     ...earlier,

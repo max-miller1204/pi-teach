@@ -10,7 +10,7 @@ import { classroomTools, PI_HOST } from "../src/tools.ts";
 import * as store from "../src/store.ts";
 import { makeFixture, lessonHtml, seedClassroom } from "../test/helpers.ts";
 import { verifyServiceBrowser } from "./e2e-service-browser.ts";
-import { playwright } from "./playwright.ts";
+import { playwright, playwrightCode } from "./playwright.ts";
 
 const fixture = makeFixture();
 const session = `pi-teach-browser-${process.pid}`;
@@ -102,6 +102,16 @@ server.setHooks({
   onFollowUp() {},
   onReflect() {},
   onQuizSubmit(submission) {
+    if (submission.quizId === "gate-before")
+      setTimeout(
+        () =>
+          applyGrade(submission, {
+            score: 0,
+            feedbackMarkdown: "Diagnostic only.",
+            questions: [{ questionId: "p1", correct: false, feedback: "We will teach this idea." }],
+          }),
+        100,
+      );
     if (submission.quizId === "instant")
       applyGrade(submission, {
         score: 100,
@@ -172,6 +182,49 @@ try {
     path.join(root, "test/browser.playwright.js"),
   );
   console.log(browserResult);
+  fixture.write(
+    "rust/099-gate/lesson.html",
+    lessonHtml(
+      "Pretest gate",
+      `
+    <form class="cl-reflect" data-reflect-id="gate-draft"><p class="cl-reflect-prompt">Keep a note.</p><textarea></textarea></form>
+    <form class="cl-quiz" data-quiz-id="gate-before" data-kind="pretest"><ol><li class="cl-q" data-question-id="p1" data-type="term"><p class="cl-q-prompt">What do you know?</p><input type="text"></li></ol></form>
+    <template data-cl-after-pretest="gate-before"><p>GATED TEACHING SENTINEL</p><script>window.gateReady=true;</script>
+    <form class="cl-quiz" data-quiz-id="gate-after"><ol><li class="cl-q" data-question-id="q1" data-type="term"><p class="cl-q-prompt">Apply the idea.</p><input type="text"></li></ol></form></template>`,
+    ),
+  );
+  const gateResult = await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
+    await page.addInitScript(() => {
+      if(location.pathname.endsWith('/099-gate')) {
+        sessionStorage.setItem('gate-loads', String(Number(sessionStorage.getItem('gate-loads') || 0) + 1));
+      }
+    });
+    await page.goto(${JSON.stringify(`${base}/c/rust/099-gate`)});
+    await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'fresh');
+    if((await page.content()).includes('GATED TEACHING SENTINEL')) throw new Error('Initial response exposed teaching.');
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/draft') && r.request().method() === 'PUT');
+    await page.locator('.cl-reflect textarea').fill('Unsaved diagnostic note');
+    if(!(await saved).ok()) throw new Error('The diagnostic note was not saved.');
+    await page.locator('form.cl-quiz input').fill('I do not know yet');
+    await page.getByRole('button', {name:'Submit for grading', exact:true}).click();
+    await page.waitForFunction(() => window.gateReady === true);
+    await page.waitForFunction(() => document.querySelector('[data-quiz-id="gate-before"]')?.dataset.state === 'graded');
+    if(await page.locator('.cl-reflect textarea').inputValue() !== 'Unsaved diagnostic note') throw new Error('Automatic release lost the draft.');
+    if(await page.locator('[data-quiz-id="gate-after"]').getAttribute('data-state') !== 'fresh') throw new Error('The released check is not usable.');
+    await page.waitForTimeout(500);
+    if(await page.evaluate(() => sessionStorage.getItem('gate-loads')) !== '2') throw new Error('Pretest grade must cause exactly one automatic reload.');
+    return {automaticReloads:1, teachingReleased:true, draftPreserved:true};
+  }`,
+  );
+  console.log(JSON.stringify({ pretestGate: gateResult }));
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "pretest-gate.json"),
+      JSON.stringify(gateResult, null, 2),
+    );
   if (
     !draftHistory.some(
       (draft: any) => draft["reflect:ownership"] === "The owner releases the value.",

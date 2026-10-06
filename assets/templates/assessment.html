@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Assessment shell. scaffold_lesson uses this for mode quiz or pretest.
+  Read the current quiz contract: assets/templates/quiz.html.
+  Write instructions, stimuli, and questions only. Do not add teaching, hints,
+  worked solutions, or answer reveals. Keep the rubric in private quiz/key.json.
+  Replace the unfinished question. Choose the response type from the skill.
+  Check the page in a headless browser before sharing its URL.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{LESSON_TITLE}}</title>
+  </head>
+  <body>
+    <main class="cl-lesson-shell" data-cl-content>
+      <header>
+        <h1>{{LESSON_TITLE}}</h1>
+        <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
+      </header>
+      <form
+        class="cl-quiz"
+        data-quiz-id="assessment-1"
+        data-kind="{{QUIZ_KIND}}"
+        data-title="Questions"
+      >
+        <ol class="cl-questions">
+          <li class="cl-q" data-question-id="q1" data-type="CHOOSE-A-TYPE">
+            <p class="cl-q-prompt">Write a question that tests the requested skill.</p>
+          </li>
+        </ol>
+      </form>
+      <footer>
+        <p>Highlight an instruction and select <em>Ask</em> if you need clarification.</p>
+        <p><a href="./">Back to the classroom</a></p>
+      </footer>
+    </main>
+  </body>
+</html>

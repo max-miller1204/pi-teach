@@ -75,6 +75,20 @@ already do.
 
 ## Lessons
 
+### Honor the request
+
+Choose the page purpose before you scaffold it. An explicit quiz or test request
+uses `scaffold_lesson` with `mode: "quiz"`. Write an assessment-only page with
+instructions, stimuli, and questions. Do not add teaching, worked solutions,
+hints, or answer reveals. A standalone diagnostic uses `mode: "pretest"`.
+The page still uses the canonical `lesson.html` path. That path does not require
+teaching content. Do not turn a quiz request into a lesson.
+
+New teaching uses the default `mode: "lesson"`. Start with a short pretest.
+Skip it only when the learner explicitly asks. Offer due review without replacing
+the learner's requested task. Use the scope and goal already supplied by the
+learner. Do not repeat a mission interview when those are clear.
+
 A lesson is the unit of teaching: one self-contained HTML document teaching one
 tightly-scoped thing. Create it with `scaffold_lesson`, then write it by editing the
 returned `lesson.html`.
@@ -115,6 +129,32 @@ Follow these steps for each lesson:
 
 Give each interaction one purpose: **predict**, **retrieve**, **explain**,
 **practise**, or **diagnose**. An interaction without a purpose is decoration. Cut it.
+
+### Assessment quality
+
+Build questions from the objective, not from sentences that are easy to remove
+words from. Before authoring, write a short assessment plan in private
+`quiz/key.json`. For each question, name the skill, the reasoning it requires,
+and the misconception it can detect. Then write its expected answer and criteria.
+
+Use challenge that fits the learner's current knowledge. For a test of reasoning
+or application, include unfamiliar cases that require the learner to choose a
+method, connect ideas, diagnose an error, or defend a conclusion. Change the
+situation as well as the numbers. Include a transfer question when the objective
+requires applying a skill. Do not turn the whole test into copied definitions,
+one-step substitutions, or blanks beside the sentence that supplies them.
+
+A `cloze` question can test a meaningful derivation or reconstruction. It does
+not become challenging just because it has several blanks. A `short` question
+does not prove reasoning if it only asks for a definition. Choose the response
+type after choosing the mental work. Avoid trick wording and untaught prerequisites.
+
+Before sharing, solve each question against its rubric. Check that the stimulus
+has enough information and that the criteria accept valid alternate reasoning.
+Then inspect the learner page for answer cues. Check prose, worked examples,
+headings, option lengths, placeholders, defaults, ordering, comments, scripts,
+data attributes, diagrams, and linked public files. A new check must require fresh
+work after teaching. Do not reuse a solved example as a graded question.
 
 These lesson patterns are optional. Combine them, or invent one that fits better:
 
@@ -205,10 +245,14 @@ questions.
 Before submission, write the grading rubric in private `quiz/key.json`. The server
 never serves that directory. For each question, state the expected answer, the
 maximum points, and the criteria for full and partial credit. Use the same rubric for
-all attempts at that quiz. Do not change a question id or a rubric after a learner
+all attempts at that quiz. Accept equivalent valid solutions. For a constructed schedule or counterexample, solve
+two valid alternatives. Check that both earn full credit. Do not require arbitrary
+thread names, step order, or wording when the question allows alternatives.
+Do not change a question id or a rubric after a learner
 submits. Set `correct` to true only for full credit. Supply `points_earned` and
 `points_possible` for every question when using partial credit or weights. The
 overall score is the earned points divided by the possible points, times 100.
+
 Integer rounding is allowed. Without points, grading uses equal-weight binary
 results. Do not mix grading methods during a quiz.
 
@@ -224,7 +268,7 @@ After a grade, the browser quiz stays locked. Saved attempts and grades are kept
 Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
 chat with a different example. Review those ideas later through spaced review.
 
-After grading, check missed ideas before moving to another lesson. Explain the idea
+After grading a check or review, check missed ideas before moving to another lesson. Explain the idea
 briefly. Ask one new retrieval question in chat with a different example. Wait for
 the learner's reply before giving the answer. Repeat until they show understanding.
 Do not treat a score or an explanation as proof that they learned the idea. If they
@@ -239,6 +283,15 @@ does two things: the attempt to answer prepares the learner to notice the answer
 the lesson, and the result tells you what to stress and what to skip. A pretest never
 sets the lesson score and never enters the review schedule. Do not run the retrieval
 check after a pretest.
+
+For a new lesson, wrap all teaching and post-teaching checks in
+`<template data-cl-after-pretest="pretest-1">`. Use the actual pretest quiz id.
+The server removes that content from the response until the pretest has a grade.
+The page reloads when grading releases it. Keep answer-bearing source links inside
+the gate. CSS hiding and `<details>` do not protect page source. Do not nest gates.
+Keep the pretest form outside its gate. Do not change its ids or rubric after
+submission. On an explicit request to skip the pretest, remove the form and gate
+together. This requirement governs assessment timing, not the teaching layout.
 
 ### Self-explanations
 
@@ -367,7 +420,7 @@ wait.
 4. Call `lesson_health`. Fix a lesson that keeps failing before you build on it.
 5. Research from trusted sources; record what you find in `RESOURCES.md`.
 6. Pick the one thing to teach next, in their zone of proximal development.
-7. `scaffold_lesson`. Follow its authoring steps. Check the page in a headless
+7. `scaffold_lesson`. Choose lesson, quiz, or pretest mode from the request. Follow its authoring steps. Check the page in a headless
    browser. Tell them the URL.
 8. Answer what they ask; grade what they hand in.
 9. Write a learning record when they have actually learned something.

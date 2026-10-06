@@ -9,7 +9,7 @@ The agent uses these tools to create lessons and respond to learners.
 | `answer_lesson_question` | Answer a highlighted-text question or a follow-up. The only thing that puts an answer on the learner's page. |
 | `grade_lesson_quiz`      | Grade a submitted quiz. Writes to `quiz/grades/` and renders inline.                                         |
 | `scaffold_classroom`     | Create a classroom in the canonical location with a `MISSION.md` stub.                                       |
-| `scaffold_lesson`        | Create a numbered lesson shell, and return the authoring steps.                                              |
+| `scaffold_lesson`        | Create a numbered page. Choose mode lesson, quiz, or pretest. Return the authoring steps.                    |
 | `scaffold_review`        | Create a spaced review lesson from the due questions, and return them with their keys and authoring steps.   |
 | `record_retrieval_check` | Link successful chat evidence to a review item without changing scores.                                      |
 | `lesson_health`          | Report threads, misses, glossary problems, unfinished questions, missing rubrics, and recent response types. |

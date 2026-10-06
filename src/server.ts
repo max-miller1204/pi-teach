@@ -34,6 +34,7 @@ import * as path from "node:path";
 
 import { readConfig, resolveConfiguredPort } from "./config.ts";
 import { injectLessonRuntime } from "./lesson-html.ts";
+import { stageLesson } from "./pretest.ts";
 import {
   classroomDir,
   isFile,
@@ -321,15 +322,25 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
     return sendNotFound(res, `Could not read lesson: ${second}`);
   }
 
+  const staged = stageLesson(
+    html,
+    new Set(
+      store
+        .latestQuizStates(name, second)
+        .filter((state) => state.submission.kind === "pretest" && state.grade)
+        .map((state) => state.quizId),
+    ),
+  );
   sendHtml(
     res,
-    injectLessonRuntime(html, {
+    injectLessonRuntime(staged.html, {
       classroom: name,
       lesson: second,
       classroomTitle: classroom.title,
       lessonTitle: lesson.title,
       baseUrl: getBaseUrl() ?? "",
       delivery: hooks?.delivery ?? "push",
+      pendingPretests: staged.pendingPretests,
     }),
   );
 }
@@ -603,6 +614,18 @@ async function handleQuizSubmit(
 
   const quizId = body["quizId"];
   if (!isContractId(quizId)) return sendJson(res, { error: "A valid quizId is required" }, 400);
+  const page = store.readLesson(classroom, lesson)!;
+  const staged = stageLesson(
+    fs.readFileSync(page.htmlPath, "utf8"),
+    new Set(
+      store
+        .latestQuizStates(classroom, lesson)
+        .filter((s) => s.submission.kind === "pretest" && s.grade)
+        .map((s) => s.quizId),
+    ),
+  );
+  if (staged.lockedQuizIds.includes(quizId))
+    return sendJson(res, { error: "Complete the pretest before submitting this quiz" }, 409);
   const kind = body["kind"];
   if (!isQuizKind(kind)) {
     return sendJson(res, { error: `Unknown quiz kind: ${JSON.stringify(kind)}` }, 400);
