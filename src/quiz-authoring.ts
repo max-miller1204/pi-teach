@@ -65,7 +65,7 @@ export function typeCounts(types: QuestionType[]): string {
 export function quizDiversityLines(types: QuestionType[]): string[] {
   if (types.length < 3 || !types.every((type) => type === "short")) return [];
   return [
-    `- **Quiz format check:** All ${types.length} authored questions use short. Check whether term, numeric, cloze, order, or locate fits the skill. Keep short for explanations. This is an authoring diagnostic, not a submission error.`,
+    `- **Quiz format check:** All ${types.length} authored questions use short. Check the mental task and answer cues. Keep short when it fits. The nine types are capabilities, not a variety quota. This is an authoring diagnostic, not a submission error.`,
   ];
 }
 
