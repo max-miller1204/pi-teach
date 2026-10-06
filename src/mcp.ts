@@ -1,17 +1,5 @@
-/**
- * mcp.ts: the classroom as an MCP server, for Claude Code and Codex.
- *
- * Pi runs this package in-process and wakes the agent with `sendUserMessage`. An MCP
- * server cannot wake its client, so the agent listens instead: `wait_for_learner`
- * blocks until the learner asks a question or hands in a quiz, then returns the same
- * self-contained prompt that Pi would push. The prompt names the tool that answers it,
- * so the rest of the flow (`answer_lesson_question`, `grade_lesson_quiz`) is shared.
- *
- * The server is still session-scoped: the client spawns one MCP process per session,
- * and the HTTP server lives and dies with it.
- *
- * `McpSession.handle` is a pure JSON-RPC dispatcher, so the tests drive it without a
- * child process. `mcp-stdio.ts` wires it to stdin and stdout.
+/** MCP dispatcher shared by local discovery and the persistent classroom service.
+ * Legacy inbox behavior remains available to isolated tests. Pi uses its direct bridge.
  */
 
 import * as fs from "node:fs";
@@ -59,6 +47,12 @@ This session has no \`/classroom\` command, and it cannot push the learner's que
 - \`wait_for_learner\` blocks until the learner asks about a passage, asks a follow-up, submits a quiz, or saves a self-explanation. It returns the full request and names the tool that answers it.
 
 After you give the learner a lesson, call \`wait_for_learner\`. Answer page questions with \`answer_lesson_question\`. Grade quizzes with \`grade_lesson_quiz\` and follow the shared quiz follow-up rule. A teacher's retrieval question belongs in chat, not in a passage card. While you need a chat reply, end your turn. Do not call \`wait_for_learner\`: it receives browser requests, not chat replies. Resume listening when the chat check is complete and the learner returns to the page. Do not start another lesson without the learner's agreement. Use waits of at most 60 seconds. If a wait times out, tell the learner that listening has paused and end your turn. Resume listening when they ask to continue. Do not run a repeated wait loop. Tell the learner that browser events cannot wake an idle MCP agent. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
+
+export const SERVICE_BRIEF = `## Persistent classroom service
+
+Call open_classroom before giving a URL. The service survives this MCP connection. Browser requests start work in a dedicated teacher session. The teacher backend and session identity appear on the lesson page. Answer and grade writes belong to that teacher. Use the teacher panel for retrieval questions and learner replies. Keep quizzes locked after grading. Preserve historical grades and learning records. Do not start another lesson without learner agreement.
+
+Use classroom_service with action status, start, or stop. Stop is explicit and affects all classrooms owned by this service.`;
 
 // ── Learner inbox ─────────────────────────────────────────────────────────────
 
@@ -207,7 +201,15 @@ function fail(text: string): ToolResult {
   return { content: [{ type: "text", text: `Error: ${text}` }], details: { error: true } };
 }
 
-function sessionTools(opened: (classroom: string | null) => void): ClassroomTool[] {
+export interface PersistentHost {
+  open(classroom: string | null, backend?: string): Promise<string>;
+  tools: ClassroomTool[];
+}
+
+function sessionTools(
+  opened: (classroom: string | null) => void,
+  persistent?: PersistentHost,
+): ClassroomTool[] {
   return [
     {
       name: "begin_teaching",
@@ -231,7 +233,10 @@ function sessionTools(opened: (classroom: string | null) => void): ClassroomTool
         const topic = (params.topic ?? "").trim();
         const classroom = resolveClassroom(topic);
         const review = classroom ? classroomReviewText(classroom) : null;
-        return ok(`${teachingPrompt(topic, classroom, review)}\n\n${HOST_BRIEF}`, { classroom });
+        return ok(
+          `${teachingPrompt(topic, classroom, review)}\n\n${persistent ? SERVICE_BRIEF : HOST_BRIEF}`,
+          { classroom },
+        );
       },
     },
     {
@@ -244,20 +249,32 @@ function sessionTools(opened: (classroom: string | null) => void): ClassroomTool
         type: "object",
         properties: {
           classroom: { type: "string", description: "Classroom directory name, or its title." },
+          ...(persistent
+            ? {
+                teacher_backend: {
+                  type: "string",
+                  enum: ["claude", "codex"],
+                  description:
+                    "Dedicated teacher backend. Required when the initiating host is unknown.",
+                },
+              }
+            : {}),
         },
         required: [],
       },
-      async execute(params: { classroom?: string }) {
+      async execute(params: { classroom?: string; teacher_backend?: string }) {
         const requested = params.classroom?.trim() || null;
         const target = requested ? resolveClassroom(requested) : null;
         if (requested && !target) {
           return fail(`No such classroom: ${requested}. Call list_classrooms.`);
         }
-        const baseUrl = await server.start();
-        opened(target);
-        const url = target ? server.urlFor(target)! : baseUrl;
+        const baseUrl = persistent
+          ? await persistent.open(target, params.teacher_backend)
+          : await server.start();
+        if (!persistent) opened(target);
+        const url = persistent ? baseUrl : target ? server.urlFor(target)! : baseUrl;
         if (shouldAutoOpen()) openUrl(url);
-        return ok(`📚 ${url}`, { url });
+        return ok(persistent ? `[Open classroom](${url})` : `📚 ${url}`, { url });
       },
     },
     {
@@ -307,10 +324,12 @@ export type JsonRpcResponse =
 export class McpSession {
   private readonly tools: Map<string, ClassroomTool>;
   private readonly inbox: LearnerInbox;
+  private readonly persistent: boolean;
   private readonly classrooms = new Set<string>();
 
-  constructor(inbox: LearnerInbox) {
+  constructor(inbox: LearnerInbox, persistent?: PersistentHost) {
     this.inbox = inbox;
+    this.persistent = !!persistent;
     this.tools = new Map(
       [
         ...classroomTools(MCP_HOST),
@@ -318,7 +337,8 @@ export class McpSession {
           for (const name of classroom ? [classroom] : store.listClassrooms().map((c) => c.name))
             this.classrooms.add(name);
           recoverLearnerRequests(inbox, [...this.classrooms]);
-        }),
+        }, persistent),
+        ...(persistent?.tools ?? []),
       ].map((tool) => [tool.name, tool]),
     );
   }
@@ -357,13 +377,21 @@ export class McpSession {
 
   private listTools(): unknown[] {
     return [
-      ...[...this.tools.values()].map((tool) => ({
-        name: tool.name,
-        title: tool.label,
-        description: tool.description,
-        inputSchema: tool.parameters,
-      })),
-      WAIT_TOOL,
+      ...[...this.tools.values()]
+        .filter(
+          (tool) =>
+            !this.persistent ||
+            !["answer_lesson_question", "grade_lesson_quiz", "record_retrieval_check"].includes(
+              tool.name,
+            ),
+        )
+        .map((tool) => ({
+          name: tool.name,
+          title: tool.label,
+          description: tool.description,
+          inputSchema: tool.parameters,
+        })),
+      ...(!this.persistent ? [WAIT_TOOL] : []),
     ];
   }
 
@@ -372,6 +400,23 @@ export class McpSession {
     name: unknown,
     args: Record<string, unknown>,
   ): Promise<JsonRpcResponse | null> {
+    if (
+      this.persistent &&
+      [
+        WAIT_TOOL.name,
+        "answer_lesson_question",
+        "grade_lesson_quiz",
+        "record_retrieval_check",
+      ].includes(String(name))
+    )
+      return result(
+        id,
+        toolResult(
+          fail(
+            "The dedicated teacher owns browser requests. Use the teacher panel on the lesson page.",
+          ),
+        ),
+      );
     if (name === WAIT_TOOL.name) return this.waitForLearner(id, args);
 
     const tool = typeof name === "string" ? this.tools.get(name) : undefined;
