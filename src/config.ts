@@ -9,13 +9,16 @@ export interface ClassroomConfig {
 }
 
 let testConfigPath: string | undefined;
-export function _overrideConfigPath(file: string): void {
+export function _overrideConfigPath(file: string | undefined): void {
   testConfigPath = file;
 }
 
+/** `PI_CLASSROOM_CONFIG` when it is set, else `~/.pi/agent/classroom.json`. */
 export function configPath(): string {
   if (testConfigPath) return testConfigPath;
-  return path.join(os.homedir(), ".pi", "agent", "classroom.json");
+  return (
+    process.env["PI_CLASSROOM_CONFIG"] ?? path.join(os.homedir(), ".pi", "agent", "classroom.json")
+  );
 }
 
 export function readConfig(file = configPath()): ClassroomConfig {

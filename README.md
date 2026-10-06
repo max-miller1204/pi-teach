@@ -295,6 +295,7 @@ Optional, at `~/.pi/agent/classroom.json`:
 | `autoOpen` | `true`    | Whether `/classroom` opens your browser. `PI_CLASSROOM_AUTO_OPEN=0` overrides. |
 
 Claude Code and Codex read the same file. `autoOpen` also controls `open_classroom`.
+Set `PI_CLASSROOM_CONFIG` to read the settings from another file.
 
 Use a configured fixed port to keep URLs stable across session restarts. Only one
 session can use that port at a time. With no port configured, each session uses an

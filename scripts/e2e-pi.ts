@@ -62,7 +62,13 @@ const child = spawn(
   ],
   {
     cwd: fixture.root,
-    env: { ...process.env, PI_CLASSROOMS_DIR: fixture.root, PI_CLASSROOM_AUTO_OPEN: "0" },
+    // The user's own classroom config may set a port that a live Pi session holds.
+    env: {
+      ...process.env,
+      PI_CLASSROOMS_DIR: fixture.root,
+      PI_CLASSROOM_AUTO_OPEN: "0",
+      PI_CLASSROOM_CONFIG: path.join(fixture.root, "test-config.json"),
+    },
     stdio: ["pipe", "pipe", "pipe"],
   },
 );
