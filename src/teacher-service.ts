@@ -223,6 +223,8 @@ export class TeacherService {
     while (!this.stopping) {
       const r = state.requests.find((r) => r.status === "queued" || r.status === "planned");
       if (!r) return;
+      r.startedAt = Date.now();
+      delete r.finishedAt;
       try {
         if (!r.plan) {
           r.status = "running";
@@ -250,12 +252,18 @@ export class TeacherService {
           saveTeacherState(classroom, state);
         }
         await this.apply(r, state);
+        r.finishedAt = Date.now();
         r.status = "done";
+        console.log(
+          `[teacher] ${state.identity.backend} ${classroom}/${r.lesson} ${r.id} done in ${r.finishedAt - r.startedAt}ms.`,
+        );
         saveTeacherState(classroom, state);
         this.publish(classroom, r.lesson);
       } catch (err) {
         r.status = "failed";
-        r.error = err instanceof Error ? err.message : String(err);
+        r.finishedAt = Date.now();
+        r.error = `${state.identity.backend} ${r.kind} request ${r.id} in ${classroom}/${r.lesson}: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`[teacher] ${r.error}`);
         saveTeacherState(classroom, state);
         this.publish(classroom, r.lesson);
       }
