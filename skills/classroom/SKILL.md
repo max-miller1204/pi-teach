@@ -10,10 +10,14 @@ description: Open the user's classrooms in the browser, or list their classrooms
   URL it returns.
 - To list classrooms and lessons in the terminal, call `list_classrooms`.
 
-The classroom server runs inside this session. It stops when the session ends. All
-material stays on disk.
+Claude Code and Codex attach to a persistent local service. Closing this chat does
+not stop it. Each classroom has one dedicated teacher backend and session. Browser
+requests start teacher work. Use the teacher panel for retrieval questions and replies.
+Pi keeps its in-process server and direct bridge.
 
-If the user will read a lesson now, call `wait_for_learner` after you give them the
-URL, so their questions and quizzes reach you. Follow the quiz follow-up rule in the
-grading result. If you ask a retrieval question in chat, end your turn and wait for
-a chat reply. Do not call `wait_for_learner` while you need that reply.
+- Use `classroom_service` with action status to inspect ownership and the stable URL.
+- Use action stop to stop the service explicitly. Material and grades stay on disk.
+- When the learner asks for phone access, call `classroom_phone` with action start,
+  classroom, and lesson. Give the complete checked URL it returns. This opts in to
+  tailnet-only Tailscale Serve. Use status to inspect it. Use stop to remove its route.
+- If a port or route conflicts, report the error. Do not select another port silently.
