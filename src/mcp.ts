@@ -43,7 +43,7 @@ export const HOST_BRIEF = `## Classroom tools in this session
 
 This session has no \`/classroom\` command, and it cannot push the learner's questions to you. Use these tools instead:
 
-- \`open_classroom\` starts the classroom server and opens the browser. Call it before you give the learner a URL. Lesson URLs work only while this session runs. Always use the URL from this call. Reopening a classroom restores pending page requests from disk.
+- \`open_classroom\` starts the classroom server and returns its URL. It opens the browser only when open_browser is true. Call it before you give the learner a URL. Lesson URLs work only while this session runs. Always use the URL from this call. Reopening a classroom restores pending page requests from disk.
 - \`wait_for_learner\` blocks until the learner asks about a passage, asks a follow-up, submits a quiz, or saves a self-explanation. It returns the full request and names the tool that answers it.
 
 After you give the learner a lesson, call \`wait_for_learner\`. Answer page questions with \`answer_lesson_question\`. Grade quizzes with \`grade_lesson_quiz\` and follow the shared quiz follow-up rule. A teacher's retrieval question belongs in chat, not in a passage card. While you need a chat reply, end your turn. Do not call \`wait_for_learner\`: it receives browser requests, not chat replies. Resume listening when the chat check is complete and the learner returns to the page. Do not start another lesson without the learner's agreement. Use waits of at most 60 seconds. If a wait times out, tell the learner that listening has paused and end your turn. Resume listening when they ask to continue. Do not run a repeated wait loop. Tell the learner that browser events cannot wake an idle MCP agent. Stop when the learner says they are done. Tell the learner that they can press Esc to stop the wait and talk to you in the terminal.`;
@@ -243,12 +243,17 @@ function sessionTools(
       name: "open_classroom",
       label: "Open Classroom",
       description:
-        "Start the classroom server if it is not running, open it in the browser, and return its URL. " +
+        "Start the classroom server if it is not running and return its URL. Open a browser only when open_browser is true. " +
         "Give a classroom name to open that classroom; omit it for the list of every classroom.",
       parameters: {
         type: "object",
         properties: {
           classroom: { type: "string", description: "Classroom directory name, or its title." },
+          open_browser: {
+            type: "boolean",
+            description:
+              "Open the URL in the default browser. Defaults to false. Set true only when the user asks to open a browser.",
+          },
           ...(persistent
             ? {
                 teacher_backend: {
@@ -262,7 +267,11 @@ function sessionTools(
         },
         required: [],
       },
-      async execute(params: { classroom?: string; teacher_backend?: string }) {
+      async execute(params: {
+        classroom?: string;
+        teacher_backend?: string;
+        open_browser?: boolean;
+      }) {
         const requested = params.classroom?.trim() || null;
         const target = requested ? resolveClassroom(requested) : null;
         if (requested && !target) {
@@ -273,7 +282,7 @@ function sessionTools(
           : await server.start();
         if (!persistent) opened(target);
         const url = persistent ? baseUrl : target ? server.urlFor(target)! : baseUrl;
-        if (shouldAutoOpen()) openUrl(url);
+        if (params.open_browser === true && shouldAutoOpen()) openUrl(url);
         return ok(persistent ? `[Open classroom](${url})` : `📚 ${url}`, { url });
       },
     },
