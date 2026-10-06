@@ -145,7 +145,7 @@ const AUTHORING_PROMPT = [
   "Do not call wait_for_learner and do not ask the learner anything. Nobody will reply during this run.",
   // Reason: a real session knows its own browser tool. This run has only a shell
   // command, so name it. This describes the environment and gives no authoring hint.
-  "Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
+  "Browser checks are explicitly requested for this automated evaluation. Check each lesson page and its local controls. Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
   "When all three lessons are written, end with one line per lesson that states why you chose its activities.",
 ].join("\n");
 
@@ -430,7 +430,7 @@ async function main(): Promise<void> {
     const authoring = startSession(
       AUTHORING_PROMPT,
       ["begin_teaching", "list_classrooms", "lesson_health", "scaffold_lesson", "open_classroom"],
-      // Reason: the scaffold tells the agent to check its pages in a browser tool.
+      // Reason: this evaluation explicitly requests browser checks.
       // Claude Code runs with an allowlist, so allow the browser CLI explicitly.
       ["Read", "Write", "Edit", "Glob", "Grep", "Bash(playwright-cli:*)"],
       env,

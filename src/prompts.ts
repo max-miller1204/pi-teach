@@ -71,7 +71,7 @@ export function authoringSteps(
     `1. Read the current quiz contract: ${contract}. Read it for each ${kind}. It can change between sessions.`,
     ...middle,
     `5. Write the private rubric in ${rubric} before the learner submits. For each question, give the expected answer, the points possible, and the full and partial credit criteria.`,
-    `6. Check the page: each control must work, and no contract error may show. ${checkPage}`,
+    `6. Check lesson health. Each control must work, and no contract error may show. ${checkPage}`,
   ].join("\n");
 }
 

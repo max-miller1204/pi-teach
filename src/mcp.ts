@@ -190,7 +190,7 @@ export function connectInbox(inbox: LearnerInbox): void {
 const MCP_HOST = {
   browseHint: "Call open_classroom to start the server, then give the learner the URL.",
   checkPage:
-    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Call open_classroom to get the URL. Open the lesson URL in your browser tool. Look for contract errors, and press each local control. If you cannot open the page, tell the learner that it is not checked.",
+    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Call open_classroom to get the URL. Give the learner the lesson URL. Do not launch a browser automation session or a separate test browser during normal teaching. Run browser checks only when the learner requests them. For a requested check, look for contract errors and press each local control. If you did not run browser checks, state that the controls were not checked in a browser.",
 };
 
 function ok(text: string, details: Record<string, unknown> = {}): ToolResult {

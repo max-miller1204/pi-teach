@@ -51,14 +51,14 @@ export interface ClassroomTool {
 export interface ToolHost {
   /** Tells the model how to show a classroom when the server is not running. */
   browseHint: string;
-  /** Tells the model how to open a new page to check it. */
+  /** Tells the model how to check a lesson and present its URL. */
   checkPage: string;
 }
 
 export const PI_HOST: ToolHost = {
   browseHint: "Run /classroom to open it in a browser.",
   checkPage:
-    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Open the lesson URL in your browser tool. Look for contract errors, and press each local control. If the classroom server is not running, ask the learner to run /classroom. If you cannot open the page, tell the learner that it is not checked.",
+    "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Give the learner the lesson URL. Do not launch a browser automation session or a separate test browser during normal teaching. Run browser checks only when the learner requests them. For a requested check, look for contract errors and press each local control. If the classroom server is not running, ask the learner to run /classroom. If you did not run browser checks, state that the controls were not checked in a browser.",
 };
 
 function ok(text: string, details: Record<string, unknown> = {}): ToolResult {
