@@ -35,7 +35,7 @@ describe("lesson and review shells", () => {
 
   it("marks every content block in the lesson shell as optional", () => {
     const html = read("lesson.html");
-    const sections = html.match(/<section>/g) ?? [];
+    const sections = html.match(/<section\b[^>]*>/g) ?? [];
     const optional = html.match(/Optional example:/g) ?? [];
     expect(sections.length).toBeGreaterThan(0);
     expect(optional.length).toBe(sections.length);

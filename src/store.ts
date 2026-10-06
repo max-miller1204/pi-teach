@@ -68,6 +68,7 @@ export interface LessonMeta {
   /** Absent on lessons written before review sessions existed. */
   kind?: LessonKind;
   assessmentContract?: 1;
+  instructionalContract?: 1;
 }
 
 export interface Lesson {
@@ -84,6 +85,7 @@ export interface Lesson {
   order: number | null;
   kind: LessonKind;
   assessmentContract?: 1;
+  instructionalContract?: 1;
   annotationCount: number;
   /** Grade of the most recent graded submission that is not a pretest, when one exists. */
   latestScore: number | null;
@@ -151,6 +153,7 @@ export interface QuizSubmission {
   /** The private rubric bytes when this attempt was saved. Absent in older attempts. */
   rubricDigest?: string;
   assessmentContract?: 1;
+  instructionalContract?: 1;
 }
 
 export interface QuizQuestionGrade {
@@ -333,6 +336,8 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
   if (!htmlPath) return null;
 
   const meta = readJson<LessonMeta>(path.join(dir, "lesson.json"));
+  if (meta?.instructionalContract !== undefined && meta.instructionalContract !== 1)
+    throw new Error(`Unknown instructional contract for ${classroom}/${lesson}.`);
   if (meta?.assessmentContract !== undefined && meta.assessmentContract !== 1)
     throw new Error("Unsupported assessment contract version.");
   const grades = latestGrades(classroom, lesson);
@@ -355,6 +360,7 @@ export function readLesson(classroom: string, lesson: string): Lesson | null {
     title: meta?.title ?? titleFromHtml(htmlPath) ?? titleFromSlug(lesson),
     summary: meta?.summary ?? "",
     assessmentContract: meta?.assessmentContract,
+    instructionalContract: meta?.instructionalContract,
     htmlPath,
     createdAt: meta?.createdAt ?? mtime(htmlPath),
     updatedAt: mtime(htmlPath),
@@ -587,6 +593,7 @@ export function createSubmission(
     submittedAt,
     rubricDigest,
     assessmentContract: readLesson(input.classroom, input.lesson)?.assessmentContract,
+    instructionalContract: readLesson(input.classroom, input.lesson)?.instructionalContract,
   };
   // Timestamp-prefixed so the directory listing is chronological.
   const file = path.join(

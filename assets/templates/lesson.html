@@ -96,7 +96,11 @@
         <p class="cl-lede">{{ONE_LINE_SUMMARY}}</p>
       </header>
 
-      <!-- KEEP for a new lesson. Use two or three diagnostic questions. -->
+      <!-- Read docs/TEACHING-PLAN.md. Write private quiz/plan.json.
+           Map each question to an objective and its mental task.
+           For suitable new procedures, use an example, principle explanation,
+           faded completion, then independent work. Choose support from evidence. -->
+      <!-- KEEP for a new lesson. Ask about central ideas in the upcoming lesson. Two or three is a practical default. -->
       <form
         class="cl-quiz"
         data-quiz-id="pretest-1"
@@ -105,7 +109,9 @@
       >
         <ol class="cl-questions">
           <li class="cl-q" data-question-id="p1" data-type="CHOOSE-A-TYPE">
-            <p class="cl-q-prompt">Write a diagnostic retrieval question.</p>
+            <p class="cl-q-prompt">
+              Ask for a prediction, explanation, or attempted solution about the upcoming idea.
+            </p>
           </li>
         </ol>
       </form>
@@ -118,9 +124,12 @@
         Optional example: a short teaching block. Cite each claim inline, like
         <a href="https://example.com">this</a>. Replace or delete it.
       -->
-        <section>
+        <section id="teaching-1">
           <h2>Replace this heading</h2>
-          <p>Teach toward the objective. Show a concrete case before you ask for work.</p>
+          <p>
+            Map this block id to each prequestion in private quiz/plan.json. Teach toward the
+            objective. Show a concrete case before you ask for work.
+          </p>
         </section>
 
         <!--

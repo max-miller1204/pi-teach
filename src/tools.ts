@@ -27,6 +27,7 @@ import {
   QUIZ_FOLLOW_UP,
 } from "./prompts.ts";
 import { authoredQuestions } from "./quiz-authoring.ts";
+import { parseTeachingPlan } from "./teaching-plan.ts";
 import { parseRubric } from "./rubric.ts";
 import { answersByQuestion, kindOf } from "./quiz.ts";
 import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
@@ -502,6 +503,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           summary: params.summary ?? "",
           createdAt: Date.now(),
           assessmentContract: 1,
+          instructionalContract: 1,
         });
 
         const url = server.urlFor(params.classroom, slug);
@@ -582,6 +584,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           createdAt: now,
           kind: "review",
           assessmentContract: 1,
+          instructionalContract: 1,
         });
 
         const listing = picked.map((item, i) =>
@@ -658,7 +661,22 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
               }
             }
           }
+          let alignmentError: string | undefined;
+          if (lesson.instructionalContract === 1) {
+            try {
+              parseTeachingPlan(
+                fs.readFileSync(
+                  path.join(lessonDir(params.classroom, lesson.name), "quiz", "plan.json"),
+                  "utf8",
+                ),
+                html,
+              );
+            } catch (err) {
+              alignmentError = (err as Error).message;
+            }
+          }
           return {
+            alignmentError,
             lesson: lesson.name,
             title: lesson.title,
             questions: authoredQuestions(html),

@@ -34,6 +34,12 @@ description: Teach a topic or create challenging quizzes and tests in the classr
     Use mode quiz for an explicit quiz or test request. Keep it assessment-only.
     Use mode pretest for a standalone diagnostic. New lessons start with a pretest
     by default. Keep teaching and later checks behind its server gate.
+    Ask prequestions about central ideas in the UPCOMING lesson. Invite a prediction,
+    explanation, or attempted solution before instruction. Wrong answers are expected.
+    Prior-topic retrieval and prerequisite diagnostics cannot replace prequestions.
+    Map questions and teaching in private quiz/plan.json. Read TEACHING-PLAN.md.
+    The gate releases prewritten teaching. The teacher can clarify and stress ideas
+    in feedback. It cannot rewrite that teaching.
     Treat pretest errors as diagnostic. Do not run a retrieval check after them.
     Follow the authoring steps they return. Read the current quiz contract each time.
     Check each lesson in a headless browser before giving the learner its link.
@@ -44,6 +50,11 @@ description: Teach a topic or create challenging quizzes and tests in the classr
     learner. Choose response types that fit each skill.
     Plan the mental work before choosing types. Test recall, reasoning, and transfer
     with new situations. Do not build a test from copied sentences or easy blanks.
+    For suitable new procedures, move from a worked example to principle-focused
+    self-explanation, faded completion, and independent practice. Adjust support
+    to demonstrated knowledge. Do not require one fixed layout or a type quota.
+    Use Mermaid to inspect relationships. Keep a text description beside it.
+    Inspect the rendered diagram and the source sent to grading.
     Inspect the page for answer cues before sharing it.
 13. Write the private quiz rubric before submission. Use it for every attempt.
     For partial credit, supply points for every question. Keep the overall score
@@ -51,3 +62,8 @@ description: Teach a topic or create challenging quizzes and tests in the classr
 
 The dedicated teacher puts passage answers on the page. Retrieval questions and
 learner replies use the teacher panel. Pi keeps its live-session bridge.
+
+Confidence is optional. It informs feedback only. Record assistance honestly.
+Immediate correction is not delayed retention. Application objectives need transfer
+evidence. See EVIDENCE.md for sources and design choices. See EVALUATION.md for
+agent checks and the separate human learning protocol.

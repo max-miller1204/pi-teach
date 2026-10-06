@@ -36,6 +36,7 @@ import { readConfig, resolveConfiguredPort } from "./config.ts";
 import { injectLessonRuntime } from "./lesson-html.ts";
 import { stageLesson } from "./pretest.ts";
 import { authoredQuizzes } from "./quiz-authoring.ts";
+import { parseTeachingPlan } from "./teaching-plan.ts";
 import { parseRubric } from "./rubric.ts";
 import {
   classroomDir,
@@ -661,6 +662,11 @@ async function handleQuizSubmit(
         if (kind === "review" && answer.reviewOf !== question.reviewOf)
           throw new Error(`Review identity does not match authored question ${question.id}.`);
       }
+      if (page.instructionalContract === 1)
+        parseTeachingPlan(
+          fs.readFileSync(path.join(lessonDir(classroom, lesson), "quiz", "plan.json"), "utf8"),
+          html,
+        );
       parseRubric(
         fs.readFileSync(path.join(lessonDir(classroom, lesson), "quiz", "key.json"), "utf8"),
         html,
