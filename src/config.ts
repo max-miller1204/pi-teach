@@ -8,7 +8,13 @@ export interface ClassroomConfig {
   autoOpen?: boolean;
 }
 
+let testConfigPath: string | undefined;
+export function _overrideConfigPath(file: string): void {
+  testConfigPath = file;
+}
+
 export function configPath(): string {
+  if (testConfigPath) return testConfigPath;
   return path.join(os.homedir(), ".pi", "agent", "classroom.json");
 }
 

@@ -48,7 +48,12 @@ describe("Codex plugin", () => {
     expect(mcp["mcpServers"].classroom).toMatchObject({
       args: ["./mcp/launch.mjs"],
       cwd: ".",
-      env_vars: ["PI_CLASSROOMS_DIR", "PI_CLASSROOM_AUTO_OPEN"],
+      env_vars: [
+        "PI_CLASSROOMS_DIR",
+        "PI_CLASSROOM_AUTO_OPEN",
+        "PI_CLASSROOM_SERVICE_PORT",
+        "PI_CLASSROOM_TEACHER",
+      ],
     });
   });
 
@@ -84,6 +89,8 @@ describe("skills", () => {
       "scaffold_lesson",
       "scaffold_review",
       "wait_for_learner",
+      "classroom_service",
+      "classroom_phone",
     ];
     for (const tool of tools) expect(known).toContain(tool);
   });

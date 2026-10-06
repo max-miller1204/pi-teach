@@ -37,6 +37,8 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as net from "node:net";
+import { control, serviceStatus } from "../src/service-client.ts";
 
 import { _overrideClassroomsDir } from "../src/paths.ts";
 import { authoredQuestions, typeCounts } from "../src/quiz-authoring.ts";
@@ -146,17 +148,6 @@ const AUTHORING_PROMPT = [
   "Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
   "When all three lessons are written, end with one line per lesson that states why you chose its activities.",
 ].join("\n");
-
-function gradingPrompt(count: number): string {
-  return [
-    "This is an automated grading run in a temporary classroom.",
-    `Call open_classroom with classroom "${CLASSROOM}". Then call wait_for_learner with timeout_seconds 60.`,
-    `The learner has submitted ${count} quizzes. Grade each one with grade_lesson_quiz, from the lesson and its private quiz/key.json rubric.`,
-    `Keep calling wait_for_learner until you have graded all ${count}.`,
-    "Nobody will reply in chat during this run. Do not ask chat questions, do not write learning records, and do not create lessons.",
-    "After the last grade, end with one short line.",
-  ].join("\n");
-}
 
 interface Session {
   stream(): string;
@@ -418,10 +409,15 @@ async function main(): Promise<void> {
   _overrideClassroomsDir(root);
   seedClassroom(root);
   const home = harness === "codex" ? codexHome() : null;
+  const listener = net.createServer();
+  await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
+  process.env.PI_CLASSROOM_SERVICE_PORT = String((listener.address() as net.AddressInfo).port);
+  await new Promise<void>((resolve) => listener.close(() => resolve()));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PI_CLASSROOMS_DIR: root,
     PI_CLASSROOM_AUTO_OPEN: "0",
+    PI_CLASSROOM_TEACHER: harness,
   };
   if (home) env["CODEX_HOME"] = home;
   const browser = `pi-teach-authoring-${harness}-${process.pid}`;
@@ -466,7 +462,22 @@ async function main(): Promise<void> {
     const reports = lessons.map((lesson, i) => inspectLesson(root, lesson, OBJECTIVES[i]!));
 
     // Browser: check, press, answer, submit.
-    const base = await server.start();
+    const service = await serviceStatus();
+    if (!service.running) throw new Error("Authoring agent did not open the persistent service.");
+    await control("/rpc", {
+      client: "authoring-evaluation",
+      backend: harness,
+      message: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "open_classroom",
+          arguments: { classroom: CLASSROOM, teacher_backend: harness },
+        },
+      },
+    });
+    const base = service.url;
     let submissions = 0;
     for (const report of reports) {
       const url = `${base}/c/${CLASSROOM}/${report.lesson}`;
@@ -502,27 +513,19 @@ async function main(): Promise<void> {
     log(`submitted ${submissions} quizzes`);
     if (submissions === 0) throw new Error("No quiz could be submitted.");
 
-    // Grading session. Opening the classroom restores the ungraded submissions.
-    const grading = startSession(
-      gradingPrompt(submissions),
-      ["open_classroom", "wait_for_learner", "grade_lesson_quiz"],
-      ["Read"],
-      env,
-      root,
-    );
-    sessions.push(grading);
+    // The dedicated teacher grades saved submissions after the authoring host exits.
     const ungraded = () =>
       lessons.flatMap((lesson) => {
         const graded = new Set(store.latestGrades(CLASSROOM, lesson).map((g) => g.submissionId));
         return store.listSubmissions(CLASSROOM, lesson).filter((s) => !graded.has(s.id));
       });
-    await until("every grade", GRADING_TIMEOUT_MS, () => (ungraded().length === 0 ? true : null));
-    await within("the grading session to end", 180_000, grading.exited).catch((error: Error) => {
-      failures.push(error.message);
+    await until("every grade", GRADING_TIMEOUT_MS, () => {
+      const stateFile = path.join(root, CLASSROOM, ".teacher.json");
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      const failed = state.requests.find((r: { status: string }) => r.status === "failed");
+      if (failed) throw new Error(`Dedicated teacher failed: ${failed.error}`);
+      return ungraded().length === 0 ? true : null;
     });
-    const gradingCalls = toolCalls(harness, grading.stream());
-    log(`grading tool calls: ${gradingCalls.join(" → ")}`);
-
     // Reload: each quiz shows its grade and its answers.
     for (const report of reports) {
       await playwright(browser, root, "goto", `${base}/c/${CLASSROOM}/${report.lesson}`);
@@ -610,6 +613,10 @@ async function main(): Promise<void> {
     for (const session of sessions) session.stop();
     if (browserOpen) await playwright(browser, root, "close");
     await server.close();
+    if ((await serviceStatus()).running) {
+      await control("/stop", {});
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
     fs.rmSync(root, { recursive: true, force: true });
     if (home) fs.rmSync(home, { recursive: true, force: true });
   }

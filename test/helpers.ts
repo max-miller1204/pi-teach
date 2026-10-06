@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { _overrideClassroomsDir, submissionsDir } from "../src/paths.ts";
 import * as store from "../src/store.ts";
+import { _overrideConfigPath } from "../src/config.ts";
 
 export interface Fixture {
   root: string;
@@ -21,6 +22,7 @@ export interface Fixture {
 export function makeFixture(): Fixture {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-classroom-test-"));
   _overrideClassroomsDir(root);
+  _overrideConfigPath(path.join(root, "test-config.json"));
 
   return {
     root,

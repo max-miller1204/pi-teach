@@ -163,29 +163,66 @@ has two skills and one MCP server, `classroom`.
 
 In Codex, ask it to teach you a topic, or mention the `teach` or `classroom` skill.
 
-One thing works differently. Pi can push a question from the browser into the
-session. Claude Code and Codex cannot. The agent listens instead:
+Pi keeps its server inside the live Pi session. Claude Code and Codex attach to a
+persistent local service. Closing the initiating chat does not stop the service.
 
-1. The agent writes a lesson and calls `open_classroom`. The browser opens.
-2. The agent calls `wait_for_learner`. The call waits until you ask a question or
-   submit a quiz in the browser.
-3. The agent answers page questions with `answer_lesson_question` and grades quizzes
-   with `grade_lesson_quiz`.
-4. After a wrong quiz answer, the agent asks a retrieval question in chat and ends
-   its turn. Reply in chat. The agent checks your understanding before moving on.
-5. The agent resumes `wait_for_learner` when you return to the page. It does not wait
-   for browser input while it needs your chat reply.
+1. The initiating agent writes a lesson and its private rubric.
+2. It calls `open_classroom`. The service records one teacher backend per classroom.
+3. A browser question or submission starts work in that classroom's dedicated teacher.
+4. The service validates and saves the teacher's plan. It applies answers and grades
+   in the process that owns the browser's SSE connection.
+5. After a missed answer, the teacher asks a new retrieval question in the lesson's
+   teacher panel. Reply in that panel. The graded quiz stays locked.
 
-While the agent waits, the terminal is busy. Press Esc to stop the wait and talk to the
-agent. Ask it to keep listening when you go back to the lesson. Questions you ask while
-nobody listens stay in a queue. The next `wait_for_learner` call returns all of them.
+The teacher does not advance lessons. Ask the initiating agent for new material after
+completing the check. Learning records and spaced review keep the existing teaching
+method. Historical grades remain unchanged. Skipped checks stay in notes as unresolved gaps.
+A pretest can record prior knowledge demonstrated by a correct answer.
 
-The classroom server runs inside the MCP server process, so it is session-scoped, as in
-Pi. It stops when the session ends.
+The persistent service requires Unix local sockets. The service owns one classrooms root. It binds to `127.0.0.1:43123` by default. Set
+`PI_CLASSROOM_SERVICE_PORT` to an explicit port before starting it. A port conflict
+stops startup. The service never selects another port. Pi's existing port setting
+and lifecycle remain unchanged.
 
-Waits stop after at most 60 seconds. The agent reports the pause and ends its turn.
-Ask it to continue listening when needed. Pending questions and ungraded submissions
-are restored when a classroom reopens after a restart.
+The initiating host selects the teacher backend. Set `PI_CLASSROOM_TEACHER` to
+`codex` or `claude`, or pass `teacher_backend` to `open_classroom`, when the host is
+unknown. An existing classroom cannot silently change backend. The service records
+the dedicated session ID. Codex uses its supported app-server `thread/start`,
+`thread/resume`, and `turn/start` calls. Claude uses its authenticated CLI with
+`--json-schema` and `--resume`. Both return structured plans. They do not write grades
+or answer files directly. The service uses the shared tool validation to apply them.
+
+Use `classroom_service` with action start, status, or stop. You can also use:
+
+```sh
+npm run service -- start
+npm run service -- status
+npm run service -- stop
+```
+
+Status reports the owner process, package path, classrooms root, port, and log path.
+A different package version or port must be stopped explicitly before replacement.
+The service stores control state in `<classrooms root>/.pi-teach-service/`. Its control
+socket permits access only to the local user. Classroom teacher state lives in
+`.teacher.json`, which is never a static route. The service saves each request and
+plan before applying writes. It skips grades already saved for that submission.
+An interrupted model call becomes a visible error. Use Retry request in the teacher
+panel to run it again. Saved plans finish without another model call. Model calls
+have a 180-second limit. Model and authentication errors remain visible.
+
+For phone access, ask the agent to call `classroom_phone` with action start,
+classroom, and lesson. The helper uses the existing Tailscale installation and node.
+It creates a tailnet-only HTTPS Serve route on explicit port 8443 by default. It
+checks the complete URL before returning it. Use `https_port` to select a free port
+explicitly if that port is occupied. The helper rejects conflicts and Funnel-enabled
+ports. It preserves unrelated Serve routes. Use its status and stop actions to
+inspect and remove the owned route. Service stop removes that route first.
+This does not enable public access. Tailnet members allowed by your Tailscale policy
+can reach the classroom pages and submit requests.
+
+The adapters follow the official [Codex app-server documentation](https://learn.chatgpt.com/docs/app-server),
+[Claude CLI documentation](https://code.claude.com/docs/en/headless), and
+[Tailscale Serve documentation](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
 ## Storage
 
@@ -282,21 +319,21 @@ correct answers. Health distinguishes incomplete answers and resolved gaps.
 Historical grades stay unchanged. Historical grades without points cannot show
 how partial credit was distributed.
 
-The Claude Code and Codex plugin adds four more tools, in place of the Pi commands and
-the push from the browser:
+The Claude Code and Codex plugin exposes authoring tools and these service tools.
+The dedicated teacher owns answer, grade, and retrieval writes:
 
-| Tool               | Purpose                                                                         |
-| ------------------ | ------------------------------------------------------------------------------- |
-| `begin_teaching`   | Return the teaching method and the learner's classroom. Replaces `/teach`.      |
-| `open_classroom`   | Start the server, open the browser, and return the URL. Replaces `/classroom`.  |
-| `list_classrooms`  | List classrooms and lessons with scores. Replaces `/classroom list`.            |
-| `wait_for_learner` | Wait for a question, a follow-up, a quiz, or a self-explanation, and return it. |
+| Tool                | Purpose                                                                        |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `begin_teaching`    | Return the teaching method and the learner's classroom. Replaces `/teach`.     |
+| `open_classroom`    | Start the server, open the browser, and return the URL. Replaces `/classroom`. |
+| `list_classrooms`   | List classrooms and lessons with scores. Replaces `/classroom list`.           |
+| `classroom_service` | Start, inspect, or explicitly stop the service.                                |
+| `classroom_phone`   | Start, inspect, or stop the owned phone route.                                 |
 
 ## Limitations and gotchas
 
-- **The server is session-scoped.** Close the session and the pages stop serving. This is
-  deliberate — see above. Your material is on disk regardless. The port widget is the
-  quickest way to tell which session is the live one.
+- **Pi is session-scoped.** Close the Pi session and its pages stop serving.
+  Claude Code and Codex use the persistent service. Stop it explicitly.
 - **The widget needs a UI.** In non-interactive modes there is nowhere to draw it, so it
   is silently skipped; `/classroom status` still reports the server.
 - **Asking requires a live session.** Highlight-to-ask and grading go to the agent in the
@@ -315,11 +352,10 @@ the push from the browser:
   form rehydrates from the first one's submission.
 - **Never renumber `data-question-id`** after a learner has submitted — grades are
   matched back to questions by that id.
-- **Claude Code and Codex must listen.** A question reaches the agent only during a
-  `wait_for_learner` call. Until then it waits in a queue, and its card shows as
-  pending.
-- **Loopback only.** There is no auth and none is needed; nothing binds beyond
-  `127.0.0.1`.
+- **Teacher failures require a retry.** The teacher panel shows the specific error.
+  Saved requests stay on disk. Click Retry request after resolving the cause.
+- **Loopback only.** The HTTP service binds to `127.0.0.1`. Phone access uses an
+  opt-in Tailscale Serve route. It does not use Funnel.
 
 ## Development
 

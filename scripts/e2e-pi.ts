@@ -30,6 +30,20 @@ fixture.write(
   ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
 );
 
+fixture.write(
+  "rust/001-ownership/quiz/key.json",
+  JSON.stringify({
+    "check-1": {
+      q1: {
+        expected: "a",
+        points: 1,
+        fullCredit: "The value is dropped.",
+        noCredit: "The value stays alive forever.",
+      },
+    },
+  }),
+);
+
 const session = `pi-teach-pi-${process.pid}`;
 const child = spawn(
   "pi",
@@ -253,13 +267,17 @@ try {
   if (store.listSubmissions("rust", "001-ownership").length !== 1)
     throw new Error("The chat check created another quiz attempt");
   const review = store.reviewItems("rust");
+  const historicalGrades = store.listGrades("rust", "001-ownership");
   if (
-    review.length !== 1 ||
-    review[0]!.attempts !== 1 ||
-    review[0]!.lastCorrect ||
-    review[0]!.box !== 0
+    historicalGrades.length !== 1 ||
+    historicalGrades[0].score !== 0 ||
+    historicalGrades[0].questions[0].correct ||
+    review.length !== 1
   )
-    throw new Error("The chat check changed the missed idea's review history");
+    throw new Error("The chat check changed the saved quiz grade or removed its review item.");
+  const checks = store.listRetrievalChecks("rust");
+  if (checks.length > 0 && review[0].lastSource !== "chat")
+    throw new Error("Linked retrieval evidence did not reach the review schedule.");
   console.log(`[e2e:pi] chat answer check: ${JSON.stringify(checkedReply)}`);
   if (artifacts)
     fs.writeFileSync(path.join(artifacts, "pi-events.json"), JSON.stringify(events, null, 2));

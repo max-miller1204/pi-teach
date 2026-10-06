@@ -11,22 +11,20 @@ description: Teach the user a topic one short interactive lesson at a time, in a
    `topic`, or omit it to continue.
 3. Follow the method that `begin_teaching` returns. It is the full teaching brief.
 4. Before you give the learner a lesson URL, call `open_classroom`.
-5. After you give the learner a lesson, call `wait_for_learner`. Use at most 60
-   seconds. If it times out, say that listening has paused and end your turn.
-   Resume when the learner asks to continue. Browser requests cannot wake an idle
-   MCP agent. Reopen the classroom after a restart to recover pending requests.
-6. Answer page questions with `answer_lesson_question`.
-7. Grade quizzes with `grade_lesson_quiz`. Treat a pretest as diagnostic. Follow
-   the shared quiz follow-up rule from `begin_teaching` and the grading result.
-8. After a wrong answer, explain the missed idea and ask one new retrieval question
-   in chat with a different example. Keep the graded browser quiz locked. Review
-   the idea later through spaced review. End your turn and wait for the learner's
-   chat reply. Do not call `wait_for_learner` while you need that reply. Check
-   understanding before moving on. Write a learning record after a successful
-   check. Call `record_retrieval_check` to link that evidence to the original
-   review item. Keep historical scores and attempts.
-9. Resume `wait_for_learner` when the learner returns to the page. Do not start the
-   next lesson without their agreement.
+5. The persistent service selects a dedicated teacher for each classroom. Use the
+   initiating host or pass teacher_backend explicitly to `open_classroom`. Do not
+   change an existing classroom's backend.
+6. Browser questions and quiz submissions start teacher work when they arrive.
+   The initiating chat can end. Do not run a wait loop or a looping subagent.
+7. The dedicated teacher answers and grades through the service. Its results reach
+   the page through the service's SSE connection.
+8. After a wrong answer, use the teacher panel on the lesson page for the retrieval
+   question and learner reply. Keep the graded quiz locked. Preserve grades and
+   attempts. Record learning only after demonstrated understanding.
+9. Do not start the next lesson without learner agreement. Use `classroom_service`
+   to inspect or explicitly stop the service. For requested phone access, use
+   `classroom_phone` with action start and the classroom and lesson. Give the full
+   checked URL it returns. Use status or stop to inspect or remove its route.
 10. When `begin_teaching` reports questions due for review, offer a review before new
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.
@@ -38,6 +36,5 @@ description: Teach the user a topic one short interactive lesson at a time, in a
     For partial credit, supply points for every question. Keep the overall score
     consistent with those points.
 
-Do not answer the learner's highlighted-passage questions only in chat. Only
-`answer_lesson_question` puts those answers on their page. Your retrieval questions
-and the learner's replies belong in chat.
+The dedicated teacher puts passage answers on the page. Retrieval questions and
+learner replies use the teacher panel. Pi keeps its live-session bridge.

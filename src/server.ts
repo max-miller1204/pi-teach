@@ -1,10 +1,9 @@
 /**
  * server.ts — the in-process HTTP server behind /classroom.
  *
- * One singleton per Pi session, bound to loopback, started lazily and closed on
- * session_shutdown. It is in-process rather than a detached daemon on purpose: the
- * whole point is that a question asked in the browser reaches the agent running in
- * this session, which a separate process could not do.
+ * One loopback singleton per process. Pi starts it lazily and closes it on
+ * session_shutdown. Claude Code and Codex run it in the persistent service.
+ * Hooks route browser requests to the owner for each host.
  *
  * Routes:
  *   GET    /                                  landing page
@@ -57,7 +56,11 @@ import * as store from "./store.ts";
 // ── Callbacks into the extension ──────────────────────────────────────────────
 
 export interface ServerHooks {
-  delivery?: "push" | "wait";
+  delivery?: "push" | "wait" | "service";
+  canAccept?(classroom: string): void;
+  teacherState?(classroom: string, lesson: string): unknown;
+  onTeacherChat?(classroom: string, lesson: string, text: string, id: string): void;
+  onTeacherRetry?(classroom: string, id: string): void;
   /** Called after a question is persisted, to wake the agent. */
   onAsk(annotation: store.Annotation): void;
   /** Called after a follow-up is appended to an existing card. */
@@ -99,7 +102,7 @@ function removeClient(key: string, res: http.ServerResponse): void {
 export function pushEvent(
   classroom: string,
   lesson: string,
-  event: "answer" | "grade" | "reload",
+  event: "answer" | "grade" | "reload" | "teacher",
   data: unknown,
 ): void {
   const clients = sseClients.get(lessonKey(classroom, lesson));
@@ -396,6 +399,32 @@ async function handleApi(
   url: URL,
 ): Promise<void> {
   const route = rest.join("/");
+  if (route === "teacher/chat" && req.method === "POST") {
+    const body = (await readJsonBody(req)) as Record<string, unknown>;
+    const { classroom, lesson, text, id } = body;
+    if (
+      !isValidSlug(classroom) ||
+      !isValidSlug(lesson) ||
+      !store.readLesson(classroom, lesson) ||
+      typeof text !== "string" ||
+      !text.trim() ||
+      text.length > 8000 ||
+      typeof id !== "string" ||
+      !/^[a-f0-9-]{36}$/.test(id)
+    )
+      return sendJson(res, { error: "Invalid teacher reply." }, 400);
+    if (!hooks?.onTeacherChat) return sendJson(res, { error: "No dedicated teacher." }, 409);
+    hooks.onTeacherChat(classroom, lesson, text.trim(), id);
+    return sendJson(res, { saved: true }, 201);
+  }
+  if (route === "teacher/retry" && req.method === "POST") {
+    const body = (await readJsonBody(req)) as Record<string, unknown>;
+    if (!isValidSlug(body.classroom) || typeof body.id !== "string")
+      return sendJson(res, { error: "Invalid request." }, 400);
+    if (!hooks?.onTeacherRetry) return sendJson(res, { error: "No dedicated teacher." }, 409);
+    hooks.onTeacherRetry(body.classroom, body.id);
+    return sendJson(res, { queued: true });
+  }
 
   if (route === "events" && req.method === "GET") return handleEvents(req, res, url);
   if (route === "state" && req.method === "GET") return handleState(res, url);
@@ -449,6 +478,7 @@ function handleState(res: http.ServerResponse, url: URL): void {
     annotations: store.listAnnotations(params.classroom, params.lesson),
     quizzes: store.latestQuizStates(params.classroom, params.lesson),
     reflections: store.latestReflections(params.classroom, params.lesson),
+    teacher: hooks?.teacherState?.(params.classroom, params.lesson),
   });
 }
 
@@ -493,6 +523,7 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
   if (!anchor) return sendJson(res, { error: "A valid anchor is required" }, 400);
   if (!store.readLesson(classroom, lesson)) return sendJson(res, { error: "Unknown lesson" }, 404);
 
+  hooks?.canAccept?.(classroom);
   const annotation = store.createAnnotation({
     classroom,
     lesson,
@@ -529,6 +560,7 @@ async function handleFollowUp(
     return sendJson(res, { error: "That question has not been answered yet" }, 409);
   }
 
+  hooks?.canAccept?.(existing.classroom);
   const added = store.addFollowUp(annotationId, question.slice(0, 4000));
   if (!added) return sendJson(res, { error: "Could not save the follow-up" }, 500);
 
@@ -590,6 +622,7 @@ async function handleQuizSubmit(
     return sendJson(res, { error: "The last attempt at this quiz is not graded yet" }, 409);
   }
 
+  hooks?.canAccept?.(classroom);
   const submission = store.createSubmission({
     classroom,
     lesson,
@@ -625,6 +658,7 @@ async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse
   const text = typeof body["text"] === "string" ? body["text"].trim() : "";
   if (!text) return sendJson(res, { error: "A reflection needs some text" }, 400);
 
+  hooks?.canAccept?.(classroom);
   const reflection = store.createReflection({
     classroom,
     lesson,
@@ -651,16 +685,20 @@ let serverPort: number | null = null;
 let starting: Promise<string> | null = null;
 
 /** Start the session server. Reject an occupied configured port. */
-export async function start(): Promise<string> {
+export async function start(port?: number): Promise<string> {
   if (server && serverPort) return Promise.resolve(`http://127.0.0.1:${serverPort}`);
 
   if (starting) return starting;
-  const preferredPort = resolveConfiguredPort(readConfig().port);
+  const preferredPort = port === undefined ? resolveConfiguredPort(readConfig().port) : port;
 
   starting = new Promise((resolve, reject) => {
     const s = http.createServer((req, res) => {
       void handleRequest(req, res).catch((err) => {
         console.error("[classroom] request failed", err);
+        if (hooks?.delivery === "service" && req.url?.startsWith("/api/") && !res.headersSent) {
+          sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 500);
+          return;
+        }
         if (!res.headersSent) res.writeHead(500, { "Content-Type": "text/plain" });
         res.end("Internal error");
       });

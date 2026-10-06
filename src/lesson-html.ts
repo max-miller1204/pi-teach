@@ -15,7 +15,7 @@ export interface LessonRuntimeConfig {
   classroomTitle: string;
   lessonTitle: string;
   baseUrl: string;
-  delivery?: "push" | "wait";
+  delivery?: "push" | "wait" | "service";
 }
 
 /** The `<head>` additions: shared stylesheet plus the no-flash theme bootstrap. */

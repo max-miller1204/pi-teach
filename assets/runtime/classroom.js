@@ -806,7 +806,8 @@ async function loadState() {
     const state = await (await fetch(url)).json();
 
     for (const annotation of state.annotations ?? []) {
-      const mark = restoreAnnotation(annotation);
+      const existing = cards.get(annotation.id);
+      const mark = existing ? existing.mark : restoreAnnotation(annotation);
       // An orphaned annotation (the lesson text changed under it) still gets a card,
       // parked at the end of the lesson rather than silently discarded.
       renderCard(annotation, mark);
@@ -815,6 +816,7 @@ async function loadState() {
 
     for (const quiz of state.quizzes) applyQuizState(quiz);
     for (const reflection of state.reflections) applyReflection(reflection);
+    if (state.teacher) renderTeacher(state.teacher);
   } catch (err) {
     console.warn("[classroom] could not load lesson state", err);
   }
@@ -841,6 +843,10 @@ function connectEvents() {
     });
   });
 
+  source.addEventListener("teacher", (event) => renderTeacher(JSON.parse(event.data)));
+  source.addEventListener("open", () => {
+    if (config.delivery === "service") loadState();
+  });
   source.addEventListener("reload", () => location.reload());
 }
 
@@ -1752,3 +1758,82 @@ function cssEscape(value) {
 // Runs last on purpose: init() touches the module's `let` bindings, which are in the
 // temporal dead zone until their declarations above have been evaluated.
 if (config) init();
+
+// Dedicated teacher chat stays available after the initiating chat ends.
+let teacherPanel = null;
+let teacherReplyId = null;
+function renderTeacher(state) {
+  if (!state) return;
+  if (!teacherPanel) {
+    teacherPanel = document.createElement("section");
+    teacherPanel.className = "cl-teacher";
+    teacherPanel.innerHTML =
+      '<h2>Your teacher</h2><p class="cl-teacher-identity"></p><div class="cl-teacher-messages" aria-live="polite"></div><div class="cl-teacher-requests" aria-live="polite"></div><form><label>Reply to your teacher<textarea required maxlength="8000"></textarea></label><button class="cl-button" type="submit">Send reply</button><p class="cl-teacher-error" role="alert"></p></form>';
+    document.body.appendChild(teacherPanel);
+    teacherPanel.querySelector("form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const field = teacherPanel.querySelector("textarea"),
+        button = teacherPanel.querySelector('button[type="submit"]');
+      teacherReplyId ??= crypto.randomUUID();
+      button.disabled = true;
+      try {
+        await teacherPost("chat", { text: field.value, id: teacherReplyId });
+        field.value = "";
+        teacherReplyId = null;
+        teacherPanel.querySelector(".cl-teacher-error").textContent = "";
+      } catch (err) {
+        teacherPanel.querySelector(".cl-teacher-error").textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+    teacherPanel.querySelector("textarea").addEventListener("input", () => {
+      teacherReplyId = null;
+    });
+  }
+  teacherPanel.querySelector(".cl-teacher-identity").textContent =
+    `${state.identity.backend} teacher. Session: ${state.identity.sessionId || "Starts with your first request"}.`;
+  const messages = teacherPanel.querySelector(".cl-teacher-messages");
+  messages.replaceChildren();
+  for (const message of state.messages) {
+    const item = document.createElement("p");
+    item.style.whiteSpace = "pre-wrap";
+    item.textContent = `${message.role === "teacher" ? "Teacher" : "You"}: ${message.text}`;
+    messages.appendChild(item);
+  }
+  const requests = teacherPanel.querySelector(".cl-teacher-requests");
+  requests.replaceChildren();
+  for (const request of state.requests.filter((r) => r.status !== "done")) {
+    const item = document.createElement("p");
+    item.textContent =
+      request.status === "failed"
+        ? `Teacher failed: ${request.error}`
+        : `${request.kind}: ${request.status}`;
+    if (request.status === "failed") {
+      const retry = document.createElement("button");
+      retry.className = "cl-button";
+      retry.textContent = "Retry request";
+      retry.onclick = async () => {
+        retry.disabled = true;
+        try {
+          await teacherPost("retry", { id: request.id });
+        } catch (err) {
+          teacherPanel.querySelector(".cl-teacher-error").textContent = err.message;
+          retry.disabled = false;
+        }
+      };
+      item.appendChild(retry);
+    }
+    requests.appendChild(item);
+  }
+}
+async function teacherPost(action, body) {
+  const response = await fetch(`/api/teacher/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ classroom: config.classroom, lesson: config.lesson, ...body }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || `Teacher request returned ${response.status}`);
+  return result;
+}
