@@ -23,7 +23,7 @@ Record the feature ID and entry point. Save actions and resulting state. Keep sc
 
 ## Features
 
-- [Reading and navigation](reading.md): classroom cards, lesson links, theme persistence, glossary recall, and private rubric access.
+- [Reading and navigation](reading.md): classroom cards, lesson links, theme persistence, glossary recall, diagrams, and private rubric access.
 - [Passage questions and teacher replies](teacher.md): question APIs, card answers, panel replies, and session resume.
 - [Quizzes and review](quizzes.md): submissions, grades, locked attempts, typed controls, unsent drafts, and stored review evidence.
 - [Service lifecycle](service.md): explicit controls, MCP detach, reconnection, restart, and conflicts.
