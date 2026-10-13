@@ -31,8 +31,15 @@ explicit retry, invalid controls, host ownership, automatic navigation, saved an
 rubric routes, submission, grading, and the original item schedule. Inspect `review/pi/result.json` and `review/service/result.json`.
 Inspect the screenshots before citing them.
 
-Live host review authoring remains a coverage gap in this layer. The browser fixtures
-prove the UI, persistence, and recovery through the production teacher boundaries.
+Run `npm run verify -- codex` for a changed service
+or shared prompt. These drives create a review with the real persistent teacher
+in its existing session. Inspect `stored-review.json` and the host review screenshot.
+Coverage gap: Claude review authoring has not been observed. Run
+`npm run verify -- claude` when its account has model access. A Codex result does
+not verify the Claude adapter.
+
+Run `npm run verify -- pi` for review authoring in the live Pi session. Inspect
+`stored-review.json` and `pi-review.png`.
 
 ## Gotchas
 
