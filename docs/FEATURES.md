@@ -30,6 +30,10 @@
   served page until the pretest is graded. Explicit quiz requests get assessment-only
   pages. A pretest never counts toward
   the score. Confidence is optional and informs feedback only. Assistance reports describe evidence.
+- **Start reviews on the page.** Select `Start review` in the classroom's Progress
+  section. The teacher creates up to five due questions with new examples. The page
+  opens the review when it is ready. Reload keeps the request. A failure shows its
+  error and a `Retry review` button. Use `Continue review` to return to an unfinished review.
 - **Spaced review.** Each graded question except pretests gets a history-derived
   schedule. Base intervals are 1, 3, 7, 21, and 60 days. These are product choices.
   Elapsed time and independent retrieval control interval growth. An optional

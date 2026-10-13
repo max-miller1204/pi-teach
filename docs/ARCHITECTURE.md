@@ -100,6 +100,8 @@ Extension side (`.ts`):
   `lesson_health` authoring diagnostics. Pure. The browser still owns the contract
   check.
 - `src/review.ts`: the spaced-review schedule, derived from grade history. Pure.
+- `src/review-session.ts`: durable browser review requests, selected items, validation,
+  and publication. Private request state lives in `<classroom>/.reviews.json`.
 - `src/glossary.ts`: parses `GLOSSARY.md` and finds words the glossary says to avoid.
 - `src/health.ts`: the `lesson_health` report. Pure.
 - `src/pages.ts`, `src/lesson-html.ts`, `src/markdown.ts`, `src/config.ts`: pure-ish
@@ -199,6 +201,16 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
 - **One state per quiz.** A lesson can hold several quizzes, so `/api/state` returns the
   latest attempt at each `quizId`. A new attempt is refused (409) until the last one is
   graded.
+- **Reviews start on the classroom page.** `Start review` saves one request and up to
+  five due items. Each request records its host and process. Another host cannot take over
+  the request. Pi authors the assigned files in its live session. The persistent
+  teacher returns one `publish_review` call. The service saves that plan before it
+  writes files. Normal teacher requests cannot publish pages. Validate the item keys,
+  private rubric, control shapes, and teaching plan before publication. Hide unfinished reviews from
+  lesson lists, static lesson routes, and submissions. Repeated clicks reuse the request.
+  Failures require `Retry review`. A saved service plan can resume without another model
+  turn. Pi marks interrupted review work failed. `Continue review` returns to a review
+  that has not been graded.
 - **The review schedule is derived, never stored.** `store.reviewItems()` rebuilds it
   from every graded answer and linked chat retrieval check. Pretests are left out. A review question names its item
   with `data-review-of`, and the server refuses a key that was never graded.

@@ -6,6 +6,7 @@ Start with the shared [launch and doctor instructions](../SKILL.md). Each browse
 | -------------------- | ------------------------ | -------------------------------------------------------- |
 | Read and ask         | [reading.md](reading.md) | Lesson text, quiz text, cards, glossary, diagrams, theme |
 | Answer quizzes       | [quizzes.md](quizzes.md) | Quiz controls, pretest gate, reload, second tab          |
+| Start a review       | [review.md](review.md)   | Classroom progress, durable authoring, explicit retry    |
 | Teacher conversation | [teacher.md](teacher.md) | Pi and service panels, explicit retry, MCP reconnect     |
 
-Coverage gaps: the phone target changes a real Tailscale Serve route. Run it only for phone changes with an available tailnet. It was not exercised during this setup. Feedback and quality targets remain separate model evaluations. This map does not claim they ran. Landing-page navigation and human retention are outside these browser recipes. Use the HTTP tests and [evaluation protocol](../../../../docs/EVALUATION.md) for those boundaries.
+Coverage gaps: the phone target changes a real Tailscale Serve route. Run it only for phone changes with an available tailnet. It was not exercised during this setup. Feedback and quality targets remain separate model evaluations. This map does not claim they ran. Other landing-page navigation and human retention are outside these browser recipes. Use the HTTP tests and [evaluation protocol](../../../../docs/EVALUATION.md) for those boundaries.

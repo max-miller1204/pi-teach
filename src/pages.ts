@@ -7,7 +7,7 @@
  */
 
 import { escapeHtml, renderMarkdown } from "./markdown.ts";
-import { relativeDay, type ReviewSummary } from "./review.ts";
+import { DEFAULT_REVIEW_SIZE, relativeDay, type ReviewSummary } from "./review.ts";
 import type { Classroom, Lesson } from "./store.ts";
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ function progressSection(data: ClassroomPageData): string {
   const percent = review.total > 0 ? Math.round((review.retained / review.total) * 100) : 0;
   const note =
     review.due > 0
-      ? "Ask your teacher for a review before the next lesson. Spaced recall is what makes it stick."
+      ? "Start a review of due questions before the next lesson."
       : review.nextDueAt !== null
         ? `Nothing is due. The next review is due ${relativeDay(review.nextDueAt, now)}.`
         : "";
@@ -230,6 +230,15 @@ function progressSection(data: ClassroomPageData): string {
   ${review.total > 0 ? `<div class="cl-meter" role="meter" aria-label="Items with retained evidence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width: ${percent}%"></span></div>` : ""}
   <p class="cl-progress-note">Retained evidence needs independent answers after a delay. Application skills also need transfer. Old records with missing context stay unknown.</p>
   ${note ? `<p class="cl-progress-note">${escapeHtml(note)}</p>` : ""}
+  ${
+    review.total > 0
+      ? `<div class="cl-review-start" data-cl-review="${escapeHtml(data.classroom.name)}" data-due="${review.due}" data-review-size="${DEFAULT_REVIEW_SIZE}">
+    <button type="button" class="cl-button" data-cl-review-start disabled>Start review</button>
+    <p class="cl-progress-note" data-cl-review-status role="status" aria-live="polite">Checking review status…</p>
+    <a data-cl-review-open hidden>Open review</a>
+  </div>`
+      : ""
+  }
 </section>`;
 }
 
