@@ -1208,14 +1208,32 @@ mark.cl-hl.cl-hl-pending {
 }
 
 .cl-q-verdict {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+  display: grid;
+  gap: 0.25rem;
   margin-top: 0.6rem;
-  padding: 0.5rem 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-left: 3px solid currentColor;
   border-radius: var(--cl-radius-sm);
   font-family: var(--cl-sans);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.cl-q-verdict-label {
+  font-weight: 600;
+}
+
+.cl-q-verdict-feedback {
+  min-width: 0;
+}
+
+.cl-q-verdict-feedback > :first-child {
+  margin-top: 0;
+}
+
+.cl-q-verdict-feedback > :last-child {
+  margin-bottom: 0;
 }
 
 .cl-q-verdict[data-correct="true"] {
