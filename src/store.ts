@@ -1012,3 +1012,15 @@ export function listReferenceDocs(classroom: string): string[] {
     .filter((f) => f.endsWith(".html"))
     .sort();
 }
+
+/** Original review items that a graded lesson can use for panel evidence. */
+export function lessonReviewItems(classroom: string, lesson: string): ReviewItem[] {
+  const reviewedHere = new Set(
+    latestQuizStates(classroom, lesson)
+      .filter((state) => state.grade && state.submission.kind === "review")
+      .flatMap((state) => state.submission.answers.map((answer) => answer.reviewOf)),
+  );
+  return reviewItems(classroom).filter(
+    (item) => item.lesson === lesson || reviewedHere.has(item.key),
+  );
+}

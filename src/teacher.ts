@@ -26,7 +26,12 @@ export const PLAN_SCHEMA = {
         properties: {
           name: {
             type: "string",
-            enum: ["answer_lesson_question", "grade_lesson_quiz", "record_retrieval_check"],
+            enum: [
+              "answer_lesson_question",
+              "grade_lesson_quiz",
+              "record_retrieval_check",
+              "publish_review",
+            ],
           },
           arguments_json: { type: "string" },
         },

@@ -11,6 +11,7 @@ import {
   gradePrompt,
   reflectPrompt,
   dedicatedTeacherPrompt,
+  reviewPrompt,
 } from "./prompts.ts";
 import * as store from "./store.ts";
 import * as server from "./server.ts";
@@ -21,7 +22,23 @@ import {
   type TeacherRequest,
   type TeacherState,
 } from "./service-state.ts";
-import { runTeacher, type Backend, type RunTeacher, parsePlan } from "./teacher.ts";
+import {
+  runTeacher,
+  type Backend,
+  type RunTeacher,
+  type TeacherPlan,
+  parsePlan,
+} from "./teacher.ts";
+
+import {
+  reviewSessions,
+  requireReviewOwner,
+  updateReview,
+  publishReview,
+  validateReview,
+  type ReviewDocument,
+  type ReviewSession,
+} from "./review-session.ts";
 
 export class TeacherService {
   private readonly states = new Map<string, TeacherState>();
@@ -50,6 +67,7 @@ export class TeacherService {
         if (r.status === "running") {
           r.status = "failed";
           r.error = "Service stopped during teacher work. Retry this request.";
+          if (r.kind === "review") updateReview(this.reviewSession(r), "failed", r.error);
         }
       this.states.set(classroom, state);
     }
@@ -63,6 +81,7 @@ export class TeacherService {
   connect(): void {
     server.setHooks({
       delivery: "service",
+      reviewOwner: "service",
       onAsk: (a) => this.question(a),
       onFollowUp: (a, f) => this.followUp(a, f),
       onQuizSubmit: (s) => this.submission(s),
@@ -70,6 +89,17 @@ export class TeacherService {
       teacherState: (classroom, lesson) => this.publicState(classroom, lesson),
       onTeacherChat: (classroom, lesson, text, id) => this.chat(classroom, lesson, text, id),
       onTeacherRetry: (classroom, id) => this.retry(classroom, id),
+      onReview: (session) => this.review(session),
+      onReviewRetry: (session) => {
+        if (
+          this.states.get(session.classroom)?.requests.some((r) => r.id === `review:${session.id}`)
+        )
+          this.retry(session.classroom, `review:${session.id}`);
+        else {
+          updateReview(session, "queued");
+          this.review({ ...session, status: "queued" });
+        }
+      },
       canAccept: (classroom) => {
         if (!this.states.has(classroom))
           throw new Error("No teacher owns this classroom. Call open_classroom first.");
@@ -126,7 +156,38 @@ export class TeacherService {
       prompt: reflectPrompt(r, "service"),
     });
   }
+  private reviewSession(request: TeacherRequest): ReviewSession {
+    const session = reviewSessions(request.classroom).find((s) => s.id === request.target);
+    if (!session || session.lesson !== request.lesson)
+      throw new Error("The review request no longer exists.");
+    requireReviewOwner(session, "service");
+    return session;
+  }
+  review(session: ReviewSession): void {
+    requireReviewOwner(session, "service");
+    if (this.states.get(session.classroom)?.requests.some((r) => r.id === `review:${session.id}`))
+      return;
+    this.enqueue({
+      id: `review:${session.id}`,
+      classroom: session.classroom,
+      lesson: session.lesson,
+      kind: "review",
+      target: session.id,
+      prompt: reviewPrompt(session, "service"),
+    });
+    if (session.status === "failed") {
+      const state = this.states.get(session.classroom)!;
+      const request = state.requests.find((r) => r.id === `review:${session.id}`)!;
+      request.status = "failed";
+      request.error = session.error;
+      saveTeacherState(session.classroom, state);
+    }
+  }
   private recover(classroom: string): void {
+    for (const session of reviewSessions(classroom)) {
+      if (session.owner !== "service" || session.status === "done") continue;
+      this.review(session);
+    }
     for (const l of store.listLessons(classroom)) {
       for (const a of store.listAnnotations(classroom, l.name)) {
         if (a.status === "pending") this.question(a);
@@ -166,7 +227,19 @@ export class TeacherService {
         delete r.planRubricDigest;
       }
     }
+    if (r.kind === "review" && r.plan) {
+      try {
+        validateReview(this.reviewSession(r), this.reviewDocument(r.plan));
+      } catch {
+        delete r.plan;
+      }
+    }
+    if (r.kind !== "review" && r.plan && r.planValidated !== true && !(r.applied ?? 0))
+      delete r.plan;
+    if (!r.plan && r.error)
+      r.prompt += `\n\nPrevious teacher plan error: ${r.error}\nCorrect it in the new plan.`;
     r.status = r.plan ? "planned" : "queued";
+    if (r.kind === "review") updateReview(this.reviewSession(r), "queued");
     delete r.error;
     saveTeacherState(classroom, state);
     this.publish(classroom, r.lesson);
@@ -205,6 +278,7 @@ export class TeacherService {
     await this.idle();
   }
   private prompt(r: TeacherRequest, state: TeacherState): string {
+    if (r.kind === "review") return r.prompt;
     const lesson = store.readLesson(r.classroom, r.lesson);
     if (!lesson) throw new Error("The request lesson no longer exists.");
     const rubric = path.join(lessonDir(r.classroom, r.lesson), "quiz", "key.json");
@@ -258,6 +332,7 @@ export class TeacherService {
       records: store.readLearningRecords(r.classroom),
       messages: state.messages.filter((m) => m.lesson === r.lesson),
       grades: store.latestGrades(r.classroom, r.lesson),
+      reviewItems: store.lessonReviewItems(r.classroom, r.lesson),
       classroomDocs,
       topicNotes,
     };
@@ -281,6 +356,7 @@ export class TeacherService {
       try {
         if (!r.plan) {
           r.status = "running";
+          if (r.kind === "review") updateReview(this.reviewSession(r), "running");
           saveTeacherState(classroom, state);
           this.publish(classroom, r.lesson);
           const controller = new AbortController();
@@ -301,12 +377,14 @@ export class TeacherService {
             this.controllers.delete(controller);
           }
           r.plan = parsePlan(plan);
+          r.planValidated = false;
           r.status = "planned";
           saveTeacherState(classroom, state);
         }
         await this.apply(r, state);
         r.finishedAt = Date.now();
         r.status = "done";
+        if (r.kind === "review") updateReview(this.reviewSession(r), "done");
         console.log(
           `[teacher] ${state.identity.backend} ${classroom}/${r.lesson} ${r.id} done in ${r.finishedAt - r.startedAt}ms.`,
         );
@@ -316,14 +394,46 @@ export class TeacherService {
         r.status = "failed";
         r.finishedAt = Date.now();
         r.error = `${state.identity.backend} ${r.kind} request ${r.id} in ${classroom}/${r.lesson}: ${err instanceof Error ? err.message : String(err)}`;
+        if (r.kind === "review") updateReview(this.reviewSession(r), "failed", r.error);
         console.error(`[teacher] ${r.error}`);
         saveTeacherState(classroom, state);
         this.publish(classroom, r.lesson);
       }
     }
   }
+  private reviewDocument(plan: TeacherPlan): ReviewDocument {
+    if (
+      plan.calls.length !== 1 ||
+      plan.calls[0].name !== "publish_review" ||
+      plan.learning_record.trim() ||
+      plan.notes_markdown.trim()
+    )
+      throw new Error(
+        "Review authoring requires exactly one publish_review call and no evidence writes.",
+      );
+    const document = JSON.parse(plan.calls[0].arguments_json);
+    if (
+      !document ||
+      typeof document !== "object" ||
+      Array.isArray(document) ||
+      typeof document.lesson_html !== "string" ||
+      typeof document.rubric_json !== "string" ||
+      typeof document.teaching_plan_json !== "string"
+    )
+      throw new Error("Invalid review document arguments.");
+    return document;
+  }
   private async apply(r: TeacherRequest, state: TeacherState): Promise<void> {
     const plan = r.plan!;
+    if (r.kind === "review") {
+      const session = this.reviewSession(r),
+        document = this.reviewDocument(plan);
+      validateReview(session, document);
+      r.planValidated = true;
+      saveTeacherState(r.classroom, state);
+      publishReview(session, document);
+      return;
+    }
     const required =
       r.kind === "quiz"
         ? "grade_lesson_quiz"
@@ -440,6 +550,8 @@ export class TeacherService {
       throw new Error("A learning record requires verified retrieval evidence.");
     if (plan.notes_markdown.trim() && r.kind !== "chat" && r.kind !== "reflect")
       throw new Error("Gap notes require a learner reply or self-explanation.");
+    r.planValidated = true;
+    saveTeacherState(r.classroom, state);
     if (plan.learning_record.trim() && !r.recordFile) {
       const numbers = store
         .listLearningRecords(r.classroom)

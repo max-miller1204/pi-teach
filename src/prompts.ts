@@ -13,6 +13,8 @@ import * as path from "node:path";
 
 import { assetsDir, classroomDir, docsDir, lessonDir, templatesDir } from "./paths.ts";
 import { answerDetail, answersByQuestion, kindOf } from "./quiz.ts";
+import { readLesson, lessonReviewItems } from "./store.ts";
+import type { ReviewSession } from "./review-session.ts";
 import { relativeDay, type ReviewSummary } from "./review.ts";
 import type {
   Annotation,
@@ -41,9 +43,10 @@ export function dedicatedTeacherPrompt(
     "Use the teacher panel as chat. A wrong answer on a check or review needs a brief explanation and one new retrieval question. Do not give its answer. Wait for the learner's panel reply by returning the plan. Keep graded quizzes locked and preserve their scores. Use a different situation, not a leading paraphrase of the answer. A pretest asks about the upcoming lesson before instruction, unless explicitly requested as a prerequisite diagnostic. Wrong answers are expected. Give targeted emphasis or clarification in feedback. The gate releases prewritten teaching; you cannot rewrite it. Do not run a retrieval check after it. Direct the learner to teaching released after grading.",
     "Grade from the private rubric set before submission. Accept equivalent solutions. Apply partial credit to specific reasoning components. Confidence changes feedback only. Reinforce a correct but uncertain answer with an explanation. Never change credit because of confidence or assistance. Distinguish assisted, immediate independent, delayed retrieval, and transfer evidence. Supply points for every question when the request names the validated assessment contract. Do not invent criteria or change weights. Feedback may explain submitted answers. Before submission, clarify instructions without solving the assessment. Never quote the whole private rubric. Use only teaching released by the pretest gate.",
     "lessonStage.gatedPretests names the pretests that release teaching. lessonStage.pendingPretests names those still awaiting grading. If the submitted pretest is gated, direct the learner to teaching released after grading. The service deliberately removes that teaching from your current HTML context. Do not claim that teaching is missing. For a standalone pretest, offer a lesson. The learner starts it from the initiating chat, for example with /teach.",
+    "context.reviewItems lists this lesson's original graded keys. If a panel reply supports learning_record, return record_retrieval_check in the same plan with one of these keys, the actual learner reply, and evidence. If you cannot supply that call, leave learning_record empty. A record alone cannot verify a reply.",
     "Write learning_record only for demonstrated understanding. A successful panel retrieval check also needs record_retrieval_check with its original review key, actual learner reply, and evidence. Use assistance unknown unless the learner states how they answered. Never infer independence from correctness. Label immediate corrections honestly. The service supplies the record file name. Correct quiz work may support a record for fully credited questions. Cite each supported question as quiz-id/question-id in the record. A pretest record describes correct prior knowledge only when answered without help. Label assistance and unknown context. Do not claim mastery from a reflection or from material merely covered.",
     "Put a reflection gap or an explicitly skipped retrieval gap in notes_markdown. Otherwise leave notes_markdown empty. Leave learning_record empty when no evidence qualifies. Do not add records just to log activity.",
-    "You cannot create or advance lessons, change a page, or research new sources. When the learner agrees to continue or requests authoring, tell them to ask the initiating chat to continue in this classroom, for example with /teach. Starting a lesson is the only step that needs the chat. State the requested next objective and preserve their agreement. Do not pretend that a panel reply starts a new lesson.",
+    "You cannot create or advance lessons, change a page, or research new sources. For a due review, direct the learner to Start review in Progress on the classroom page. When the learner agrees to continue with a new lesson or requests other authoring, tell them to ask the initiating chat to continue in this classroom, for example with /teach. Starting a lesson is the only step that needs the chat. State the requested next objective and preserve their agreement. Do not pretend that a panel reply starts a new lesson.",
     "Learning record format:\n" + readDoc("LEARNING-RECORD-FORMAT.md"),
     "Tool definitions:\n" + JSON.stringify(definitions),
     `Request ${requestId}:\n${request}`,
@@ -405,6 +408,7 @@ export function panelReplyPrompt(
   reply: PanelMessage,
   earlier: readonly PanelMessage[],
 ): string {
+  const items = lessonReviewItems(classroom, lesson);
   const history = earlier
     .filter((m) => m.at < reply.at)
     .slice(-PANEL_HISTORY)
@@ -415,6 +419,12 @@ export function panelReplyPrompt(
     `Classroom: \`${classroom}\``,
     `Lesson: \`${lesson}\` (${path.join(lessonDir(classroom, lesson), "lesson.html")})`,
     "",
+    `Classroom directory: ${classroomDir(classroom)}`,
+    `Learning records directory: ${path.join(classroomDir(classroom), "learning-records")}`,
+    `Notes index: ${path.join(classroomDir(classroom), "NOTES.md")}`,
+    "Use these exact paths. In the record format below, ./ means this classroom directory. Create the learning-records directory only when a verified reply needs a record. Keep the quiz score unchanged.",
+    "This lesson's original review items:\n" + JSON.stringify(items),
+    "Learning record format:\n" + readDoc("LEARNING-RECORD-FORMAT.md"),
     ...(history.length > 0 ? ["The panel conversation so far:", "", ...history] : []),
     "Their reply:",
     "",
@@ -476,4 +486,35 @@ with 1–3 sentences in their words._
 
 - _Adjacent topics they explicitly do not want to chase right now_
 `;
+}
+
+/** Supply review authoring context only for an explicit browser request. */
+export function reviewPrompt(session: ReviewSession, delivery: "push" | "service"): string {
+  const dir = lessonDir(session.classroom, session.lesson);
+  return [
+    `The learner selected Start review in classroom ${session.classroom}. Create only this review: ${session.lesson}.`,
+    "Copy each known objective object exactly. If an original objective is unknown, infer only statement and application from its question. Omit retentionDays, interleaveGroup, and strategy. Do not invent a retention goal or method labels. The optional interleaveGroup and strategy fields must either both be present or both be absent.",
+    ...(session.error
+      ? [`Previous review authoring error: ${session.error}. Correct it in this attempt.`]
+      : []),
+    "Write one fresh question for each selected item. Keep their data-review-of keys and order. Keep answers, solutions, teaching, and hints out of the learner page. Preserve the original objective and retention policy in the private teaching plan. Use independent retrieval or a fresh application when it fits the objective. Do not claim retained knowledge from creating this page.",
+    delivery === "service"
+      ? "Return exactly one publish_review call. Its arguments_json contains lesson_html, rubric_json, and teaching_plan_json as strings. The service validates and saves these files. Leave learning_record and notes_markdown empty. Do not use tools or write files. Give a short message that the review is ready."
+      : `Write ${path.join(dir, "lesson.html")}, ${path.join(dir, "quiz/key.json")}, and ${path.join(dir, "quiz/plan.json")}. Do not call scaffold_review. Do not change any other lesson or learner history. The server publishes this page only after your turn ends and validation passes.`,
+    "Review shell:\n" + fs.readFileSync(path.join(templatesDir(), "review.html"), "utf8"),
+    "Quiz contract:\n" + fs.readFileSync(path.join(templatesDir(), "quiz.html"), "utf8"),
+    'Private rubric contract: an object keyed by quiz id, then question id. Each question needs expected, positive points, full, and partial. Example: {"review":{"r1":{"expected":"answer","points":1,"full":"Complete correct answer.","partial":"Zero points for an incorrect answer."}}}.',
+    "Teaching plan contract:\n" + readDoc("TEACHING-PLAN.md"),
+    "Private selected items:\n" + JSON.stringify(session.items),
+    "Original lesson context:\n" +
+      JSON.stringify(
+        [...new Set(session.items.map((item) => item.lesson))].map((lesson) => {
+          const original = readLesson(session.classroom, lesson);
+          if (!original) throw new Error(`Original review lesson is missing: ${lesson}.`);
+          return { lesson, html: fs.readFileSync(original.htmlPath, "utf8") };
+        }),
+      ),
+    "Classroom mission:\n" +
+      fs.readFileSync(path.join(classroomDir(session.classroom), "MISSION.md"), "utf8"),
+  ].join("\n\n");
 }

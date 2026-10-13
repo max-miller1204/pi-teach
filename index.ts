@@ -43,6 +43,9 @@ export default function classroomExtension(pi: ExtensionAPI): void {
     onFollowUp: (annotation, followUp) => bridge.followUp(annotation, followUp),
     onQuizSubmit: (submission) => bridge.grade(submission),
     onReflect: (reflection) => bridge.reflect(reflection),
+    reviewOwner: "pi",
+    onReview: (session) => bridge.review(session),
+    onReviewRetry: (session) => bridge.retryReview(session),
     // The teacher panel: grades, retrieval questions, and replies stay on the page.
     teacherState: (classroom, lesson) => bridge.panelState(classroom, lesson),
     onTeacherChat: (classroom, lesson, text, id) => bridge.chat(classroom, lesson, text, id),
@@ -55,6 +58,7 @@ export default function classroomExtension(pi: ExtensionAPI): void {
   // The idle probe lives on the session context, which is only handed to handlers —
   // capture it once so the bridge can decide between waking the agent and queueing.
   pi.on("session_start", async (_event, ctx) => {
+    bridge.restoreReviews();
     bridge.setIdleProbe(() => ctx.isIdle());
     // Also adopts the UI for the "server running on port N" widget, so a resumed session
     // that is already serving says so without waiting for a /classroom command.

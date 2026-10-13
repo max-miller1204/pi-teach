@@ -27,9 +27,19 @@ import {
   gradePrompt,
   panelReplyPrompt,
   reflectPrompt,
+  reviewPrompt,
 } from "./prompts.ts";
 import * as server from "./server.ts";
 import * as store from "./store.ts";
+
+import {
+  readReviewDocument,
+  reviewSessions,
+  requireReviewOwner,
+  updateReview,
+  publishReview,
+  type ReviewSession,
+} from "./review-session.ts";
 
 /** Minimal shape of the pi API this module needs, so tests can pass a stub. */
 export interface MessageSender {
@@ -51,6 +61,7 @@ type Origin =
   /** `turn` is null for the card's original question, or a follow-up id. */
   | { kind: "ask"; annotationId: string; turn: store.TurnId }
   | { kind: "panel"; request: PanelRequest }
+  | { kind: "review"; session: ReviewSession }
   | { kind: "other" };
 
 export class ClassroomBridge {
@@ -142,6 +153,48 @@ export class ClassroomBridge {
     });
   }
 
+  /** Author a browser review in the live Pi session. */
+  review(session: ReviewSession): void {
+    requireReviewOwner(session, "pi");
+    if (session.status !== "queued") return;
+    const prompt = reviewPrompt(session, "push");
+    updateReview(session, "running");
+    const origin: Origin = { kind: "review", session };
+    this.pending.push(origin);
+    try {
+      this.send(prompt);
+    } catch (err) {
+      this.pending.splice(this.pending.indexOf(origin), 1);
+      updateReview(session, "failed", (err as Error).message);
+      throw err;
+    }
+  }
+  retryReview(session: ReviewSession): void {
+    requireReviewOwner(session, "pi");
+    if (session.status !== "failed") throw new Error("This review cannot be retried.");
+    updateReview(session, "queued");
+    this.review({ ...session, status: "queued" });
+  }
+  restoreReviews(): void {
+    for (const classroom of store.listClassrooms())
+      for (const session of reviewSessions(classroom.name))
+        if (
+          session.owner === "pi" &&
+          (session.status === "queued" || session.status === "running")
+        ) {
+          try {
+            process.kill(session.ownerPid, 0);
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+            updateReview(
+              session,
+              "failed",
+              "Pi stopped during review creation. Retry this review.",
+            );
+          }
+        }
+  }
+
   /** Send a panel run again after it ended with nothing to say. */
   retry(classroom: string, id: string): void {
     const request = this.panel.get(id);
@@ -180,6 +233,19 @@ export class ClassroomBridge {
    */
   onAgentEnd(messages: readonly unknown[]): void {
     const origin = this.pending.shift();
+    if (origin?.kind === "review") {
+      try {
+        publishReview(origin.session, readReviewDocument(origin.session));
+        updateReview(origin.session, "done");
+      } catch (err) {
+        updateReview(
+          origin.session,
+          "failed",
+          `Pi review creation failed: ${(err as Error).message}`,
+        );
+      }
+      return;
+    }
     if (origin?.kind === "panel") return this.finishPanel(origin.request, messages);
     if (!origin || origin.kind !== "ask") return;
 
@@ -217,6 +283,13 @@ export class ClassroomBridge {
 
   /** Drop queued origins — used when the session shuts down. */
   reset(): void {
+    for (const origin of this.pending)
+      if (origin.kind === "review")
+        updateReview(
+          origin.session,
+          "failed",
+          "Pi stopped during review creation. Retry this review.",
+        );
     this.pending.length = 0;
     this.panel.clear();
   }
