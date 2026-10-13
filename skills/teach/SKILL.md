@@ -23,6 +23,12 @@ description: Teach a topic or create challenging quizzes and tests in the classr
 8. After a wrong answer on a check or review, use the teacher panel on the lesson page for the retrieval
    question and learner reply. Keep the graded quiz locked. Preserve grades and
    attempts. Record learning only after demonstrated understanding.
+   When the learner asks in chat to resume an unfinished graded check or review,
+   find the exact classroom, lesson, and latest graded submission ID. Call
+   `open_classroom` first. Call `resume_lesson_teacher` with those identifiers.
+   Give its lesson link and end the initiating turn. Existing panel work is reused.
+   An empty historical panel starts one corrective question. Use the panel retry
+   control after failure. Do not ask the corrective question in the initiating chat.
 9. Do not start the next lesson without learner agreement. Use `classroom_service`
    to inspect or explicitly stop the service. For requested phone access, use
    `classroom_phone` with action start and the classroom and lesson. Give the full

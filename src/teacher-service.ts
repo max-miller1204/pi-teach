@@ -1,4 +1,5 @@
 /** Run one request at a time for each classroom. Persist plans before writes. */
+import { prepareResume, piResumes, piOwnerAlive, type ResumeInput } from "./teacher-resume.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
@@ -52,6 +53,8 @@ export class TeacherService {
 
   attach(classroom: string, backend?: Backend): void {
     if (!store.readClassroom(classroom)) throw new Error(`No such classroom: ${classroom}`);
+    if (piResumes(classroom).some((r) => r.status === "running" && piOwnerAlive(r)))
+      throw new Error("A live Pi session owns this classroom's resume request.");
     let state = this.states.get(classroom) ?? readTeacherState(classroom);
     if (!state) {
       if (!backend)
@@ -204,7 +207,13 @@ export class TeacherService {
     if (!state) throw new Error("No classroom teacher. Call open_classroom first.");
     const key = `chat:${id}`;
     if (!state.messages.some((m) => m.id === key)) {
-      state.messages.push({ id: key, lesson, role: "learner", text, at: Date.now() });
+      state.messages.push({
+        id: key,
+        lesson,
+        role: "learner",
+        text,
+        at: this.nextMessageAt(classroom, lesson, state),
+      });
       saveTeacherState(classroom, state);
     }
     this.enqueue({
@@ -215,6 +224,40 @@ export class TeacherService {
       target: id,
       prompt: `The learner replied in the teacher panel:\n${text}`,
     });
+  }
+  resume(input: ResumeInput): void {
+    const request = prepareResume(input);
+    const state = this.states.get(request.classroom);
+    if (!state) throw new Error("No classroom teacher. Call open_classroom first.");
+    if (piResumes(request.classroom).some((r) => r.status === "running" && piOwnerAlive(r)))
+      throw new Error("A live Pi session owns this classroom's resume request.");
+    if (state.requests.some((r) => r.lesson === request.lesson && r.status !== "done")) return;
+    const reply = this.messages(request.classroom, request.lesson, state).at(-1);
+    if (reply?.role === "learner") {
+      if (!reply.id.startsWith("chat:") || state.requests.some((r) => r.id === reply.id))
+        throw new Error("The saved learner reply has no unfinished panel request.");
+      // Preserve the actual reply when it comes from historical Pi storage.
+      const existing = state.messages.find((m) => m.id === reply.id && m.role === "learner");
+      if (existing && (existing.lesson !== request.lesson || existing.text !== reply.text))
+        throw new Error("The saved reply ID belongs to a different panel message.");
+      if (!existing) {
+        state.messages.push(reply);
+        saveTeacherState(request.classroom, state);
+      }
+      this.enqueue({
+        id: reply.id,
+        classroom: request.classroom,
+        lesson: request.lesson,
+        kind: "chat",
+        target: reply.id.slice("chat:".length),
+        prompt: `The learner replied in the teacher panel:\n${reply.text}`,
+      });
+      return;
+    }
+    if (reply) return;
+    if (state.requests.some((r) => r.id === request.id))
+      throw new Error("The completed resume request has no saved teacher message.");
+    this.enqueue({ ...request, kind: "resume", target: input.submission_id });
   }
   retry(classroom: string, id: string): void {
     const state = this.states.get(classroom),
@@ -245,6 +288,24 @@ export class TeacherService {
     this.publish(classroom, r.lesson);
     this.wake(classroom);
   }
+  /** Include saved Pi conversation when a classroom moves to a persistent host. */
+  private messages(
+    classroom: string,
+    lesson: string,
+    state: TeacherState,
+  ): (store.PanelMessage & { sourceBackend?: "pi" })[] {
+    const current = state.messages.filter((m) => m.lesson === lesson);
+    const history = store
+      .listPanelMessages(classroom, lesson)
+      .filter((m) => !current.some((existing) => existing.id === m.id && existing.role === m.role))
+      .map((m) => ({ ...m, sourceBackend: "pi" as const }));
+    return [...history, ...current].sort((a, b) => a.at - b.at);
+  }
+  /** Keep replies after saved messages if the clock has moved back. */
+  private nextMessageAt(classroom: string, lesson: string, state: TeacherState): number {
+    const previous = this.messages(classroom, lesson, state).at(-1);
+    return previous ? Math.max(Date.now(), previous.at + 1) : Date.now();
+  }
   publicState(classroom: string, lesson: string): unknown {
     const state = this.states.get(classroom);
     if (!state) return null;
@@ -253,7 +314,7 @@ export class TeacherService {
       requests: state.requests
         .filter((r) => r.lesson === lesson)
         .map((r) => ({ id: r.id, kind: r.kind, status: r.status, error: r.error })),
-      messages: state.messages.filter((m) => m.lesson === lesson).map(withHtml),
+      messages: this.messages(classroom, lesson, state).map(withHtml),
     };
   }
   private publish(classroom: string, lesson: string): void {
@@ -330,7 +391,7 @@ export class TeacherService {
       privateRubric,
       teachingPlan: r.kind === "quiz" ? store.findSubmission(r.target)?.teachingPlan : undefined,
       records: store.readLearningRecords(r.classroom),
-      messages: state.messages.filter((m) => m.lesson === r.lesson),
+      messages: this.messages(r.classroom, r.lesson, state),
       grades: store.latestGrades(r.classroom, r.lesson),
       reviewItems: store.lessonReviewItems(r.classroom, r.lesson),
       classroomDocs,
@@ -434,6 +495,13 @@ export class TeacherService {
       publishReview(session, document);
       return;
     }
+    if (
+      r.kind === "resume" &&
+      (plan.calls.length || plan.learning_record.trim() || plan.notes_markdown.trim())
+    )
+      throw new Error(
+        "Teacher resumption permits only a panel message. It cannot write assessment or learning evidence.",
+      );
     const required =
       r.kind === "quiz"
         ? "grade_lesson_quiz"
@@ -649,7 +717,7 @@ export class TeacherService {
         lesson: r.lesson,
         role: "teacher",
         text: plan.message,
-        at: Date.now(),
+        at: this.nextMessageAt(r.classroom, r.lesson, state),
       });
   }
 }

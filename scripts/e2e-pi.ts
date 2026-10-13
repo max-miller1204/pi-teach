@@ -14,6 +14,7 @@ import {
   seedClassroom,
   writeGradedAttempt,
   termAnswer,
+  seedHistoricalReview,
 } from "../test/helpers.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 import { TEST_MODELS } from "./harness.ts";
@@ -89,6 +90,7 @@ const child = spawn(
   },
 );
 
+const exited = new Promise<void>((resolve) => child.on("close", () => resolve()));
 const events: Array<Record<string, any>> = [];
 let buffer = "";
 let failure: Error | null = null;
@@ -390,6 +392,39 @@ try {
     fs.writeFileSync(path.join(artifacts, "pi-events.json"), JSON.stringify(events, null, 2));
   if (store.listLessons("rust").length !== 1)
     throw new Error("Pi created another lesson without agreement");
+  const resumeInput = seedHistoricalReview(fixture.root);
+  const savedResumeGrade = JSON.stringify(store.listGrades("rust", resumeInput.lesson));
+  send({
+    id: "resume-chat",
+    type: "prompt",
+    message: `Call resume_lesson_teacher with ${JSON.stringify(resumeInput)}. Return only its lesson link and end this turn. Do not ask a corrective question in this chat.`,
+  });
+  await until("historical review teacher question", () => {
+    const messages = store.listPanelMessages("rust", resumeInput.lesson);
+    return messages.some((m) => m.role === "teacher" && m.text.includes("?")) ? messages : null;
+  });
+  if (
+    !events.some((e) => e.type === "tool_execution_end" && e.toolName === "resume_lesson_teacher")
+  )
+    throw new Error("Pi did not use the explicit resume tool.");
+  if (store.listPanelMessages("rust", resumeInput.lesson).some((m) => m.role === "learner"))
+    throw new Error("Resume invented a learner reply.");
+  if (JSON.stringify(store.listGrades("rust", resumeInput.lesson)) !== savedResumeGrade)
+    throw new Error("Resume changed the historical grade.");
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
+    await page.goto(${JSON.stringify(base)} + '/c/rust/' + ${JSON.stringify(resumeInput.lesson)} + '#cl-teacher');
+    await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'graded');
+    await page.waitForFunction(() => document.querySelector('.cl-teacher-messages')?.textContent.includes('?'));
+    ${artifacts ? `await page.locator('.cl-teacher').scrollIntoViewIfNeeded(); await page.screenshot({path:${JSON.stringify(path.join(artifacts, "pi-historical-resume.png"))}});` : ""}
+    return true;
+  }`,
+  );
+  console.log(
+    "[e2e:pi] PASS: chat-origin historical review resumes in the panel with its 67% grade preserved",
+  );
   writeGradedAttempt({
     at: Date.now() - 2 * DAY_MS,
     quizId: "historical",
@@ -450,5 +485,6 @@ try {
   }
   if (browserOpen) await playwright(session, fixture.root, "close");
   child.kill();
+  await exited;
   fixture.cleanup();
 }

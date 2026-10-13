@@ -18,6 +18,16 @@
  * has to come back to the terminal for a retrieval question.
  */
 
+import { randomUUID } from "node:crypto";
+import { readTeacherState } from "./service-state.ts";
+import {
+  prepareResume,
+  piResumes,
+  savePiResume,
+  piOwnerAlive,
+  type ResumeInput,
+  type PiResume,
+} from "./teacher-resume.ts";
 import { validateGrade } from "../assets/runtime/grade.mjs";
 import { findLastAssistantText } from "./assistant-text.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -51,10 +61,11 @@ interface PanelRequest {
   id: string;
   classroom: string;
   lesson: string;
-  kind: "quiz" | "reflect" | "chat";
+  kind: "quiz" | "reflect" | "chat" | "resume";
   status: "running" | "failed";
   error?: string;
   prompt: string;
+  durable?: true;
 }
 
 type Origin =
@@ -66,6 +77,8 @@ type Origin =
 
 export class ClassroomBridge {
   private readonly pending: Origin[] = [];
+  private readonly sessionId = randomUUID();
+  private readonly deferredResumes = new Map<string, PiResume>();
   /** Panel runs not yet finished, or finished with nothing to say. */
   private readonly panel = new Map<string, PanelRequest>();
   private idle: () => boolean = () => true;
@@ -153,6 +166,126 @@ export class ClassroomBridge {
     });
   }
 
+  /** A resume turn can ask a question. It cannot write new assessment or evidence. */
+  assertCanWrite(): void {
+    const origin = this.pending[0];
+    if (origin?.kind === "panel" && origin.request.kind === "resume")
+      throw new Error(
+        "Teacher resumption permits only a panel message. Wait for the learner's panel reply before writing evidence.",
+      );
+  }
+
+  /** Queue a separate panel turn. The initiating chat keeps its foreign origin. */
+  resume(input: ResumeInput): void {
+    const request = prepareResume(input);
+    const origin = this.pending[0];
+    if (
+      origin?.kind === "panel" &&
+      origin.request.kind === "resume" &&
+      (origin.request.id !== request.id ||
+        origin.request.classroom !== request.classroom ||
+        origin.request.lesson !== request.lesson)
+    )
+      throw new Error("A resume turn cannot start another teacher request.");
+    this.requireResumeOwner(request.classroom);
+    this.restoreResumes();
+    if (
+      [...this.panel.values()].some(
+        (r) => r.classroom === request.classroom && r.lesson === request.lesson,
+      )
+    )
+      return;
+    const messages = store.listPanelMessages(request.classroom, request.lesson);
+    const reply = messages.at(-1);
+    if (reply?.role === "learner") {
+      if (
+        !reply.id.startsWith("chat:") ||
+        piResumes(request.classroom).some((r) => r.id === reply.id)
+      )
+        throw new Error("The saved learner reply has no unfinished panel request.");
+      this.startResume({
+        ...request,
+        id: reply.id,
+        kind: "chat",
+        prompt: panelReplyPrompt(request.classroom, request.lesson, reply, messages),
+        status: "running",
+        ownerPid: process.pid,
+        ownerSession: this.sessionId,
+      });
+      return;
+    }
+    if (reply) return;
+    if (piResumes(request.classroom).some((r) => r.id === request.id))
+      throw new Error("The completed resume request has no saved teacher message.");
+    this.startResume({
+      ...request,
+      kind: "resume",
+      status: "running",
+      ownerPid: process.pid,
+      ownerSession: this.sessionId,
+    });
+  }
+
+  private requireResumeOwner(classroom: string): void {
+    if (readTeacherState(classroom))
+      throw new Error(
+        "This classroom belongs to a persistent teacher. Resume through its service.",
+      );
+    if (
+      piResumes(classroom).some(
+        (r) => r.status === "running" && r.ownerSession !== this.sessionId && piOwnerAlive(r),
+      )
+    )
+      throw new Error("Another live Pi session owns this classroom's resume request.");
+  }
+
+  restoreResumes(): void {
+    for (const classroom of store.listClassrooms())
+      for (const request of piResumes(classroom.name)) {
+        if (request.status === "done") continue;
+        if (
+          store
+            .listPanelMessages(request.classroom, request.lesson)
+            .some((m) => m.id === request.id && m.role === "teacher")
+        ) {
+          savePiResume({ ...request, status: "done" });
+          continue;
+        }
+        if (request.status === "running" && request.ownerSession !== this.sessionId) {
+          if (piOwnerAlive(request)) continue;
+          request.status = "failed";
+          request.error = "Pi stopped during teacher resumption. Retry this request.";
+          savePiResume(request);
+        }
+        if (!this.panel.has(request.id))
+          this.panel.set(request.id, {
+            ...request,
+            status: request.status as "running" | "failed",
+            durable: true,
+          });
+      }
+  }
+
+  private startResume(request: PiResume): void {
+    request.ownerPid = process.pid;
+    request.ownerSession = this.sessionId;
+    request.status = "running";
+    delete request.error;
+    savePiResume(request);
+    if (this.pending.length || !this.idle()) {
+      this.deferredResumes.set(request.id, request);
+      this.panel.set(request.id, { ...request, status: "running", durable: true });
+      this.publish(request.classroom, request.lesson);
+    } else this.startPanel({ ...request, durable: true });
+  }
+
+  private persistResume(request: PanelRequest, done = false): void {
+    const saved = piResumes(request.classroom).find((r) => r.id === request.id);
+    if (!saved || saved.ownerSession !== this.sessionId)
+      throw new Error("This Pi session does not own the resume request.");
+    savePiResume({ ...saved, status: done ? "done" : request.status, error: request.error });
+  }
+
   /** Author a browser review in the live Pi session. */
   review(session: ReviewSession): void {
     requireReviewOwner(session, "pi");
@@ -197,14 +330,19 @@ export class ClassroomBridge {
 
   /** Send a panel run again after it ended with nothing to say. */
   retry(classroom: string, id: string): void {
+    this.restoreResumes();
     const request = this.panel.get(id);
     if (!request || request.classroom !== classroom || request.status !== "failed")
       throw new Error("This request cannot be retried.");
-    this.startPanel(request);
+    if (request.durable) {
+      this.requireResumeOwner(classroom);
+      this.startResume(piResumes(classroom).find((r) => r.id === id)!);
+    } else this.startPanel(request);
   }
 
   /** What the lesson page's teacher panel shows. */
   panelState(classroom: string, lesson: string): unknown {
+    this.restoreResumes();
     return {
       identity: { backend: "pi" },
       requests: [...this.panel.values()]
@@ -215,12 +353,22 @@ export class ClassroomBridge {
   }
 
   private startPanel(input: Omit<PanelRequest, "status" | "error">): void {
-    const { id, classroom, lesson, kind, prompt } = input;
-    const request: PanelRequest = { id, classroom, lesson, kind, prompt, status: "running" };
+    const request: PanelRequest = { ...input, status: "running" };
+    const { classroom, lesson } = request;
     this.panel.set(request.id, request);
-    this.pending.push({ kind: "panel", request });
+    const origin: Origin = { kind: "panel", request };
+    this.pending.push(origin);
     this.publish(request.classroom, request.lesson);
-    this.send(request.prompt);
+    try {
+      this.send(request.prompt);
+    } catch (err) {
+      this.pending.splice(this.pending.indexOf(origin), 1);
+      request.status = "failed";
+      request.error = `Pi could not start teacher work: ${(err as Error).message}`;
+      if (request.durable) this.persistResume(request);
+      this.publish(classroom, lesson);
+      throw err;
+    }
   }
 
   private publish(classroom: string, lesson: string): void {
@@ -232,6 +380,20 @@ export class ClassroomBridge {
    * unanswered, fill it from the run's final assistant text.
    */
   onAgentEnd(messages: readonly unknown[]): void {
+    try {
+      this.finishOrigin(messages);
+    } finally {
+      if (!this.pending.length) {
+        const request = this.deferredResumes.values().next().value;
+        if (request) {
+          this.deferredResumes.delete(request.id);
+          this.startPanel({ ...request, durable: true });
+        }
+      }
+    }
+  }
+
+  private finishOrigin(messages: readonly unknown[]): void {
     const origin = this.pending.shift();
     if (origin?.kind === "review") {
       try {
@@ -278,6 +440,7 @@ export class ClassroomBridge {
       request.status = "failed";
       request.error = "Your teacher finished without a reply.";
     }
+    if (request.durable) this.persistResume(request, !this.panel.has(request.id));
     this.publish(request.classroom, request.lesson);
   }
 
@@ -290,6 +453,13 @@ export class ClassroomBridge {
           "failed",
           "Pi stopped during review creation. Retry this review.",
         );
+    for (const request of this.panel.values())
+      if (request.durable && request.status === "running") {
+        request.status = "failed";
+        request.error = "Pi stopped during teacher resumption. Retry this request.";
+        this.persistResume(request);
+      }
+    this.deferredResumes.clear();
     this.pending.length = 0;
     this.panel.clear();
   }

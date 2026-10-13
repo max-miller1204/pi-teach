@@ -25,6 +25,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { resumeTeacherTool } from "./src/teacher-resume.ts";
 import { ClassroomBridge } from "./src/bridge.ts";
 import { registerClassroomCommands } from "./src/commands.ts";
 import * as server from "./src/server.ts";
@@ -52,13 +53,16 @@ export default function classroomExtension(pi: ExtensionAPI): void {
     onTeacherRetry: (classroom, id) => bridge.retry(classroom, id),
   });
 
-  registerClassroomTools(pi);
+  registerClassroomTools(pi, [resumeTeacherTool((input) => bridge.resume(input))], () =>
+    bridge.assertCanWrite(),
+  );
   registerClassroomCommands(pi, bridge);
 
   // The idle probe lives on the session context, which is only handed to handlers —
   // capture it once so the bridge can decide between waking the agent and queueing.
   pi.on("session_start", async (_event, ctx) => {
     bridge.restoreReviews();
+    bridge.restoreResumes();
     bridge.setIdleProbe(() => ctx.isIdle());
     // Also adopts the UI for the "server running on port N" widget, so a resumed session
     // that is already serving says so without waiting for a /classroom command.
@@ -68,7 +72,7 @@ export default function classroomExtension(pi: ExtensionAPI): void {
   // Typed inputs start turns too. Recording them keeps the origin FIFO aligned with
   // agent_end, so an answer is never attributed to somebody else's run.
   pi.on("input", async (event: any) => {
-    if (event?.source === "interactive") bridge.noteForeignTurn();
+    if (event?.source === "interactive" || event?.source === "rpc") bridge.noteForeignTurn();
   });
 
   pi.on("agent_end", async (event: any) => {

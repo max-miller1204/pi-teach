@@ -2370,6 +2370,7 @@ let teacherNotice = null;
 
 /** What the panel says while a request runs. Cards show their own progress. */
 const TEACHER_WORKING = {
+  resume: "Your teacher is resuming this check.",
   quiz: "Your teacher is grading your quiz…",
   reflect: "Your teacher is reading your explanation…",
   chat: "Your teacher is replying…",
@@ -2377,7 +2378,8 @@ const TEACHER_WORKING = {
 
 function renderTeacher(state) {
   if (!state) return;
-  if (!teacherPanel) buildTeacherPanel();
+  const firstRender = !teacherPanel;
+  if (firstRender) buildTeacherPanel();
   placeTeacherPanel();
   teacherPanel.querySelector(".cl-teacher-identity").textContent =
     state.identity.backend === "pi"
@@ -2392,7 +2394,12 @@ function renderTeacher(state) {
     item.dataset.role = message.role;
     const who = document.createElement("span");
     who.className = "cl-teacher-who";
-    who.textContent = message.role === "teacher" ? "Teacher" : "You";
+    who.textContent =
+      message.role === "teacher"
+        ? message.sourceBackend === "pi"
+          ? "Teacher (Pi history)"
+          : "Teacher"
+        : "You";
     const body = document.createElement("div");
     body.className = "cl-teacher-body";
     // innerHTML is safe here: teacher markdown was rendered server-side. The
@@ -2438,11 +2445,14 @@ function renderTeacher(state) {
     showTeacherNotice();
   }
   teacherSeen = teacherCount;
+  if (firstRender && window.location.hash === "#cl-teacher")
+    teacherPanel.scrollIntoView({ block: "start" });
 }
 
 function buildTeacherPanel() {
   teacherPanel = document.createElement("section");
   teacherPanel.className = "cl-teacher";
+  teacherPanel.id = "cl-teacher";
   teacherPanel.setAttribute("aria-label", "Your teacher");
   teacherPanel.innerHTML = `
     <h2>Your teacher</h2>

@@ -85,6 +85,7 @@ describe("skills", () => {
       "lesson_health",
       "list_classrooms",
       "open_classroom",
+      "resume_lesson_teacher",
       "record_retrieval_check",
       "scaffold_classroom",
       "scaffold_lesson",

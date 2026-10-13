@@ -1,4 +1,5 @@
 /** Detached service entry point. stdout is a diagnostic log, not MCP transport. */
+import { resumeTeacherTool } from "./teacher-resume.ts";
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
@@ -82,6 +83,7 @@ async function stop(): Promise<void> {
   if (fs.existsSync(paths.socket)) fs.unlinkSync(paths.socket);
 }
 const tools: ClassroomTool[] = [
+  resumeTeacherTool((input) => teacher.resume(input)),
   {
     ...serviceToolDefinitions[0],
     async execute(args: { action: string }) {

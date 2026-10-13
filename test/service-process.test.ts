@@ -6,7 +6,7 @@ import * as readline from "node:readline";
 import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
+import { makeFixture, seedClassroom, seedHistoricalReview, type Fixture } from "./helpers.ts";
 import { _overrideClassroomsDir, packageRoot } from "../src/paths.ts";
 import { control, ensureService, serviceStatus } from "../src/service-client.ts";
 
@@ -134,6 +134,7 @@ it("keeps HTTP and submissions alive after MCP exit, reconnects, and preserves g
       "scaffold_classroom",
       "scaffold_lesson",
       "scaffold_review",
+      "resume_lesson_teacher",
     ].sort(),
   );
   expect(
@@ -397,3 +398,31 @@ it.each(["noise", "progress"])(
   },
   15_000,
 );
+
+it("discovers and resumes a historical review through the actual MCP transport", async () => {
+  const input = seedHistoricalReview(f.root);
+  const mcp = client();
+  await mcp.call("initialize", { clientInfo: { name: "codex-test" } });
+  const opened = await mcp.call("tools/call", {
+    name: "open_classroom",
+    arguments: { classroom: "rust" },
+  });
+  expect(opened.result.isError).toBe(false);
+  const response = await mcp.call("tools/call", {
+    name: "resume_lesson_teacher",
+    arguments: input,
+  });
+  expect(response.result.isError).toBe(false);
+  expect(response.result.content[0].text).toContain("/c/rust/999-historical-review#cl-teacher");
+  const base = (await serviceStatus()).url;
+  const url = `${base}/api/state?classroom=rust&lesson=${input.lesson}`;
+  await waitFor(
+    async () => (await (await fetch(url)).json()).teacher.requests[0]?.status === "done",
+  );
+  await mcp.call("tools/call", { name: "resume_lesson_teacher", arguments: input });
+  const state = await (await fetch(url)).json();
+  expect(state.teacher.requests).toHaveLength(1);
+  expect(state.teacher.requests[0].kind).toBe("resume");
+  expect(state.teacher.messages.map((m: any) => m.role)).toEqual(["teacher"]);
+  expect(state.quizzes[0].grade.score).toBe(67);
+});
