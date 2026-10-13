@@ -1,4 +1,6 @@
 /** Check browser state against the real HTTP server and grading tool. */
+import { browserRegression } from "./browser-regression.mjs";
+import { highlightText } from "./browser-actions.ts";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -179,8 +181,11 @@ try {
     session,
     fixture.root,
     "run-code",
-    "--filename",
-    path.join(root, "test/browser.playwright.js"),
+    `async page => {
+      const highlightText = ${highlightText.toString()};
+      const browserRegression = ${browserRegression.toString()};
+      return browserRegression(page, highlightText);
+    }`,
   );
   console.log(browserResult);
   fixture.write(

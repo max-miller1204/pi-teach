@@ -1,5 +1,5 @@
-/** Playwright CLI function. Run with node scripts/e2e-browser.ts. */
-async function browserRegression(page) {
+/** Drive lesson controls through the browser verification harness. */
+export async function browserRegression(page, highlightText) {
   const control = `http://127.0.0.1:${new URL(page.url()).searchParams.get("control")}`;
   const artifacts = new URL(page.url()).searchParams.get("artifacts");
   const screenshot = async (name) => {
@@ -71,31 +71,7 @@ async function browserRegression(page) {
     throw new Error(`${message}: ${JSON.stringify(await serverDrafts())}`);
   };
 
-  const selectPhrase = async (phrase, selector = "section") => {
-    await page.locator(selector).scrollIntoViewIfNeeded();
-    const box = await page.locator(selector).evaluate((element, text) => {
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-      let node;
-      while ((node = walker.nextNode())) {
-        const start = node.nodeValue.indexOf(text);
-        if (start < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, start);
-        range.setEnd(node, start + text.length);
-        const rect = range.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-      }
-      throw new Error(`No lesson text matches ${text}.`);
-    }, phrase);
-    await page.mouse.move(box.x + 0.5, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width - 0.5, box.y + box.height / 2, { steps: 10 });
-    await page.mouse.up();
-    assert(
-      (await page.evaluate(() => getSelection().toString())) === phrase,
-      "Mouse selection lost the passage",
-    );
-  };
+  const selectPhrase = (phrase, selector = "section") => highlightText(page, selector, phrase);
   async function verifyReflectionAndFollowUpDrafts() {
     const reflection = page.locator('form[data-reflect-id="ownership"]');
     const text = "The owner releases the value.";

@@ -29,6 +29,7 @@
     "image": "https://raw.githubusercontent.com/max-miller1204/pi-teach/main/screenshots/answer.png"
   },
   "scripts": {
+    "verify": "node scripts/verify.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e:claude": "node scripts/e2e.ts claude",

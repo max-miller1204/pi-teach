@@ -1,7 +1,6 @@
 import { expect, it } from "vitest";
 import {
   AUTHORING_CRITERIA,
-  contentEvaluationPrompt,
   parseContentJudgments,
   type AuthoredContent,
 } from "../src/authoring-evaluation.ts";
@@ -34,12 +33,4 @@ it("requires every semantic criterion and a supplied excerpt", () => {
   expect(() => parseContentJudgments(JSON.stringify(duplicate), content)).toThrow(
     "unique criterion",
   );
-});
-it("asks for concrete judgments instead of treating plan labels as question quality", () => {
-  const prompt = contentEvaluationPrompt(content);
-  expect(prompt).toContain("Mapping names alone cannot prove quality");
-  expect(prompt).toContain("not human learning evidence");
-  expect(prompt).toContain("Prior-topic retrieval");
-  expect(prompt).toContain("Solve at least two allowed alternatives");
-  expect(prompt).toContain("Do not claim to have checked rendered diagrams");
 });

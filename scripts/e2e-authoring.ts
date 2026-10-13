@@ -59,7 +59,7 @@ import {
   until,
   type Harness,
 } from "./harness.ts";
-import { selectLocateAnswer } from "./authoring-browser.ts";
+import { selectLocateAnswer } from "./browser-actions.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 
 const AUTHORING_TIMEOUT_MS = 30 * 60_000;
