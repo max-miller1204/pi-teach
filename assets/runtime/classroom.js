@@ -1817,9 +1817,9 @@ function renderGrade(form, grade) {
     verdict.className = "cl-q-verdict";
     verdict.dataset.correct = String(questionGrade.correct);
     verdict.dataset.outcome = questionOutcome(questionGrade);
-    verdict.innerHTML = `<span>${escapeText(questionGradeLabel(questionGrade))}</span><span>${
+    verdict.innerHTML = `<div class="cl-q-verdict-label">${escapeText(questionGradeLabel(questionGrade))}</div><div class="cl-q-verdict-feedback">${
       questionGrade.feedbackHtml || escapeText(questionGrade.feedback)
-    }</span>`;
+    }</div>`;
     question.appendChild(verdict);
   }
 }
