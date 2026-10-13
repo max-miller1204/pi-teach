@@ -1,3 +1,4 @@
+import { verifyReviewBrowser } from "./e2e-review-browser.ts";
 /** Check browser state against the real HTTP server and grading tool. */
 import { browserRegression } from "./browser-regression.mjs";
 import { highlightText } from "./browser-actions.ts";
@@ -311,3 +312,5 @@ try {
 
 await verifyPiPanelBrowser(artifacts ? path.join(artifacts, "pi-panel") : null);
 await verifyServiceBrowser(artifacts ? path.join(artifacts, "service") : null);
+
+await verifyReviewBrowser(artifacts ? path.join(artifacts, "review") : null);
