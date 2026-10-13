@@ -561,6 +561,37 @@ it.each([true, false])(
   },
 );
 
+it("rejects retrieval placeholders before grading and regenerates only on explicit retry", async () => {
+  const s = submission();
+  let runs = 0;
+  const teacher = new TeacherService(async () => {
+    runs++;
+    return plan(
+      runs === 1
+        ? [grade(s.id), { name: "record_retrieval_check", arguments_json: "{}" }]
+        : [grade(s.id)],
+    );
+  });
+  teacher.attach("rust", "claude");
+  await teacher.idle();
+  const rejected = readTeacherState("rust")!.requests[0];
+  expect(rejected.status).toBe("failed");
+  expect(rejected.error).toContain("Retrieval evidence requires a learner reply");
+  expect(rejected.applied ?? 0).toBe(0);
+  expect(store.listGrades(location.classroom, location.lesson)).toHaveLength(0);
+  expect(store.listRetrievalChecks("rust")).toHaveLength(0);
+  expect(store.readLearningRecords("rust")).toEqual([]);
+  expect(readTeacherState("rust")!.messages).toHaveLength(0);
+  expect(runs).toBe(1);
+  teacher.retry("rust", `quiz:${s.id}`);
+  await teacher.idle();
+  expect(runs).toBe(2);
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  expect(store.listGrades(location.classroom, location.lesson)).toHaveLength(1);
+  expect(store.listRetrievalChecks("rust")).toHaveLength(0);
+  await teacher.stop();
+});
+
 it("requests a new plan on explicit retry after invalid panel evidence", async () => {
   writeGradedAttempt({
     at: Date.now() - 2 * DAY_MS,
