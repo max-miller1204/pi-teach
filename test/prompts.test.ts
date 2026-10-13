@@ -138,6 +138,40 @@ describe("followUpPrompt", () => {
   });
 });
 
+describe("quiz highlights", () => {
+  const card: Annotation = {
+    id: "a1",
+    classroom: "rust",
+    lesson: "001-ownership",
+    status: "pending",
+    question: "What does drop mean here?",
+    selection: "dropped",
+    anchor: { exact: "dropped", prefix: "", suffix: "", occurrence: 0 },
+    answerMarkdown: null,
+    answerHtml: null,
+    createdAt: 1,
+    answeredAt: null,
+  };
+
+  it("tells the teacher not to solve a quiz question before it is graded", () => {
+    const prompt = askPrompt(
+      { ...card, quiz: { quizId: "check-1", questionId: "q2", graded: false } },
+      "push",
+    );
+    expect(prompt).toContain("question `q2` of quiz `check-1`");
+    expect(prompt).toContain("Do not give the answer");
+  });
+
+  it("lets the teacher explain a graded quiz question", () => {
+    const prompt = askPrompt(
+      { ...card, quiz: { quizId: "check-1", questionId: "q2", graded: true } },
+      "service",
+    );
+    expect(prompt).toContain("has been graded");
+    expect(prompt).not.toContain("Do not give the answer");
+  });
+});
+
 describe("delivery parity", () => {
   const card: Annotation = {
     id: "a1",

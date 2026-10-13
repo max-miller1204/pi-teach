@@ -71,6 +71,17 @@ let askMarker = null;
 
 const MINIMISED_KEY = `pi-classroom-minimised:${location.pathname}`;
 
+/**
+ * What the runtime adds to a quiz after hydration: the grade, the verdicts, the
+ * footer, the reports, the order buttons. It changes as a quiz is graded, so a
+ * highlight never anchors to it. The questions themselves can be highlighted.
+ */
+const QUIZ_RUNTIME_UI =
+  "[data-cl-grade], .cl-q-verdict, .cl-quiz-footer, .cl-answer-report, .cl-order-controls";
+
+/** Our own UI, never lesson text: a highlight must not anchor into it. */
+const RUNTIME_UI = `script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram, .cl-teacher, .cl-teacher-notice, ${QUIZ_RUNTIME_UI}`;
+
 function loadMinimised() {
   try {
     return new Set(JSON.parse(localStorage.getItem(MINIMISED_KEY) || "[]"));
@@ -129,6 +140,20 @@ function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") cancelComposer();
   });
+  // Highlighting an option's text ends in a click on its label. That click must not
+  // also choose the option.
+  document.addEventListener("click", ignoreSelectingClick, true);
+}
+
+function ignoreSelectingClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || target.closest("input, select, textarea, button")) return;
+  const control = target.closest("form.cl-quiz label, form.cl-quiz .cl-segment");
+  const selection = window.getSelection();
+  if (!control || !selection || selection.isCollapsed || selection.rangeCount === 0) return;
+  if (!selection.getRangeAt(0).intersectsNode(control)) return;
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 /**
@@ -196,13 +221,7 @@ function buildTextIndex(root) {
       if (!parent) return NodeFilter.FILTER_REJECT;
       // The header and card UI are ours, not the lesson's — a highlight must never
       // anchor into them (and a lesson with no <main> makes contentRoot the body).
-      if (
-        parent.closest(
-          "script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram",
-        )
-      ) {
-        return NodeFilter.FILTER_REJECT;
-      }
+      if (parent.closest(RUNTIME_UI)) return NodeFilter.FILTER_REJECT;
       return node.nodeValue && node.nodeValue.trim().length > 0
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_REJECT;
@@ -313,13 +332,18 @@ function onSelectionSettled() {
     if (!contentRoot.contains(range.commonAncestorContainer)) return hideAskPill();
     if (
       range.commonAncestorContainer.parentElement?.closest(
-        "form.cl-quiz, form.cl-reflect, .cl-card-panel, .cl-term-pop",
+        "form.cl-reflect, .cl-card-panel, .cl-term-pop, .cl-teacher",
       )
     ) {
       return hideAskPill();
     }
-    // Diagram text is not in the text index, so a highlight could not anchor there.
-    if (inDiagram(range.startContainer) || inDiagram(range.endContainer)) return hideAskPill();
+    // Text selected inside an answer box belongs to the learner, not the lesson.
+    if (document.activeElement?.matches("input, textarea, select")) return hideAskPill();
+    // Diagram text and runtime UI are not in the text index, so a highlight that
+    // starts or ends there could not anchor.
+    if (outsideIndex(range.startContainer) || outsideIndex(range.endContainer)) {
+      return hideAskPill();
+    }
     if (normalizeText(range.toString()).length < 2) return hideAskPill();
 
     pendingRange = range.cloneRange();
@@ -333,9 +357,29 @@ function onSelectionSettled() {
   }, 0);
 }
 
-function inDiagram(node) {
-  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-  return Boolean(element?.closest(".cl-diagram"));
+function elementOf(node) {
+  return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+}
+
+function outsideIndex(node) {
+  return Boolean(elementOf(node)?.closest(`.cl-diagram, ${QUIZ_RUNTIME_UI}`));
+}
+
+/**
+ * The quiz and question a highlight sits in, or null for lesson text. The teacher
+ * needs it: before grading, an answer about a quiz question must not solve it.
+ */
+function quizRefFor(range) {
+  for (const node of [range.startContainer, range.endContainer]) {
+    const element = elementOf(node);
+    const form = element?.closest("form.cl-quiz");
+    if (!form?.dataset.quizId) continue;
+    return {
+      quizId: form.dataset.quizId,
+      questionId: element.closest(".cl-q")?.dataset.questionId ?? null,
+    };
+  }
+  return null;
 }
 
 /** Place an absolutely-positioned element at viewport coords, clamped on-screen. */
@@ -355,7 +399,10 @@ function position(element, viewportLeft, viewportTop) {
  * needs no repositioning on scroll or resize, and works the same at every width.
  */
 function placeCardInFlow(panel, mark) {
-  const anchor = blockAncestor(mark) ?? mark;
+  // In a quiz, a card goes after the whole question. Inside it, the card's fields
+  // would be locked, cleared, and read as answers along with the question's own.
+  const question = mark.parentElement?.closest("form.cl-quiz .cl-q");
+  const anchor = question ?? blockAncestor(mark) ?? mark;
   if (anchor.parentNode) anchor.after(panel);
   else contentRoot.appendChild(panel);
 }
@@ -549,6 +596,7 @@ async function onAskSubmit(event) {
     return;
   }
   const range = pendingRange.cloneRange();
+  const quiz = quizRefFor(range);
   await flushDraft("ask");
   closeComposer();
 
@@ -564,6 +612,7 @@ async function onAskSubmit(event) {
         question,
         selection: selector.exact,
         anchor: selector,
+        quiz,
       }),
     });
     if (!response.ok) throw new Error(await response.text());
@@ -606,6 +655,8 @@ function wrapRange(range, annotationId) {
   for (const mark of marks) {
     mark.addEventListener("click", (event) => {
       event.stopPropagation();
+      // A highlight in an option's label opens its card. It does not choose the option.
+      if (mark.closest("label")) event.preventDefault();
       toggleCard(annotationId);
     });
   }
@@ -1176,9 +1227,12 @@ function hydrateQuizzes() {
 
     for (const question of form.querySelectorAll(".cl-q")) enhanceQuestion(form, question);
     form.dataset.state = "fresh";
-    form.addEventListener("submit", (event) => onQuizSubmit(event, form));
-    const saveQuiz = () => {
-      if (form.dataset.state !== "fresh") return;
+    // A question card inside the quiz has its own form. Its events bubble here.
+    form.addEventListener("submit", (event) => {
+      if (event.target === form) onQuizSubmit(event, form);
+    });
+    const saveQuiz = (event) => {
+      if (form.dataset.state !== "fresh" || event.target.closest(".cl-card-panel")) return;
       scheduleDraft(
         `quiz:${form.dataset.quizId}`,
         () => quizDraft(form),
@@ -1467,14 +1521,21 @@ async function onQuizSubmit(event, form) {
   const questions = [...form.querySelectorAll(".cl-q")];
   const answers = [];
   let missing = 0;
-  for (const [i, question] of questions.entries()) {
-    const result = collectAnswer(question);
-    if (result.invalid) {
-      setQuizStatus(form, `Question ${i + 1}: ${result.invalid}`);
-      return;
+  // A question card leaves a marker in the question text. The marker is not part of
+  // the question, so it is taken out while the answers are read.
+  const putMarkersBack = detachMarkers(form);
+  try {
+    for (const [i, question] of questions.entries()) {
+      const result = collectAnswer(question);
+      if (result.invalid) {
+        setQuizStatus(form, `Question ${i + 1}: ${result.invalid}`);
+        return;
+      }
+      if (result.missing) missing += 1;
+      else answers.push(result.answer);
     }
-    if (result.missing) missing += 1;
-    else answers.push(result.answer);
+  } finally {
+    putMarkersBack();
   }
   if (missing > 0) {
     setQuizStatus(form, `Answer every question first (${missing} left).`);
@@ -1522,6 +1583,19 @@ async function onQuizSubmit(event, form) {
   applyQuizState({ submission, grade: null, attempts: submission.attempt });
 }
 
+/** Remove the card markers inside an element. Returns a function that restores them. */
+function detachMarkers(element) {
+  const markers = [...element.querySelectorAll(".cl-badge-marker")].map((marker) => ({
+    marker,
+    parent: marker.parentNode,
+    next: marker.nextSibling,
+  }));
+  for (const { marker } of markers) marker.remove();
+  return () => {
+    for (const { marker, parent, next } of markers.reverse()) parent.insertBefore(marker, next);
+  };
+}
+
 function setQuizState(form, state) {
   form.dataset.state = state;
   const locked = state !== "fresh";
@@ -1533,7 +1607,10 @@ function setQuizState(form, state) {
   for (const segment of form.querySelectorAll(".cl-segment")) {
     segment.setAttribute("tabindex", locked ? "-1" : "0");
   }
-  const submit = form.querySelector('button[type="submit"], .cl-submit');
+  // In the footer: a question card in the quiz has a submit button of its own.
+  const submit = form.querySelector(
+    '.cl-quiz-footer button[type="submit"], .cl-quiz-footer .cl-submit',
+  );
   if (submit) {
     submit.disabled = locked;
     if (state === "graded") submit.textContent = "Graded";

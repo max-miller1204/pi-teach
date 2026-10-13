@@ -218,6 +218,37 @@ try {
     );
   console.log("[e2e:pi] browser question answered through answer_lesson_question");
 
+  // A question about the quiz itself, asked before grading, from the question text.
+  {
+    const start = events.length;
+    await playwrightCode(
+      session,
+      fixture.root,
+      `async page => {
+      await (${highlightText.toString()})(page, '.cl-q-prompt', 'What happens');
+      await page.locator('.cl-ask-pill').click();
+      await page.locator('[data-cl-question]').fill('What does this question mean by what happens?');
+      const response = page.waitForResponse(r => r.url().endsWith('/api/ask') && r.request().method() === 'POST');
+      await page.getByRole('button', {name:'Ask your teacher', exact:true}).click();
+      if ((await response).status() !== 201) throw new Error('The quiz question was refused');
+      return true;
+    }`,
+    );
+    const quizCard = await until(
+      "quiz question answer",
+      () =>
+        store
+          .listAnnotations("rust", "001-ownership")
+          .find((a) => a.quiz && a.status === "answered") ?? null,
+    );
+    if (quizCard.quiz?.questionId !== "q1" || quizCard.quiz.graded)
+      throw new Error(`The quiz card lost its question: ${JSON.stringify(quizCard.quiz)}`);
+    await until("quiz question turn", () =>
+      events.slice(start).some((e) => e.type === "agent_settled") ? true : null,
+    );
+    console.log(`[e2e:pi] quiz question answered before grading: ${quizCard.answerMarkdown}`);
+  }
+
   const attempt = 1;
   const option = "b";
   const expected = false;

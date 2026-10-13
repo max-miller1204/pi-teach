@@ -87,6 +87,10 @@ After a wrong answer, the teacher explains the missed idea and asks a new questi
 in your Pi chat or the lesson's teacher panel in Claude Code and Codex.
 Reply there so the teacher can check your understanding before moving on.
 
+You can highlight the text of a quiz question or option and ask about it, just like
+lesson text. Before the quiz is graded, the teacher clarifies the question without
+giving the answer away.
+
 ![A graded quiz showing 92%, overall feedback, and per-question verdicts](../screenshots/quiz.png)
 
 Every page follows your system theme. You can select a different theme.

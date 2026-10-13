@@ -132,6 +132,12 @@ export interface Annotation {
   createdAt: number;
   answeredAt: number | null;
   followUps?: FollowUp[];
+  /**
+   * Set when the highlight sits inside a quiz. `graded` is whether that quiz had a
+   * grade when the question was last asked, because before grading the teacher must
+   * not give away the answer. `questionId` is null for the quiz heading.
+   */
+  quiz?: { quizId: string; questionId: string | null; graded: boolean };
 }
 
 /**

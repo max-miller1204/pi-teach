@@ -542,6 +542,54 @@ describe("asking a question", () => {
   });
 });
 
+describe("asking about a quiz question", () => {
+  const anchor = { exact: "one owner", prefix: "has ", suffix: ".", occurrence: 0 };
+  const ask = (quiz: unknown) =>
+    post("/api/ask", {
+      classroom: "rust",
+      lesson: "001-ownership",
+      question: "What does this ask?",
+      selection: "one owner",
+      anchor,
+      quiz,
+    });
+
+  it("records the question it is about, and whether its quiz was graded", async () => {
+    const res = await ask({ quizId: "quiz-ask", questionId: "q1" });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as store.Annotation;
+    expect(created.quiz).toEqual({ quizId: "quiz-ask", questionId: "q1", graded: false });
+    expect(asked[0].quiz?.graded).toBe(false);
+  });
+
+  it("refreshes the graded flag when a follow-up comes after grading", async () => {
+    const created = (await (
+      await ask({ quizId: "quiz-later", questionId: "q1" })
+    ).json()) as store.Annotation;
+    applyAnswer(created.id, "It asks who frees the value.");
+    writeGradedAttempt({
+      quizId: "quiz-later",
+      at: Date.now(),
+      answers: [termAnswer("q1", "drop")],
+      correct: { q1: false },
+    });
+    const res = await post(`/api/annotations/${created.id}/follow-up`, {
+      classroom: "rust",
+      lesson: "001-ownership",
+      question: "So what was the answer?",
+    });
+    expect(res.status).toBe(201);
+    expect(followedUp[0].annotation.quiz?.graded).toBe(true);
+  });
+
+  it("rejects a malformed quiz reference", async () => {
+    expect((await ask({ quizId: "../x" })).status).toBe(400);
+    expect((await ask({ quizId: "ok", questionId: 3 })).status).toBe(400);
+    expect((await ask("quiz")).status).toBe(400);
+    expect(asked).toHaveLength(0);
+  });
+});
+
 describe("asking a follow-up", () => {
   const anchor = { exact: "one owner", prefix: "has ", suffix: ".", occurrence: 0 };
 

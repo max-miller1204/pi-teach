@@ -194,6 +194,7 @@ export function askPrompt(annotation: Annotation, delivery: Delivery): string {
     `Lesson: \`${annotation.lesson}\` (${path.join(lessonDir(annotation.classroom, annotation.lesson), "lesson.html")})`,
     "",
     "Before an assessment is submitted, clarify instructions without solving its questions or quoting its private rubric. Do not expose answers through a passage card.",
+    ...quizContext(annotation),
     "They highlighted:",
     "",
     quote(annotation.selection),
@@ -206,6 +207,20 @@ export function askPrompt(annotation: Annotation, delivery: Delivery): string {
     "",
     `When you have the answer, call \`answer_lesson_question\` with \`annotation_id: "${annotation.id}"\` and your answer as markdown. That is what puts it on their screen : replying in chat alone will not reach them.`,
   ].join("\n");
+}
+
+/** What the teacher may say about a highlight inside a quiz. Empty for lesson text. */
+function quizContext(annotation: Annotation): string[] {
+  const quiz = annotation.quiz;
+  if (!quiz) return [];
+  const where = quiz.questionId
+    ? `question \`${quiz.questionId}\` of quiz \`${quiz.quizId}\``
+    : `the heading of quiz \`${quiz.quizId}\``;
+  return [
+    quiz.graded
+      ? `The highlight is in ${where}, which has been graded. You may explain the expected answer and why their answer earned the credit it did. Do not change the grade.`
+      : `The highlight is in ${where}, which has not been graded. Clarify what the question asks and the terms it uses. Do not give the answer, eliminate options, or hint at the solution.`,
+  ];
 }
 
 /**
@@ -250,6 +265,7 @@ export function followUpPrompt(
     quote(annotation.selection),
     "",
     "Before an assessment is submitted, clarify instructions without solving its questions or quoting its private rubric. Do not expose answers through a follow-up card.",
+    ...quizContext(annotation),
     "The thread so far:",
     "",
     ...earlier,
