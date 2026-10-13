@@ -52,7 +52,7 @@ import * as store from "../src/store.ts";
 import {
   browserCommands,
   packagedPageChecks,
-  codexHome,
+  useTestModel,
   harnessCommand,
   parseHarness,
   toolCalls,
@@ -436,7 +436,7 @@ async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-teach-e2e-authoring-"));
   _overrideClassroomsDir(root);
   seedClassroom(root);
-  const home = harness === "codex" ? codexHome() : null;
+  const restoreModel = useTestModel(harness);
   const listener = net.createServer();
   await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
   process.env.PI_CLASSROOM_SERVICE_PORT = String((listener.address() as net.AddressInfo).port);
@@ -447,7 +447,6 @@ async function main(): Promise<void> {
     PI_CLASSROOM_AUTO_OPEN: "0",
     PI_CLASSROOM_TEACHER: harness,
   };
-  if (home) env["CODEX_HOME"] = home;
   const browser = `pi-teach-authoring-${harness}-${process.pid}`;
   let browserOpen = false;
   const sessions: Session[] = [];
@@ -746,7 +745,7 @@ async function main(): Promise<void> {
         fs.copyFileSync(servicePaths().log, path.join(artifacts, `${harness}-service.log`));
     }
     fs.rmSync(root, { recursive: true, force: true });
-    if (home) fs.rmSync(home, { recursive: true, force: true });
+    restoreModel();
   }
 }
 

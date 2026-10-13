@@ -9,6 +9,12 @@ export type Harness = "claude" | "codex";
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+export const TEST_MODELS = {
+  pi: { provider: "openai-codex", model: "gpt-6-luna", effort: "low" },
+  claude: { model: "claude-haiku-5-5", effort: "low" },
+  codex: { model: "gpt-6-luna", effort: "low" },
+} as const;
+
 /** Claude Code prefixes plugin MCP tools with this. Codex reports the bare name. */
 export const CLAUDE_PREFIX = "mcp__plugin_pi-teach_classroom__";
 
@@ -22,6 +28,10 @@ export function codexHome(): string {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "pi-teach-e2e-codex-"));
   const realHome = process.env["CODEX_HOME"] ?? path.join(os.homedir(), ".codex");
   fs.copyFileSync(path.join(realHome, "auth.json"), path.join(home, "auth.json"));
+  fs.writeFileSync(
+    path.join(home, "config.toml"),
+    `model = "${TEST_MODELS.codex.model}"\nmodel_reasoning_effort = "${TEST_MODELS.codex.effort}"\n`,
+  );
   for (const args of [
     ["plugin", "marketplace", "add", ROOT],
     ["plugin", "add", "pi-teach@pi-teach"],
@@ -29,7 +39,41 @@ export function codexHome(): string {
     const run = spawnSync("codex", args, { env: { ...process.env, CODEX_HOME: home } });
     if (run.status !== 0) throw new Error(`codex ${args.join(" ")} failed:\n${run.stderr}`);
   }
+  // Codex filters MCP environment variables. Give this test plugin the same home.
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  const manifest = path.join(
+    home,
+    "plugins/cache/pi-teach/pi-teach",
+    version,
+    ".codex-plugin/mcp.json",
+  );
+  const mcp = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  mcp.mcpServers.classroom.env = { ...mcp.mcpServers.classroom.env, CODEX_HOME: home };
+  fs.writeFileSync(manifest, JSON.stringify(mcp, null, 2));
   return home;
+}
+
+/** Pin child sessions, service teachers, and evaluators. Restore the test process on cleanup. */
+export function useTestModel(harness: Harness): () => void {
+  const home = harness === "codex" ? codexHome() : null;
+  const pinned: NodeJS.ProcessEnv = home
+    ? { CODEX_HOME: home }
+    : {
+        ANTHROPIC_MODEL: TEST_MODELS.claude.model,
+        CLAUDE_CODE_EFFORT_LEVEL: TEST_MODELS.claude.effort,
+      };
+  const previous = Object.fromEntries(Object.keys(pinned).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, pinned);
+  console.log(
+    `[test-model:${harness}] ${TEST_MODELS[harness].model} ${TEST_MODELS[harness].effort}`,
+  );
+  return () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    if (home) fs.rmSync(home, { recursive: true, force: true });
+  };
 }
 
 /**
@@ -55,6 +99,10 @@ export function harnessCommand(
         "--output-format",
         "stream-json",
         "--verbose",
+        "--model",
+        TEST_MODELS.claude.model,
+        "--effort",
+        TEST_MODELS.claude.effort,
         "--allowedTools",
         [...tools.map((tool) => `${CLAUDE_PREFIX}${tool}`), ...extraTools].join(","),
       ],
@@ -67,6 +115,10 @@ export function harnessCommand(
     [
       "exec",
       "--json",
+      "--model",
+      TEST_MODELS.codex.model,
+      "--config",
+      `model_reasoning_effort="${TEST_MODELS.codex.effort}"`,
       "--skip-git-repo-check",
       "--dangerously-bypass-approvals-and-sandbox",
       prompt,

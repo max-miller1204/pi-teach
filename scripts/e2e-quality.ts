@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { makeFixture } from "../test/helpers.ts";
 import { parseTeachingPlan } from "../src/teaching-plan.ts";
 import { evaluateContent } from "./authoring-evaluator.ts";
-import { parseHarness } from "./harness.ts";
+import { parseHarness, useTestModel } from "./harness.ts";
 const backend = parseHarness(
   process.argv[2],
   "Usage: node scripts/e2e-quality.ts <claude|codex> [artifacts]",
@@ -50,6 +50,7 @@ const rubric = JSON.stringify({
     q1: { expected: "2.5", points: 1, full: "Must exactly say 2.5", partial: "0 otherwise" },
   },
 });
+const restoreModel = useTestModel(backend);
 try {
   parseTeachingPlan(plan, html);
   const review = await evaluateContent(backend, fixture.root, {
@@ -84,4 +85,5 @@ try {
   );
 } finally {
   fixture.cleanup();
+  restoreModel();
 }

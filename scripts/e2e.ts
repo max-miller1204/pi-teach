@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as net from "node:net";
-import { codexHome, harnessCommand, parseHarness } from "./harness.ts";
+import { useTestModel, harnessCommand, parseHarness } from "./harness.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 import { _overrideClassroomsDir } from "../src/paths.ts";
 import { control, serviceStatus } from "../src/service-client.ts";
@@ -67,7 +67,7 @@ async function freePort(): Promise<number> {
 }
 async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `pi-teach-e2e-${harness}-`));
-  const home = harness === "codex" ? codexHome() : null;
+  const restoreModel = useTestModel(harness);
   seedClassroom(root);
   _overrideClassroomsDir(root);
   const port = await freePort(),
@@ -79,7 +79,6 @@ async function main(): Promise<void> {
     PI_CLASSROOM_AUTO_OPEN: "0",
     PI_CLASSROOM_TEACHER: harness,
   };
-  if (home) env.CODEX_HOME = home;
   const prompt = `Call begin_teaching with topic rust. Call open_classroom with classroom rust and teacher_backend ${harness}. Return the URL and end this turn. Do not write material or wait for browser requests. The persistent service handles them.`;
   const [command, args] = harnessCommand(harness, prompt, ["begin_teaching", "open_classroom"]);
   const child = spawn(command, args, { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -251,7 +250,7 @@ async function main(): Promise<void> {
     }
     if (browserOpen) await playwright(browser, root, "close");
     fs.rmSync(root, { recursive: true, force: true });
-    if (home) fs.rmSync(home, { recursive: true, force: true });
+    restoreModel();
   }
 }
 await main();

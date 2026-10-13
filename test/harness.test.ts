@@ -1,5 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { packagedPageChecks } from "../scripts/harness.ts";
+import { describe, expect, it, vi } from "vitest";
+import { harnessCommand, packagedPageChecks, useTestModel } from "../scripts/harness.ts";
+
+describe("test model selection", () => {
+  it("overrides inherited Claude settings for child teachers and restores them", () => {
+    vi.stubEnv("ANTHROPIC_MODEL", "claude-opus-5-5");
+    vi.stubEnv("CLAUDE_CODE_EFFORT_LEVEL", "high");
+    const restore = useTestModel("claude");
+    try {
+      expect(process.env.ANTHROPIC_MODEL).toBe("claude-haiku-5-5");
+      expect(process.env.CLAUDE_CODE_EFFORT_LEVEL).toBe("low");
+    } finally {
+      restore();
+    }
+    expect(process.env.ANTHROPIC_MODEL).toBe("claude-opus-5-5");
+    expect(process.env.CLAUDE_CODE_EFFORT_LEVEL).toBe("high");
+    vi.unstubAllEnvs();
+  });
+
+  it("pins the initiating commands without a fallback model", () => {
+    const [, claude] = harnessCommand("claude", "test", []);
+    expect(claude.slice(claude.indexOf("--model"), claude.indexOf("--effort") + 2)).toEqual([
+      "--model",
+      "claude-haiku-5-5",
+      "--effort",
+      "low",
+    ]);
+    expect(claude).not.toContain("--fallback-model");
+    const [, codex] = harnessCommand("codex", "test", []);
+    expect(codex.slice(codex.indexOf("--model"), codex.indexOf("--config") + 2)).toEqual([
+      "--model",
+      "gpt-6-luna",
+      "--config",
+      'model_reasoning_effort="low"',
+    ]);
+  });
+});
 
 const command = 'node "/plugin/scripts/check-lesson.ts" os 002-forks';
 const receipt = {

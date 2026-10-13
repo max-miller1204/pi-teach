@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import * as store from "../src/store.ts";
 import { makeFixture, lessonHtml, seedClassroom } from "../test/helpers.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
+import { TEST_MODELS } from "./harness.ts";
 
 const fixture = makeFixture();
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,6 +52,12 @@ const child = spawn(
   [
     "--mode",
     "rpc",
+    "--provider",
+    TEST_MODELS.pi.provider,
+    "--model",
+    TEST_MODELS.pi.model,
+    "--thinking",
+    TEST_MODELS.pi.effort,
     "--no-session",
     "--no-extensions",
     "--no-skills",
@@ -126,7 +133,15 @@ try {
     "Pi state",
     () => events.find((e) => e.id === "state" && e.type === "response") ?? null,
   );
-  console.log(`[e2e:pi] model: ${state.data.model.provider}/${state.data.model.id}`);
+  if (
+    state.data.model.provider !== TEST_MODELS.pi.provider ||
+    state.data.model.id !== TEST_MODELS.pi.model ||
+    state.data.thinkingLevel !== TEST_MODELS.pi.effort
+  )
+    throw new Error(`Pi did not use the test model: ${JSON.stringify(state.data)}`);
+  console.log(
+    `[e2e:pi] model: ${state.data.model.provider}/${state.data.model.id} ${state.data.thinkingLevel}`,
+  );
   send({ id: "start", type: "prompt", message: "/classroom start" });
   const base = await until("server URL", () => {
     const event = events.find(

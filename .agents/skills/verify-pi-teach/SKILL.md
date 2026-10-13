@@ -20,6 +20,8 @@ Run `npm run verify -- doctor`. For a real host, use `npm run verify -- doctor p
 
 Doctor checks Node, dependencies, headless configuration, and required commands. Codex also needs an existing `auth.json`. Real hosts need a signed-in model account. Doctor does not prove that model access works. A missing command or account is a blocker. Use `dots` to manage global packages.
 
+Real model checks use fixed settings. Pi uses `openai-codex/gpt-6-luna` with `low` thinking. Claude uses `claude-haiku-5-5` with `low` effort. Codex uses `gpt-6-luna` with `low` reasoning effort. These settings apply to initiating sessions, dedicated teachers, authoring, feedback, and semantic evaluation. Test settings override user defaults. Codex uses a temporary home. The test plugin passes that home to its MCP service. Pi checks its active model and thinking level before it starts the browser drive. Do not substitute a model when access fails.
+
 During a browser drive, the harness checks readiness through the lesson's `data-state` and the service's status API. It checks stored state before teardown. Inspect the saved service log after a failure. Do not switch backends to bypass a failure.
 
 ## Drive
