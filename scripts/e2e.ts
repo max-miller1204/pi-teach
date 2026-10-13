@@ -7,6 +7,9 @@ import * as path from "node:path";
 import * as net from "node:net";
 import { useTestModel, harnessCommand, parseHarness } from "./harness.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
+import { writeGradedAttempt, termAnswer } from "../test/helpers.ts";
+import { DAY_MS } from "../src/review.ts";
+import { currentReview } from "../src/review-session.ts";
 import { _overrideClassroomsDir } from "../src/paths.ts";
 import { control, serviceStatus } from "../src/service-client.ts";
 
@@ -24,6 +27,10 @@ function log(message: string): void {
 function seedClassroom(root: string): void {
   const lesson = path.join(root, CLASSROOM, LESSON);
   fs.mkdirSync(lesson, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, CLASSROOM, "MISSION.md"),
+    "# Mission: Rust\n\n## Why\n\nUnderstand ownership.\n",
+  );
   fs.writeFileSync(
     path.join(root, CLASSROOM, "classroom.json"),
     JSON.stringify({ title: "Rust", emoji: "🦀", createdAt: Date.now() }),
@@ -231,6 +238,47 @@ async function main(): Promise<void> {
           2,
         ),
       );
+    writeGradedAttempt({
+      at: Date.now() - 2 * DAY_MS,
+      quizId: "historical",
+      answers: [
+        termAnswer("q1", "dropped", { prompt: "What happens when a value's owner leaves scope?" }),
+      ],
+      correct: { q1: true },
+    });
+    await playwrightCode(
+      browser,
+      root,
+      `async page => {
+      await page.goto(${JSON.stringify(base + "/c/rust")});
+      await page.waitForFunction(() => !document.querySelector('[data-cl-review-start]').disabled);
+      await page.getByRole('button', {name:'Start review',exact:true}).click();
+      return true;
+    }`,
+    );
+    const reviewDeadline = Date.now() + 305_000;
+    while (Date.now() < reviewDeadline) {
+      const review = currentReview(CLASSROOM);
+      if (review?.status === "failed") throw new Error(review.error);
+      if (review?.status === "done") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const review = currentReview(CLASSROOM);
+    if (review?.status !== "done") throw new Error("Review authoring timed out.");
+    await playwrightCode(
+      browser,
+      root,
+      `async page => {
+      await page.waitForURL(${JSON.stringify(base)} + ${JSON.stringify(`/c/rust/${review.lesson}`)});
+      await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'fresh');
+      if (await page.locator('.cl-quiz-error').count()) throw new Error('Authored review has contract errors.');
+      ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, `${harness}-review.png`))},fullPage:true});` : ""}
+      return true;
+    }`,
+    );
+    if (artifacts)
+      fs.writeFileSync(path.join(artifacts, "stored-review.json"), JSON.stringify(review, null, 2));
+    log("PASS: review creation from the classroom page in the existing teacher session");
     log(
       "PASS: host exit, idle wake, answer, grade, locked quiz, teacher reply, stable session, private rubric",
     );

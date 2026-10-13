@@ -6,7 +6,15 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as store from "../src/store.ts";
-import { makeFixture, lessonHtml, seedClassroom } from "../test/helpers.ts";
+import { DAY_MS } from "../src/review.ts";
+import { currentReview } from "../src/review-session.ts";
+import {
+  makeFixture,
+  lessonHtml,
+  seedClassroom,
+  writeGradedAttempt,
+  termAnswer,
+} from "../test/helpers.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 import { TEST_MODELS } from "./harness.ts";
 
@@ -382,6 +390,46 @@ try {
     fs.writeFileSync(path.join(artifacts, "pi-events.json"), JSON.stringify(events, null, 2));
   if (store.listLessons("rust").length !== 1)
     throw new Error("Pi created another lesson without agreement");
+  writeGradedAttempt({
+    at: Date.now() - 2 * DAY_MS,
+    quizId: "historical",
+    answers: [
+      termAnswer("q1", "dropped", { prompt: "What happens when a value's owner leaves scope?" }),
+    ],
+    correct: { q1: true },
+  });
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
+    await page.goto(${JSON.stringify(base)} + '/c/rust');
+    await page.waitForFunction(() => !document.querySelector('[data-cl-review-start]').disabled);
+    await page.getByRole('button', {name:'Start review',exact:true}).click();
+    return true;
+  }`,
+  );
+  const reviewSession = await until("browser review authoring", () => {
+    const session = currentReview("rust");
+    if (session?.status === "failed") throw new Error(session.error);
+    return session?.status === "done" ? session : null;
+  });
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
+    await page.waitForURL(${JSON.stringify(base)} + ${JSON.stringify(`/c/rust/${reviewSession.lesson}`)});
+    await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'fresh');
+    if (await page.locator('.cl-quiz-error').count()) throw new Error('Authored review has contract errors.');
+    ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, "pi-review.png"))},fullPage:true});` : ""}
+    return true;
+  }`,
+  );
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "stored-review.json"),
+      JSON.stringify(reviewSession, null, 2),
+    );
+  console.log("[e2e:pi] PASS: review authoring starts from the classroom page");
   send({ id: "stop", type: "prompt", message: "/classroom stop" });
   await until("server stop", () =>
     events.some((e) => e.id === "stop" && e.type === "response") ? true : null,
