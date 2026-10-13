@@ -31,7 +31,14 @@ import { authoredQuestions } from "./quiz-authoring.ts";
 import { parseTeachingPlan } from "./teaching-plan.ts";
 import { parseRubric } from "./rubric.ts";
 import { answersByQuestion, kindOf } from "./quiz.ts";
-import { pickReviewItems, relativeDay, REVIEW_INTERVALS_DAYS, summarize } from "./review.ts";
+import {
+  DEFAULT_REVIEW_SIZE,
+  MAX_REVIEW_SIZE,
+  pickReviewItems,
+  relativeDay,
+  REVIEW_INTERVALS_DAYS,
+  summarize,
+} from "./review.ts";
 import * as server from "./server.ts";
 import * as store from "./store.ts";
 
@@ -726,8 +733,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
   ];
 }
 
-export const DEFAULT_REVIEW_SIZE = 5;
-export const MAX_REVIEW_SIZE = 12;
+export { DEFAULT_REVIEW_SIZE, MAX_REVIEW_SIZE } from "./review.ts";
 
 /** When each question in a graded submission comes up for review next. */
 function reviewScheduleLine(submission: store.QuizSubmission): string {

@@ -1,3 +1,8 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { templatesDir } from "../src/paths.ts";
+import { authoredQuestionShapes } from "../src/quiz-authoring.ts";
+import { QUESTION_TYPES, questionErrors } from "../assets/runtime/quiz.mjs";
 import { expect, it } from "vitest";
 import {
   authoredQuestions,
@@ -50,4 +55,12 @@ it("counts types, most used first", () => {
   expect(typeCounts(["short", "numeric", "numeric", "locate"])).toBe(
     "2 numeric, 1 short, 1 locate",
   );
+});
+
+it("validates all nine authored control types with the browser contract", () => {
+  const shapes = authoredQuestionShapes(
+    fs.readFileSync(path.join(templatesDir(), "quiz.html"), "utf8"),
+  );
+  expect([...new Set(shapes.map((shape) => shape.type))]).toEqual(QUESTION_TYPES);
+  expect(shapes.flatMap(questionErrors)).toEqual([]);
 });
