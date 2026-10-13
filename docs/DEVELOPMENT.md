@@ -12,7 +12,7 @@ claude plugin validate .
 npm run e2e:claude      # a real Claude Code session: answer a question, grade a quiz
 npm run e2e:codex       # the same, through Codex
 npm run e2e:browser     # browser state tests with the real server
-npm run e2e:pi          # a real Pi session: question, quiz, and chat follow-up
+npm run e2e:pi          # a real Pi session: question, quiz, and panel follow-up
 npm run e2e:quality -- claude     # semantic reviewer must detect bad aligned metadata
 npm run e2e:quality -- codex
 npm run e2e:feedback -- claude    # alternate, partial, uncertain, assisted, and old answers

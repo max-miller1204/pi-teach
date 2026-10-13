@@ -25,7 +25,9 @@
  *   GET    /api/state                         annotations, quiz attempts, reflections, drafts
  *   GET    /api/glossary                      the classroom's GLOSSARY.md, parsed
  *   DELETE /api/annotations/<id>              remove a question
- *   GET    /api/events                        SSE: answer, grade, reload
+ *   POST   /api/teacher/chat                  reply to the teacher in the lesson's panel
+ *   POST   /api/teacher/retry                 run a failed teacher request again
+ *   GET    /api/events                        SSE: answer, grade, teacher, reload
  */
 
 import * as fs from "node:fs";
@@ -445,7 +447,11 @@ async function handleApi(
     if (!isValidSlug(body.classroom) || typeof body.id !== "string")
       return sendJson(res, { error: "Invalid request." }, 400);
     if (!hooks?.onTeacherRetry) return sendJson(res, { error: "No dedicated teacher." }, 409);
-    hooks.onTeacherRetry(body.classroom, body.id);
+    try {
+      hooks.onTeacherRetry(body.classroom, body.id);
+    } catch (err) {
+      return sendJson(res, { error: (err as Error).message }, 409);
+    }
     return sendJson(res, { queued: true });
   }
 

@@ -336,7 +336,7 @@ const SUBMIT_LESSON = `async page => {
       if (controls.get(i)?.keyboard) continue;
       const button = buttons.nth(i);
       const authored = await button.evaluate((b) =>
-        !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error'));
+        !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, .cl-teacher'));
       if (!authored || !(await button.isVisible())) continue;
       const label = ((await button.getAttribute('aria-label')) || (await button.innerText())).trim();
       if (await button.isDisabled()) {

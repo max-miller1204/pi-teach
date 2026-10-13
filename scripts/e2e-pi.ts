@@ -1,4 +1,4 @@
-/** Test browser questions, quiz grading, and chat follow-up in a real Pi session. */
+/** Test browser questions, quiz grading, and the teacher panel check in a real Pi session. */
 import { highlightText } from "./browser-actions.ts";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -284,13 +284,15 @@ try {
     });
     if (!run.some((e) => e.type === "tool_execution_end" && e.toolName === "grade_lesson_quiz"))
       throw new Error("Pi did not grade with the tool");
-    const chat = run
-      .filter((e) => e.type === "message_end" && e.message.role === "assistant")
-      .flatMap((e) =>
-        e.message.content.filter((c: any) => c.type === "text").map((c: any) => c.text),
-      )
-      .join("\n");
-    if (!chat.includes("?")) throw new Error("Pi did not ask a retrieval question in chat");
+    const panel = await until(
+      "retrieval question in the panel",
+      () =>
+        store
+          .listPanelMessages("rust", "001-ownership")
+          .find((m) => m.role === "teacher" && m.id === `quiz:${submitted.id}`) ?? null,
+    );
+    if (!panel.text.includes("?"))
+      throw new Error("Pi did not ask a retrieval question in the panel");
     await playwrightCode(
       session,
       fixture.root,
@@ -303,32 +305,49 @@ try {
       if (await page.getByRole('button', {name:'Try again', exact:true}).count()) throw new Error('The page has a retry button');
       if (!await page.getByRole('button', {name:'Graded', exact:true}).isDisabled()) throw new Error('The graded quiz is unlocked');
       if (!await page.locator('input[value="${option}"]').isChecked()) throw new Error('The page shows the wrong answer');
+      await page.waitForFunction(() => document.querySelector('form.cl-quiz').nextElementSibling?.classList.contains('cl-teacher'));
+      await page.waitForFunction(() => document.querySelector('.cl-teacher-message[data-role="teacher"]')?.textContent.includes('?'));
       ${artifacts ? `await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({path:${JSON.stringify(path.join(artifacts, `pi-attempt-${attempt}.png`))},fullPage:true});` : ""}
       return true;
     }`,
     );
     console.log(
-      `[e2e:pi] attempt ${attempt}: ${grade.score}%, ${expected ? "correct" : "wrong"}; chat: ${JSON.stringify(chat)}`,
+      `[e2e:pi] attempt ${attempt}: ${grade.score}%, ${expected ? "correct" : "wrong"}; panel: ${JSON.stringify(panel.text)}`,
     );
   }
-  const replyStart = events.length;
-  send({
-    id: "chat-reply",
-    type: "prompt",
-    message:
-      "My answer: When the owner of a value leaves scope, Rust drops that value and frees its resources. If ownership moved to another variable, that new owner controls when the value is dropped. Please check my answer to your question. Stay on this lesson.",
+  // The learner answers in the panel. Nothing is typed into Pi.
+  const reply =
+    "When the owner of a value leaves scope, Rust drops that value and frees its resources. If ownership moved to another variable, that new owner controls when the value is dropped. I answered without help.";
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
+    await page.getByRole('textbox', {name:'Reply to your teacher', exact:true}).fill(${JSON.stringify(reply)});
+    const response = page.waitForResponse(r => r.url().endsWith('/api/teacher/chat'));
+    await page.getByRole('button', {name:'Send reply', exact:true}).click();
+    if ((await response).status() !== 201) throw new Error('The panel reply was refused');
+    return true;
+  }`,
+  );
+  const checkedReply = await until("panel answer check", () => {
+    const message = store
+      .listPanelMessages("rust", "001-ownership")
+      .filter((m) => m.role === "teacher")[1];
+    return message?.text.trim() ? message.text : null;
   });
-  const replyRun = await until("chat answer check", () => {
-    const next = events.slice(replyStart);
-    return next.some((e) => e.type === "agent_settled") ? next : null;
-  });
-  const checkedReply = replyRun
-    .filter((e) => e.type === "message_end" && e.message.role === "assistant")
-    .flatMap((e) => e.message.content.filter((c: any) => c.type === "text").map((c: any) => c.text))
-    .join("\n");
-  if (!checkedReply.trim()) throw new Error("Pi did not check the learner's chat reply");
+  await playwrightCode(
+    session,
+    fixture.root,
+    `async page => {
+      await page.waitForFunction(() => document.querySelectorAll('.cl-teacher-message[data-role="teacher"]').length === 2);
+      ${artifacts ? `await page.locator('.cl-teacher').scrollIntoViewIfNeeded(); await page.screenshot({path:${JSON.stringify(path.join(artifacts, "pi-panel-check.png"))}});` : ""}
+      return true;
+    }`,
+  );
+  if (events.some((e) => e.type === "prompt" && e.id === "chat-reply"))
+    throw new Error("The check used the terminal");
   if (store.listSubmissions("rust", "001-ownership").length !== 1)
-    throw new Error("The chat check created another quiz attempt");
+    throw new Error("The panel check created another quiz attempt");
   const review = store.reviewItems("rust");
   const historicalGrades = store.listGrades("rust", "001-ownership");
   if (
@@ -337,11 +356,13 @@ try {
     historicalGrades[0].questions[0].correct ||
     review.length !== 1
   )
-    throw new Error("The chat check changed the saved quiz grade or removed its review item.");
+    throw new Error("The panel check changed the saved quiz grade or removed its review item.");
   const checks = store.listRetrievalChecks("rust");
   if (checks.length > 0 && review[0].lastSource !== "chat")
     throw new Error("Linked retrieval evidence did not reach the review schedule.");
-  console.log(`[e2e:pi] chat answer check: ${JSON.stringify(checkedReply)}`);
+  console.log(
+    `[e2e:pi] panel answer check: ${JSON.stringify(checkedReply)}; retrieval checks linked: ${checks.length}`,
+  );
   if (artifacts)
     fs.writeFileSync(path.join(artifacts, "pi-events.json"), JSON.stringify(events, null, 2));
   if (store.listLessons("rust").length !== 1)
@@ -357,7 +378,7 @@ try {
     if (!(error instanceof TypeError)) throw error;
   }
   console.log(
-    "[e2e:pi] PASS: browser question, wrong-answer chat check, locked quiz, spaced review, widget, and server stop",
+    "[e2e:pi] PASS: browser question, quiz question, wrong-answer panel check, locked quiz, spaced review, widget, and server stop",
   );
 } finally {
   if (artifacts) {

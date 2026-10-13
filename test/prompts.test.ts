@@ -10,13 +10,22 @@ import {
   missionStub,
   notesStub,
   PRETEST_FOLLOW_UP,
+  PANEL_REPLY,
+  panelReplyPrompt,
   QUIZ_FOLLOW_UP,
   reflectPrompt,
   reviewStatusText,
   teachingPrompt,
 } from "../src/prompts.ts";
 import { DAY_MS } from "../src/review.ts";
-import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "../src/store.ts";
+import type {
+  Annotation,
+  FollowUp,
+  PanelMessage,
+  QuizGrade,
+  QuizSubmission,
+  Reflection,
+} from "../src/store.ts";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
@@ -35,7 +44,7 @@ describe("teachingPrompt", () => {
     expect(prompt).not.toContain("wait_for_learner");
     expect(prompt).not.toContain("scaffold_lesson");
     expect(prompt).not.toContain("Call `lesson_health`");
-    expect(prompt).toContain("return to the initiating chat");
+    expect(prompt).toContain("ask the initiating chat to continue");
     const reflection: Reflection = {
       id: "r1",
       classroom: "rust",
@@ -170,6 +179,23 @@ describe("quiz highlights", () => {
     expect(prompt).toContain("has been graded");
     expect(prompt).not.toContain("Do not give the answer");
   });
+  it("restates the panel conversation a reply answers", () => {
+    const earlier: PanelMessage[] = [
+      { id: "quiz:s1", lesson: card.lesson, role: "teacher", text: "Who frees it?", at: 1 },
+    ];
+    const reply: PanelMessage = {
+      id: "chat:1",
+      lesson: card.lesson,
+      role: "learner",
+      text: "The owner.",
+      at: 2,
+    };
+    const prompt = panelReplyPrompt("rust", card.lesson, reply, [...earlier, reply]);
+    expect(prompt).toContain("> Who frees it?");
+    expect(prompt).toContain("> The owner.");
+    expect(prompt.match(/The owner\./g)).toHaveLength(1);
+    expect(prompt).toContain(PANEL_REPLY);
+  });
 });
 
 describe("delivery parity", () => {
@@ -214,10 +240,12 @@ describe("delivery parity", () => {
     savedAt: 5,
   };
   const normalize = (prompt: string) =>
-    prompt.replace(
-      /This notification was delivered automatically; nothing was polled\.|It arrived as the result of your `wait_for_learner` call\./,
-      "(delivery)",
-    );
+    prompt
+      .replace(
+        /This notification was delivered automatically; nothing was polled\.|It arrived as the result of your `wait_for_learner` call\./,
+        "(delivery)",
+      )
+      .replace(`\n\n${PANEL_REPLY}`, "");
 
   it.each([
     ["question", (delivery: "push" | "wait") => askPrompt(card, delivery)],
@@ -226,16 +254,13 @@ describe("delivery parity", () => {
     [
       "reflection",
       (delivery: "push" | "wait") =>
-        reflectPrompt(reflection, delivery).replace(
-          /Then (continue what you were doing|call `wait_for_learner` again)\./,
-          "(next)",
-        ),
+        reflectPrompt(reflection, delivery).replace(/ Then [^\n]*$/, " (next)"),
     ],
   ] as const)("changes only the arrival note for a %s", (_name, prompt) => {
     expect(normalize(prompt("wait"))).toBe(normalize(prompt("push")));
   });
 
-  it.each(["push", "wait"] as const)("includes chat retrieval in %s grading", (delivery) => {
+  it.each(["push", "wait"] as const)("includes panel retrieval in %s grading", (delivery) => {
     const prompt = gradePrompt(submission, delivery);
     expect(prompt).toContain(QUIZ_FOLLOW_UP);
     expect(prompt).toContain('submission_id: "s1"');
@@ -318,7 +343,7 @@ describe("gradePrompt", () => {
     expect(prompt).not.toContain("misconception");
   });
 
-  it("keeps the graded quiz locked and checks missed ideas in chat", () => {
+  it("keeps the graded quiz locked and checks missed ideas in the panel", () => {
     const prompt = gradePrompt(base, "push");
     expect(prompt).toContain("Keep the graded browser quiz locked.");
     expect(prompt).toContain("Do not ask for an immediate retake.");

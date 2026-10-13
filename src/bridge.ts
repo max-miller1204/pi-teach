@@ -12,12 +12,22 @@
  *      pending, the run's final assistant text is used instead. Origins are tracked
  *      in a FIFO aligned with agent_end, the same approach the slack-bridge
  *      extension uses to route replies back to the right thread.
+ *
+ * Runs that have no card (a grade, a self-explanation, a reply in the teacher panel)
+ * post their final assistant text to the lesson's teacher panel, so the learner never
+ * has to come back to the terminal for a retrieval question.
  */
 
 import { validateGrade } from "../assets/runtime/grade.mjs";
 import { findLastAssistantText } from "./assistant-text.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { askPrompt, followUpPrompt, gradePrompt, reflectPrompt } from "./prompts.ts";
+import {
+  askPrompt,
+  followUpPrompt,
+  gradePrompt,
+  panelReplyPrompt,
+  reflectPrompt,
+} from "./prompts.ts";
 import * as server from "./server.ts";
 import * as store from "./store.ts";
 
@@ -26,12 +36,27 @@ export interface MessageSender {
   sendUserMessage(text: string, options?: { deliverAs?: string }): void;
 }
 
+/** A run whose final text belongs in a lesson's teacher panel. */
+interface PanelRequest {
+  id: string;
+  classroom: string;
+  lesson: string;
+  kind: "quiz" | "reflect" | "chat";
+  status: "running" | "failed";
+  error?: string;
+  prompt: string;
+}
+
 type Origin =
   /** `turn` is null for the card's original question, or a follow-up id. */
-  { kind: "ask"; annotationId: string; turn: store.TurnId } | { kind: "other" };
+  | { kind: "ask"; annotationId: string; turn: store.TurnId }
+  | { kind: "panel"; request: PanelRequest }
+  | { kind: "other" };
 
 export class ClassroomBridge {
   private readonly pending: Origin[] = [];
+  /** Panel runs not yet finished, or finished with nothing to say. */
+  private readonly panel = new Map<string, PanelRequest>();
   private idle: () => boolean = () => true;
 
   private readonly pi: MessageSender;
@@ -69,15 +94,84 @@ export class ClassroomBridge {
   /** Ask the agent to grade a quiz submission. */
   grade(submission: store.QuizSubmission): void {
     // Grading has no fallback path — a half-graded quiz would be worse than none —
-    // so the origin is recorded as foreign and only the tool writes a grade.
-    this.pending.push({ kind: "other" });
-    this.send(gradePrompt(submission, "push", store.previousGrade(submission)));
+    // so only the tool writes a grade. The run's final text is the feedback and the
+    // retrieval question, and it goes to the teacher panel, never into the grade.
+    this.startPanel({
+      id: `quiz:${submission.id}`,
+      classroom: submission.classroom,
+      lesson: submission.lesson,
+      kind: "quiz",
+      prompt: gradePrompt(submission, "push", store.previousGrade(submission)),
+    });
   }
 
-  /** Show the agent a self-explanation the learner saved. Nothing is written back. */
+  /** Show the agent a self-explanation the learner saved. Its reply goes to the panel. */
   reflect(reflection: store.Reflection): void {
-    this.pending.push({ kind: "other" });
-    this.send(reflectPrompt(reflection, "push"));
+    this.startPanel({
+      id: `reflect:${reflection.id}`,
+      classroom: reflection.classroom,
+      lesson: reflection.lesson,
+      kind: "reflect",
+      prompt: reflectPrompt(reflection, "push"),
+    });
+  }
+
+  /**
+   * The learner replied in the teacher panel. `id` comes from the page and stays the
+   * same when it resends after a network error, so a resend never wakes the agent twice.
+   */
+  chat(classroom: string, lesson: string, text: string, id: string): void {
+    const { message, added } = store.addPanelMessage(classroom, {
+      id: `chat:${id}`,
+      lesson,
+      role: "learner",
+      text,
+    });
+    if (!added) return;
+    this.startPanel({
+      id: message.id,
+      classroom,
+      lesson,
+      kind: "chat",
+      prompt: panelReplyPrompt(
+        classroom,
+        lesson,
+        message,
+        store.listPanelMessages(classroom, lesson),
+      ),
+    });
+  }
+
+  /** Send a panel run again after it ended with nothing to say. */
+  retry(classroom: string, id: string): void {
+    const request = this.panel.get(id);
+    if (!request || request.classroom !== classroom || request.status !== "failed")
+      throw new Error("This request cannot be retried.");
+    this.startPanel(request);
+  }
+
+  /** What the lesson page's teacher panel shows. */
+  panelState(classroom: string, lesson: string): unknown {
+    return {
+      identity: { backend: "pi" },
+      requests: [...this.panel.values()]
+        .filter((r) => r.classroom === classroom && r.lesson === lesson)
+        .map((r) => ({ id: r.id, kind: r.kind, status: r.status, error: r.error })),
+      messages: store.listPanelMessages(classroom, lesson).map(withHtml),
+    };
+  }
+
+  private startPanel(input: Omit<PanelRequest, "status" | "error">): void {
+    const { id, classroom, lesson, kind, prompt } = input;
+    const request: PanelRequest = { id, classroom, lesson, kind, prompt, status: "running" };
+    this.panel.set(request.id, request);
+    this.pending.push({ kind: "panel", request });
+    this.publish(request.classroom, request.lesson);
+    this.send(request.prompt);
+  }
+
+  private publish(classroom: string, lesson: string): void {
+    server.pushEvent(classroom, lesson, "teacher", this.panelState(classroom, lesson));
   }
 
   /**
@@ -86,6 +180,7 @@ export class ClassroomBridge {
    */
   onAgentEnd(messages: readonly unknown[]): void {
     const origin = this.pending.shift();
+    if (origin?.kind === "panel") return this.finishPanel(origin.request, messages);
     if (!origin || origin.kind !== "ask") return;
 
     const annotation = store.findAnnotation(origin.annotationId);
@@ -96,10 +191,49 @@ export class ClassroomBridge {
     else markFailed(origin.annotationId, origin.turn);
   }
 
+  /** Post a panel run's final text to the lesson's teacher panel. */
+  private finishPanel(request: PanelRequest, messages: readonly unknown[]): void {
+    const text = findLastAssistantText(messages);
+    if (request.kind === "quiz" && !graded(request)) {
+      request.status = "failed";
+      request.error = "Your teacher finished without grading this quiz.";
+    } else if (text) {
+      store.addPanelMessage(request.classroom, {
+        id: request.id,
+        lesson: request.lesson,
+        role: "teacher",
+        text,
+      });
+      this.panel.delete(request.id);
+    } else if (request.kind === "quiz" && graded(request)) {
+      // The grade and its feedback are on the quiz. A retry would grade it again.
+      this.panel.delete(request.id);
+    } else {
+      request.status = "failed";
+      request.error = "Your teacher finished without a reply.";
+    }
+    this.publish(request.classroom, request.lesson);
+  }
+
   /** Drop queued origins — used when the session shuts down. */
   reset(): void {
     this.pending.length = 0;
+    this.panel.clear();
   }
+}
+
+function graded(request: PanelRequest): boolean {
+  const submissionId = request.id.slice("quiz:".length);
+  return store
+    .listGrades(request.classroom, request.lesson)
+    .some((g) => g.submissionId === submissionId);
+}
+
+/** A panel message with its markdown rendered, for a teacher message. */
+export function withHtml<T extends { role: string; text: string }>(
+  message: T,
+): T & { html?: string } {
+  return message.role === "teacher" ? { ...message, html: renderMarkdown(message.text) } : message;
 }
 
 /**

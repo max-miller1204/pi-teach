@@ -9,6 +9,7 @@ import * as server from "../src/server.ts";
 import { classroomTools, PI_HOST } from "../src/tools.ts";
 import * as store from "../src/store.ts";
 import { makeFixture, lessonHtml, seedClassroom } from "../test/helpers.ts";
+import { verifyPiPanelBrowser } from "./e2e-pi-panel-browser.ts";
 import { verifyServiceBrowser } from "./e2e-service-browser.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 
@@ -303,4 +304,5 @@ try {
   fixture.cleanup();
 }
 
+await verifyPiPanelBrowser(artifacts ? path.join(artifacts, "pi-panel") : null);
 await verifyServiceBrowser(artifacts ? path.join(artifacts, "service") : null);

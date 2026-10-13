@@ -164,7 +164,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       name: "record_retrieval_check",
       label: "Record Retrieval Check",
       description:
-        "Record demonstrated understanding after a successful chat retrieval check. Link the original review item to an active learning record. Preserve quiz grades and schedule later review. Do not use for material merely covered or an unverified answer.",
+        "Record demonstrated understanding after a successful retrieval check in the teacher panel. Link the original review item to an active learning record. Preserve quiz grades and schedule later review. Do not use for material merely covered or an unverified answer.",
       parameters: object(
         {
           classroom: str("Classroom directory name."),
@@ -172,7 +172,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             "Original <lesson>/<quiz id>/<question id> from the grade or review schedule.",
           ),
           learning_record: str("Existing active learning record file name, such as 0002-exec.md."),
-          answer: str("The learner's actual answer to the new chat question."),
+          answer: str("The learner's actual panel reply to the new question."),
           evidence: str("The new question and why the answer demonstrates the missed idea."),
           assistance: {
             type: "string",
@@ -210,7 +210,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             task: params.task,
           });
           return ok(
-            `Recorded chat evidence for ${check.key}. The quiz grade is preserved. Later review remains scheduled.`,
+            `Recorded retrieval evidence for ${check.key}. The quiz grade is preserved. Later review remains scheduled.`,
             { check },
           );
         } catch (err) {
@@ -227,7 +227,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       description:
         "Grade a quiz a learner submitted from a classroom lesson. The grade is written to the lesson's quiz/grades directory and rendered inline on their page. " +
         "Only call it with a submission_id you were given in a quiz submission notification. " +
-        "For a check or review, check a missed idea with a new question in chat. For a pretest, treat errors as diagnostic and continue to teaching without a retrieval check.",
+        "For a check or review, check a missed idea with a new question in the lesson's teacher panel. For a pretest, treat errors as diagnostic and continue to teaching without a retrieval check.",
       parameters: object({
         submission_id: str("The submission id from the notification."),
         score: {
@@ -383,7 +383,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
 
         const notes: string[] = reviewKeys.length
           ? [
-              `Review item keys for later chat evidence: ${reviewKeys.join(", ")}. After a successful chat check, write a learning record and call record_retrieval_check for the resolved item.`,
+              `Review item keys for later retrieval evidence: ${reviewKeys.join(", ")}. After a successful panel check, write a learning record and call record_retrieval_check for the resolved item.`,
             ]
           : [];
         if (kind === "pretest") {
@@ -392,7 +392,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
           notes.push(
             incorrectQuestionIds.length > 0
               ? `Missed questions: ${incorrectQuestionIds.join(", ")}.\n\n${QUIZ_FOLLOW_UP}`
-              : "Every answer is correct. Ask whether the learner is ready to continue before starting the next lesson.",
+              : "Every answer is correct. Ask in the teacher panel whether the learner is ready to continue before starting the next lesson.",
           );
           notes.push(reviewScheduleLine(submission));
         }
