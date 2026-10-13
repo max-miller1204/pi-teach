@@ -170,3 +170,59 @@ export function reviewDocument(
     }),
   };
 }
+
+/** A historical graded review with no panel conversation. Use only scratch roots. */
+export function seedHistoricalReview(root: string): {
+  classroom: string;
+  lesson: string;
+  submission_id: string;
+} {
+  const classroom = "rust",
+    lesson = "999-historical-review";
+  const dir = path.join(root, classroom, lesson);
+  fs.mkdirSync(path.join(dir, "quiz"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "lesson.html"),
+    lessonHtml(
+      "Historical ownership review",
+      `<p>Ownership controls cleanup. A move transfers ownership to a new binding.</p><form class="cl-quiz" data-quiz-id="review" data-kind="review"><ol class="cl-questions">${["Name the language used in this lesson.", "Name the owner before a move.", "What happens to a value when its owner leaves scope?"].map((prompt, i) => `<li class="cl-q" data-question-id="q${i + 1}" data-type="term" data-review-of="001-ownership/check-1/q${i + 1}"><p class="cl-q-prompt">${prompt}</p><input type="text"></li>`).join("")}</ol></form>`,
+    ),
+  );
+  fs.writeFileSync(
+    path.join(dir, "quiz/key.json"),
+    JSON.stringify({
+      review: {
+        q1: { pointsPossible: 1, criteria: "Rust." },
+        q2: { pointsPossible: 1, criteria: "The original binding." },
+        q3: { pointsPossible: 1, criteria: "The value is dropped." },
+      },
+    }),
+  );
+  const input = { classroom, lesson };
+  const submission = store.createSubmission({
+    ...input,
+    quizId: "review",
+    quizTitle: "Historical ownership review",
+    kind: "review",
+    answers: [
+      termAnswer("q1", "Rust", { reviewOf: "001-ownership/check-1/q1" }),
+      termAnswer("q2", "original binding", { reviewOf: "001-ownership/check-1/q2" }),
+      termAnswer("q3", "It lives forever", { reviewOf: "001-ownership/check-1/q3" }),
+    ],
+  });
+  store.writeGrade({
+    submissionId: submission.id,
+    ...input,
+    quizId: "review",
+    score: 67,
+    feedbackMarkdown: "Two correct. The missed idea is cleanup when the owner leaves scope.",
+    feedbackHtml: "<p>Two correct. Check cleanup.</p>",
+    questions: [1, 2, 3].map((i) => ({
+      questionId: `q${i}`,
+      correct: i !== 3,
+      feedback: i === 3 ? "The value is dropped when its owner leaves scope." : "Correct.",
+    })),
+    gradedAt: Date.now(),
+  });
+  return { ...input, submission_id: submission.id };
+}

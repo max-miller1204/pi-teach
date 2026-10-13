@@ -1,4 +1,5 @@
 /** Run one request at a time for each classroom. Persist plans before writes. */
+import { prepareResume, piResumes, piOwnerAlive, type ResumeInput } from "./teacher-resume.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
@@ -52,6 +53,8 @@ export class TeacherService {
 
   attach(classroom: string, backend?: Backend): void {
     if (!store.readClassroom(classroom)) throw new Error(`No such classroom: ${classroom}`);
+    if (piResumes(classroom).some((r) => r.status === "running" && piOwnerAlive(r)))
+      throw new Error("A live Pi session owns this classroom's resume request.");
     let state = this.states.get(classroom) ?? readTeacherState(classroom);
     if (!state) {
       if (!backend)
@@ -216,6 +219,22 @@ export class TeacherService {
       prompt: `The learner replied in the teacher panel:\n${text}`,
     });
   }
+  resume(input: ResumeInput): void {
+    const request = prepareResume(input);
+    const state = this.states.get(request.classroom);
+    if (!state) throw new Error("No classroom teacher. Call open_classroom first.");
+    if (piResumes(request.classroom).some((r) => r.status === "running" && piOwnerAlive(r)))
+      throw new Error("A live Pi session owns this classroom's resume request.");
+    if (
+      state.requests.some(
+        (r) => r.id === request.id || (r.lesson === request.lesson && r.status !== "done"),
+      ) ||
+      state.messages.some((m) => m.lesson === request.lesson) ||
+      store.listPanelMessages(request.classroom, request.lesson).length
+    )
+      return;
+    this.enqueue({ ...request, kind: "resume", target: input.submission_id });
+  }
   retry(classroom: string, id: string): void {
     const state = this.states.get(classroom),
       r = state?.requests.find((r) => r.id === id);
@@ -245,6 +264,19 @@ export class TeacherService {
     this.publish(classroom, r.lesson);
     this.wake(classroom);
   }
+  /** Include saved Pi conversation when a classroom moves to a persistent host. */
+  private messages(
+    classroom: string,
+    lesson: string,
+    state: TeacherState,
+  ): (store.PanelMessage & { sourceBackend?: "pi" })[] {
+    const current = state.messages.filter((m) => m.lesson === lesson);
+    const history = store
+      .listPanelMessages(classroom, lesson)
+      .filter((m) => !current.some((existing) => existing.id === m.id && existing.role === m.role))
+      .map((m) => ({ ...m, sourceBackend: "pi" as const }));
+    return [...history, ...current].sort((a, b) => a.at - b.at);
+  }
   publicState(classroom: string, lesson: string): unknown {
     const state = this.states.get(classroom);
     if (!state) return null;
@@ -253,7 +285,7 @@ export class TeacherService {
       requests: state.requests
         .filter((r) => r.lesson === lesson)
         .map((r) => ({ id: r.id, kind: r.kind, status: r.status, error: r.error })),
-      messages: state.messages.filter((m) => m.lesson === lesson).map(withHtml),
+      messages: this.messages(classroom, lesson, state).map(withHtml),
     };
   }
   private publish(classroom: string, lesson: string): void {
@@ -330,7 +362,7 @@ export class TeacherService {
       privateRubric,
       teachingPlan: r.kind === "quiz" ? store.findSubmission(r.target)?.teachingPlan : undefined,
       records: store.readLearningRecords(r.classroom),
-      messages: state.messages.filter((m) => m.lesson === r.lesson),
+      messages: this.messages(r.classroom, r.lesson, state),
       grades: store.latestGrades(r.classroom, r.lesson),
       reviewItems: store.lessonReviewItems(r.classroom, r.lesson),
       classroomDocs,
@@ -434,6 +466,13 @@ export class TeacherService {
       publishReview(session, document);
       return;
     }
+    if (
+      r.kind === "resume" &&
+      (plan.calls.length || plan.learning_record.trim() || plan.notes_markdown.trim())
+    )
+      throw new Error(
+        "Teacher resumption permits only a panel message. It cannot write assessment or learning evidence.",
+      );
     const required =
       r.kind === "quiz"
         ? "grade_lesson_quiz"

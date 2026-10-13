@@ -7,7 +7,7 @@ import * as path from "node:path";
 import * as net from "node:net";
 import { useTestModel, harnessCommand, parseHarness } from "./harness.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
-import { writeGradedAttempt, termAnswer } from "../test/helpers.ts";
+import { writeGradedAttempt, termAnswer, seedHistoricalReview } from "../test/helpers.ts";
 import { DAY_MS } from "../src/review.ts";
 import { currentReview } from "../src/review-session.ts";
 import { _overrideClassroomsDir } from "../src/paths.ts";
@@ -279,6 +279,83 @@ async function main(): Promise<void> {
     if (artifacts)
       fs.writeFileSync(path.join(artifacts, "stored-review.json"), JSON.stringify(review, null, 2));
     log("PASS: review creation from the classroom page in the existing teacher session");
+    const resumeInput = seedHistoricalReview(root);
+    const identity = checked.teacher.identity.sessionId;
+    const [resumeCommand, resumeArgs] = harnessCommand(
+      harness,
+      `Call open_classroom with classroom rust. Call resume_lesson_teacher with ${JSON.stringify(resumeInput)}. Return only its lesson link and end this turn. Do not ask a corrective question in this chat.`,
+      ["open_classroom", "resume_lesson_teacher"],
+    );
+    const initiating = spawn(resumeCommand, resumeArgs, {
+      cwd: root,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let resumeOutput = "";
+    initiating.stdout.on("data", (chunk) => {
+      resumeOutput += chunk;
+    });
+    initiating.stderr.on("data", (chunk) => {
+      resumeOutput += chunk;
+    });
+    let resumeTimer: NodeJS.Timeout | undefined;
+    try {
+      const code = await Promise.race([
+        new Promise<number | null>((resolve, reject) => {
+          initiating.on("error", reject);
+          initiating.on("close", resolve);
+        }),
+        new Promise<never>((_, reject) => {
+          resumeTimer = setTimeout(
+            () => reject(new Error("Initiating resume host timed out.")),
+            185_000,
+          );
+        }),
+      ]);
+      if (code !== 0) throw new Error(`Initiating resume host exited ${code}: ${resumeOutput}`);
+      const deadline = Date.now() + 185_000;
+      let resumed: any;
+      while (Date.now() < deadline) {
+        resumed = await (
+          await fetch(`${base}/api/state?classroom=rust&lesson=${resumeInput.lesson}`)
+        ).json();
+        const request = resumed.teacher.requests.find((r: any) => r.kind === "resume");
+        if (request?.status === "failed") throw new Error(request.error);
+        if (request?.status === "done") break;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (!resumed?.teacher.requests.some((r: any) => r.kind === "resume" && r.status === "done"))
+        throw new Error("Resume teacher timed out.");
+      if (
+        resumed.teacher.identity.sessionId !== identity ||
+        resumed.quizzes[0].grade.score !== 67 ||
+        resumed.teacher.messages.some((m: any) => m.role === "learner") ||
+        !resumed.teacher.messages.at(-1).text.includes("?")
+      )
+        throw new Error("Resume changed ownership, grade, or learner evidence.");
+      await playwrightCode(
+        browser,
+        root,
+        `async page => {
+        await page.goto(${JSON.stringify(base)} + '/c/rust/' + ${JSON.stringify(resumeInput.lesson)} + '#cl-teacher');
+        await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'graded');
+        await page.waitForFunction(() => document.querySelector('.cl-teacher-messages')?.textContent.includes('?'));
+        ${artifacts ? `await page.locator('.cl-teacher').scrollIntoViewIfNeeded(); await page.screenshot({path:${JSON.stringify(path.join(artifacts, `${harness}-historical-resume.png`))}});` : ""}
+        return true;
+      }`,
+      );
+      if (artifacts)
+        fs.writeFileSync(
+          path.join(artifacts, "historical-resume.json"),
+          JSON.stringify(resumed, null, 2),
+        );
+      log("PASS: initiating chat resumes a historical 67% review in the existing teacher session");
+    } finally {
+      clearTimeout(resumeTimer);
+      initiating.kill();
+      if (artifacts) fs.writeFileSync(path.join(artifacts, "resume-host-output.log"), resumeOutput);
+    }
+
     log(
       "PASS: host exit, idle wake, answer, grade, locked quiz, teacher reply, stable session, private rubric",
     );

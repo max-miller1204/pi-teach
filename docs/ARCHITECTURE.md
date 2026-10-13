@@ -99,6 +99,9 @@ Extension side (`.ts`):
 - `src/quiz-authoring.ts`: reads the questions a lesson document declares, for the
   `lesson_health` authoring diagnostics. Pure. The browser still owns the contract
   check.
+- `src/teacher-resume.ts`: validates explicit chat handoffs to graded lesson panels.
+  Pi saves private resume requests in `<classroom>/.pi-teacher-resumes.json`.
+  Service resumes use the existing durable teacher queue.
 - `src/review.ts`: the spaced-review schedule, derived from grade history. Pure.
 - `src/review-session.ts`: durable browser review requests, selected items, validation,
   and publication. Private request state lives in `<classroom>/.reviews.json`.
@@ -143,6 +146,13 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   panel run's final assistant text is posted to `<lesson>/teacher-messages.json`. The
   panel sits after the quiz handed in last. Do not reintroduce "ask in chat" wording
   into `QUIZ_FOLLOW_UP` or the tools.
+- **Resumption is explicit.** `resume_lesson_teacher` requires exact classroom,
+  lesson, and latest graded submission identifiers. It reuses existing panel work.
+  An empty historical panel gets a separate resume request, never a fabricated
+  learner reply or a second grading request. Pi keeps the initiating turn foreign
+  and queues a panel origin. Pi resume requests survive interruption as failed work
+  and require explicit retry. The service keeps its classroom backend and session.
+  Resume plans permit only a teacher message.
 - **Quiz text can be highlighted, the quiz runtime cannot.** `QUIZ_RUNTIME_UI` (grade,
   verdicts, footer, reports, order buttons) is outside the text index, because it
   changes on grading. A card about a question is placed after the whole `.cl-q`, never

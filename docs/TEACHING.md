@@ -372,6 +372,22 @@ keep learning. Only starting a new lesson needs the initiating chat. In Pi, your
 final message in a grading, self-explanation, or panel reply turn is posted to the
 panel as written. Address it to the learner.
 
+When the learner asks in the initiating chat to continue an unfinished check or
+review, identify its exact classroom, lesson, and latest graded submission. Read
+the saved files in `<lesson>/quiz/submissions/` and `<lesson>/quiz/grades/`.
+Use notes for context. Use the saved assessment identifiers for routing. Call
+`resume_lesson_teacher` with those identifiers. In Pi, start the live classroom
+server first. In Claude Code or Codex, call `open_classroom` first. Give the returned
+lesson link and end the initiating turn. Ask the corrective question in the panel.
+Do not copy the learner's chat into the panel or treat the handoff as an answer.
+The tool reuses an existing conversation or request. For an empty historical panel,
+it starts one teacher question from saved assessment and retrieval evidence.
+A repeated call does not start another question. Use the panel's explicit retry
+control after a failure. Preserve the graded quiz and all learning evidence.
+Historical notes that say "chat check" do not change this routing rule.
+The legacy inbox adapter has no inline resume tool. Its `wait_for_learner` flow
+still uses the legacy chat contract.
+
 Cards are threads: the learner can ask a follow-up in the same card, and that arrives as
 another notification carrying the same annotation id, with the passage and every earlier
 turn quoted back to you. Answer it with `answer_lesson_question` as before : it attaches
@@ -475,10 +491,10 @@ community, respect it and note it in `RESOURCES.md`.
 
 ## Tools
 
-Use the tools available to the active host. Pi registers all seven shared tools
+Use the tools available to the active host. Pi registers the shared tools and the resume tool
 and receives browser requests through its live session. Claude Code and Codex
 authoring agents receive the four scaffold and health tools, the three session
-tools, and the two service tools. They do not grade browser requests themselves.
+tools, and the service and resume tools. They do not grade browser requests themselves.
 The dedicated teacher can answer passage questions, grade quizzes, and record
 verified retrieval checks through a service plan. It cannot create lessons,
 browse sources, or edit arbitrary files. The authoring agent must research and
@@ -494,6 +510,7 @@ authoring. Use `scaffold_review` for due review items and preserve their keys.
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `begin_teaching`         | Start or continue teaching in Claude Code or Codex. It returns this method. In Pi, `/teach` does the same.         |
 | `list_classrooms`        | Find the existing classrooms and lessons, with scores, to resume work.                                             |
+| `resume_lesson_teacher`  | Hand off an unfinished graded check or review to its lesson teacher panel.                                         |
 | `lesson_health`          | See what did not land before you plan the next lesson.                                                             |
 | `scaffold_classroom`     | Create a classroom for a new topic.                                                                                |
 | `scaffold_lesson`        | Create a lesson shell. It returns the authoring steps.                                                             |

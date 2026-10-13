@@ -1,4 +1,5 @@
 /** An MCP connection attaches to the persistent service. stdin does not own HTTP. */
+import { resumeTeacherTool } from "./teacher-resume.ts";
 import * as readline from "node:readline";
 import { randomUUID } from "node:crypto";
 import { control, ensureService, serviceStatus } from "./service-client.ts";
@@ -8,12 +9,17 @@ import { PhoneAccess } from "./phone-access.ts";
 import type { Backend } from "./teacher.ts";
 
 const local = new McpSession(new LearnerInbox(), {
-  tools: serviceToolDefinitions.map((tool) => ({
-    ...tool,
-    async execute() {
-      throw new Error("Service tools require a service connection.");
-    },
-  })),
+  tools: [
+    resumeTeacherTool(() => {
+      throw new Error("Teacher resumption requires a service connection.");
+    }),
+    ...serviceToolDefinitions.map((tool) => ({
+      ...tool,
+      async execute() {
+        throw new Error("Service tools require a service connection.");
+      },
+    })),
+  ],
   async open() {
     throw new Error("Opening a classroom requires a service connection.");
   },

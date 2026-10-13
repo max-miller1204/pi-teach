@@ -1,3 +1,4 @@
+import { verifyResumeBrowser } from "./e2e-resume-browser.ts";
 import { verifyReviewBrowser } from "./e2e-review-browser.ts";
 /** Check browser state against the real HTTP server and grading tool. */
 import { browserRegression } from "./browser-regression.mjs";
@@ -314,3 +315,6 @@ await verifyPiPanelBrowser(artifacts ? path.join(artifacts, "pi-panel") : null);
 await verifyServiceBrowser(artifacts ? path.join(artifacts, "service") : null);
 
 await verifyReviewBrowser(artifacts ? path.join(artifacts, "review") : null);
+
+if (artifacts) fs.mkdirSync(path.join(artifacts, "resume"), { recursive: true });
+await verifyResumeBrowser(artifacts ? path.join(artifacts, "resume") : null);

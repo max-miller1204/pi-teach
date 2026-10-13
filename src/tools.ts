@@ -88,14 +88,21 @@ export function isFailure(result: ToolResult): boolean {
   return result.details["error"] === true;
 }
 
-export function registerClassroomTools(pi: any): void {
-  for (const tool of classroomTools(PI_HOST)) {
+export function registerClassroomTools(
+  pi: any,
+  extra: ClassroomTool[] = [],
+  beforeWrite?: () => void,
+): void {
+  for (const tool of [...classroomTools(PI_HOST), ...extra]) {
     pi.registerTool({
       name: tool.name,
       label: tool.label,
       description: tool.description,
       parameters: tool.parameters,
-      execute: (_toolCallId: string, params: unknown) => tool.execute(params),
+      execute: (_toolCallId: string, params: unknown) => {
+        if (tool.name !== "lesson_health" && tool.name !== "resume_lesson_teacher") beforeWrite?.();
+        return tool.execute(params);
+      },
     });
   }
 }

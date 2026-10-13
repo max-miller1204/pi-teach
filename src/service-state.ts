@@ -8,7 +8,7 @@ export interface TeacherRequest {
   id: string;
   classroom: string;
   lesson: string;
-  kind: "ask" | "follow-up" | "quiz" | "reflect" | "chat" | "review";
+  kind: "ask" | "follow-up" | "quiz" | "reflect" | "chat" | "review" | "resume";
   target: string;
   turn?: string;
   prompt: string;
