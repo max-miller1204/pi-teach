@@ -382,6 +382,9 @@ lesson link and end the initiating turn. Ask the corrective question in the pane
 Do not copy the learner's chat into the panel or treat the handoff as an answer.
 The tool reuses an existing conversation or request. For an empty historical panel,
 it starts one teacher question from saved assessment and retrieval evidence.
+If a saved learner reply has lost its request, the tool restores that panel reply
+under its original ID. It uses the actual saved text. The teacher can check that
+reply through the normal evidence rules.
 A repeated call does not start another question. Use the panel's explicit retry
 control after a failure. Preserve the graded quiz and all learning evidence.
 Historical notes that say "chat check" do not change this routing rule.

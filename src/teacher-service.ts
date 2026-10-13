@@ -207,7 +207,13 @@ export class TeacherService {
     if (!state) throw new Error("No classroom teacher. Call open_classroom first.");
     const key = `chat:${id}`;
     if (!state.messages.some((m) => m.id === key)) {
-      state.messages.push({ id: key, lesson, role: "learner", text, at: Date.now() });
+      state.messages.push({
+        id: key,
+        lesson,
+        role: "learner",
+        text,
+        at: this.nextMessageAt(classroom, lesson, state),
+      });
       saveTeacherState(classroom, state);
     }
     this.enqueue({
@@ -225,14 +231,32 @@ export class TeacherService {
     if (!state) throw new Error("No classroom teacher. Call open_classroom first.");
     if (piResumes(request.classroom).some((r) => r.status === "running" && piOwnerAlive(r)))
       throw new Error("A live Pi session owns this classroom's resume request.");
-    if (
-      state.requests.some(
-        (r) => r.id === request.id || (r.lesson === request.lesson && r.status !== "done"),
-      ) ||
-      state.messages.some((m) => m.lesson === request.lesson) ||
-      store.listPanelMessages(request.classroom, request.lesson).length
-    )
+    if (state.requests.some((r) => r.lesson === request.lesson && r.status !== "done")) return;
+    const reply = this.messages(request.classroom, request.lesson, state).at(-1);
+    if (reply?.role === "learner") {
+      if (!reply.id.startsWith("chat:") || state.requests.some((r) => r.id === reply.id))
+        throw new Error("The saved learner reply has no unfinished panel request.");
+      // Preserve the actual reply when it comes from historical Pi storage.
+      const existing = state.messages.find((m) => m.id === reply.id && m.role === "learner");
+      if (existing && (existing.lesson !== request.lesson || existing.text !== reply.text))
+        throw new Error("The saved reply ID belongs to a different panel message.");
+      if (!existing) {
+        state.messages.push(reply);
+        saveTeacherState(request.classroom, state);
+      }
+      this.enqueue({
+        id: reply.id,
+        classroom: request.classroom,
+        lesson: request.lesson,
+        kind: "chat",
+        target: reply.id.slice("chat:".length),
+        prompt: `The learner replied in the teacher panel:\n${reply.text}`,
+      });
       return;
+    }
+    if (reply) return;
+    if (state.requests.some((r) => r.id === request.id))
+      throw new Error("The completed resume request has no saved teacher message.");
     this.enqueue({ ...request, kind: "resume", target: input.submission_id });
   }
   retry(classroom: string, id: string): void {
@@ -276,6 +300,11 @@ export class TeacherService {
       .filter((m) => !current.some((existing) => existing.id === m.id && existing.role === m.role))
       .map((m) => ({ ...m, sourceBackend: "pi" as const }));
     return [...history, ...current].sort((a, b) => a.at - b.at);
+  }
+  /** Keep replies after saved messages if the clock has moved back. */
+  private nextMessageAt(classroom: string, lesson: string, state: TeacherState): number {
+    const previous = this.messages(classroom, lesson, state).at(-1);
+    return previous ? Math.max(Date.now(), previous.at + 1) : Date.now();
   }
   publicState(classroom: string, lesson: string): unknown {
     const state = this.states.get(classroom);
@@ -688,7 +717,7 @@ export class TeacherService {
         lesson: r.lesson,
         role: "teacher",
         text: plan.message,
-        at: Date.now(),
+        at: this.nextMessageAt(r.classroom, r.lesson, state),
       });
   }
 }

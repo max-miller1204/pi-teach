@@ -210,6 +210,136 @@ describe("explicit teacher handoff", () => {
     expect(runs).toBe(2);
   });
 
+  it("resumes a saved Pi learner reply after the request is lost", () => {
+    const input = graded();
+    const before = store.listGrades("rust", input.lesson);
+    const initial = new ClassroomBridge({ sendUserMessage: () => {} });
+    initial.resume(input);
+    initial.onAgentEnd(message("Who owns the buffer after a move?"));
+    initial.chat("rust", input.lesson, "The new binding owns it", "saved-reply");
+    initial.reset();
+    const sent: string[] = [];
+    const recovered = new ClassroomBridge({ sendUserMessage: (text) => sent.push(text) });
+    recovered.noteForeignTurn();
+    recovered.resume(input);
+    recovered.resume(input);
+    expect(sent).toHaveLength(0);
+    recovered.onAgentEnd(message("Continue on the lesson page."));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("The new binding owns it");
+    recovered.onAgentEnd(message("Right. The new binding owns it."));
+    expect(store.listPanelMessages("rust", input.lesson).map((m) => m.role)).toEqual([
+      "teacher",
+      "learner",
+      "teacher",
+    ]);
+    expect(store.listPanelMessages("rust", input.lesson).at(-1)?.id).toBe("chat:saved-reply");
+    expect(store.listGrades("rust", input.lesson)).toEqual(before);
+  });
+
+  it("recovers a service reply saved before its request was queued", async () => {
+    const input = graded();
+    const initial = new TeacherService(async () => plan());
+    initial.attach("rust", "codex");
+    initial.resume(input);
+    await initial.idle();
+    const saved = readTeacherState("rust")!;
+    saved.messages.push({
+      id: "chat:saved-reply",
+      lesson: input.lesson,
+      role: "learner",
+      text: "The new binding owns it",
+      at: Date.now() + 60_000,
+    });
+    saveTeacherState("rust", saved);
+    let runs = 0;
+    const recovered = new TeacherService(async (_identity, prompt) => {
+      runs++;
+      expect(prompt).toContain("The new binding owns it");
+      return plan("Right. The new binding owns it.");
+    });
+    recovered.attach("rust");
+    recovered.resume(input);
+    recovered.resume(input);
+    await recovered.idle();
+    expect(runs).toBe(1);
+    expect((recovered.publicState("rust", input.lesson) as any).messages.at(-1).role).toBe(
+      "teacher",
+    );
+    expect(
+      readTeacherState("rust")!.requests.filter((r) => r.id === "chat:saved-reply"),
+    ).toHaveLength(1);
+    expect(readTeacherState("rust")!.messages.map((m) => m.role)).toEqual([
+      "teacher",
+      "learner",
+      "teacher",
+    ]);
+  });
+
+  it("rejects a recovered reply ID owned by another lesson", async () => {
+    const input = graded();
+    store.addPanelMessage("rust", {
+      id: "chat:collision",
+      lesson: input.lesson,
+      role: "learner",
+      text: "The new binding",
+    });
+    saveTeacherState("rust", {
+      version: 1,
+      identity: { backend: "codex" },
+      requests: [],
+      messages: [
+        {
+          id: "chat:collision",
+          lesson: "002-other",
+          role: "learner",
+          text: "Another answer",
+          at: 1,
+        },
+      ],
+    });
+    const teacher = new TeacherService(async () => {
+      throw new Error("must not run");
+    });
+    teacher.attach("rust");
+    expect(() => teacher.resume(input)).toThrow("belongs to a different panel message");
+    await teacher.idle();
+    expect(readTeacherState("rust")!.requests).toEqual([]);
+    expect(readTeacherState("rust")!.messages).toHaveLength(1);
+  });
+
+  it("keeps a recovered Pi reply durable and retries it without another learner message", () => {
+    const input = graded();
+    store.addPanelMessage("rust", {
+      id: "question",
+      lesson: input.lesson,
+      role: "teacher",
+      text: "Who owns it?",
+    });
+    store.addPanelMessage("rust", {
+      id: "chat:saved-reply",
+      lesson: input.lesson,
+      role: "learner",
+      text: "The new binding",
+    });
+    let runs = 0;
+    const bridge = new ClassroomBridge({ sendUserMessage: () => runs++ });
+    bridge.resume(input);
+    bridge.reset();
+    expect(piResumes("rust")[0].status).toBe("failed");
+    const recovered = new ClassroomBridge({ sendUserMessage: () => runs++ });
+    recovered.resume(input);
+    expect(runs).toBe(1);
+    recovered.retry("rust", "chat:saved-reply");
+    recovered.onAgentEnd(message("Right."));
+    expect(piResumes("rust")[0].status).toBe("done");
+    expect(
+      store.listPanelMessages("rust", input.lesson).filter((m) => m.role === "learner"),
+    ).toHaveLength(1);
+    recovered.resume(input);
+    expect(runs).toBe(2);
+  });
+
   it("rejects a live foreign Pi owner and service ownership", async () => {
     const input = graded();
     const bridge = new ClassroomBridge({ sendUserMessage: () => {} });

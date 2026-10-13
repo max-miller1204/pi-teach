@@ -65,6 +65,7 @@ interface PanelRequest {
   status: "running" | "failed";
   error?: string;
   prompt: string;
+  durable?: true;
 }
 
 type Origin =
@@ -189,13 +190,33 @@ export class ClassroomBridge {
     this.requireResumeOwner(request.classroom);
     this.restoreResumes();
     if (
-      piResumes(request.classroom).some((r) => r.id === request.id) ||
       [...this.panel.values()].some(
         (r) => r.classroom === request.classroom && r.lesson === request.lesson,
-      ) ||
-      store.listPanelMessages(request.classroom, request.lesson).length
+      )
     )
       return;
+    const messages = store.listPanelMessages(request.classroom, request.lesson);
+    const reply = messages.at(-1);
+    if (reply?.role === "learner") {
+      if (
+        !reply.id.startsWith("chat:") ||
+        piResumes(request.classroom).some((r) => r.id === reply.id)
+      )
+        throw new Error("The saved learner reply has no unfinished panel request.");
+      this.startResume({
+        ...request,
+        id: reply.id,
+        kind: "chat",
+        prompt: panelReplyPrompt(request.classroom, request.lesson, reply, messages),
+        status: "running",
+        ownerPid: process.pid,
+        ownerSession: this.sessionId,
+      });
+      return;
+    }
+    if (reply) return;
+    if (piResumes(request.classroom).some((r) => r.id === request.id))
+      throw new Error("The completed resume request has no saved teacher message.");
     this.startResume({
       ...request,
       kind: "resume",
@@ -236,7 +257,12 @@ export class ClassroomBridge {
           request.error = "Pi stopped during teacher resumption. Retry this request.";
           savePiResume(request);
         }
-        if (!this.panel.has(request.id)) this.panel.set(request.id, request as PanelRequest);
+        if (!this.panel.has(request.id))
+          this.panel.set(request.id, {
+            ...request,
+            status: request.status as "running" | "failed",
+            durable: true,
+          });
       }
   }
 
@@ -248,9 +274,9 @@ export class ClassroomBridge {
     savePiResume(request);
     if (this.pending.length || !this.idle()) {
       this.deferredResumes.set(request.id, request);
-      this.panel.set(request.id, request as PanelRequest);
+      this.panel.set(request.id, { ...request, status: "running", durable: true });
       this.publish(request.classroom, request.lesson);
-    } else this.startPanel(request);
+    } else this.startPanel({ ...request, durable: true });
   }
 
   private persistResume(request: PanelRequest, done = false): void {
@@ -308,7 +334,7 @@ export class ClassroomBridge {
     const request = this.panel.get(id);
     if (!request || request.classroom !== classroom || request.status !== "failed")
       throw new Error("This request cannot be retried.");
-    if (request.kind === "resume") {
+    if (request.durable) {
       this.requireResumeOwner(classroom);
       this.startResume(piResumes(classroom).find((r) => r.id === id)!);
     } else this.startPanel(request);
@@ -327,8 +353,8 @@ export class ClassroomBridge {
   }
 
   private startPanel(input: Omit<PanelRequest, "status" | "error">): void {
-    const { id, classroom, lesson, kind, prompt } = input;
-    const request: PanelRequest = { id, classroom, lesson, kind, prompt, status: "running" };
+    const request: PanelRequest = { ...input, status: "running" };
+    const { classroom, lesson } = request;
     this.panel.set(request.id, request);
     const origin: Origin = { kind: "panel", request };
     this.pending.push(origin);
@@ -339,7 +365,7 @@ export class ClassroomBridge {
       this.pending.splice(this.pending.indexOf(origin), 1);
       request.status = "failed";
       request.error = `Pi could not start teacher work: ${(err as Error).message}`;
-      if (request.kind === "resume") this.persistResume(request);
+      if (request.durable) this.persistResume(request);
       this.publish(classroom, lesson);
       throw err;
     }
@@ -361,7 +387,7 @@ export class ClassroomBridge {
         const request = this.deferredResumes.values().next().value;
         if (request) {
           this.deferredResumes.delete(request.id);
-          this.startPanel(request);
+          this.startPanel({ ...request, durable: true });
         }
       }
     }
@@ -414,7 +440,7 @@ export class ClassroomBridge {
       request.status = "failed";
       request.error = "Your teacher finished without a reply.";
     }
-    if (request.kind === "resume") this.persistResume(request, !this.panel.has(request.id));
+    if (request.durable) this.persistResume(request, !this.panel.has(request.id));
     this.publish(request.classroom, request.lesson);
   }
 
@@ -428,7 +454,7 @@ export class ClassroomBridge {
           "Pi stopped during review creation. Retry this review.",
         );
     for (const request of this.panel.values())
-      if (request.kind === "resume" && request.status === "running") {
+      if (request.durable && request.status === "running") {
         request.status = "failed";
         request.error = "Pi stopped during teacher resumption. Retry this request.";
         this.persistResume(request);

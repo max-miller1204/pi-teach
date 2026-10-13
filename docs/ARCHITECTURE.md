@@ -152,7 +152,10 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   learner reply or a second grading request. Pi keeps the initiating turn foreign
   and queues a panel origin. Pi resume requests survive interruption as failed work
   and require explicit retry. The service keeps its classroom backend and session.
-  Resume plans permit only a teacher message.
+  Resume plans permit only a teacher message. If the latest saved panel message is
+  a learner reply with no request, the handoff restores its original chat request.
+  Pi saves that recovered request for explicit retry. The service keeps message
+  timestamps in request order, including historical Pi messages.
 - **Quiz text can be highlighted, the quiz runtime cannot.** `QUIZ_RUNTIME_UI` (grade,
   verdicts, footer, reports, order buttons) is outside the text index, because it
   changes on grading. A card about a question is placed after the whole `.cl-q`, never

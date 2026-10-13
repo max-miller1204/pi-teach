@@ -127,7 +127,7 @@ export function resumeTeacherTool(resume: (input: ResumeInput) => void): Classro
 
 /** Pi resume requests survive session loss. This private file is never a static asset. */
 export interface PiResume extends ResumeRequest {
-  kind: "resume";
+  kind: "resume" | "chat";
   status: "running" | "failed" | "done";
   ownerPid: number;
   ownerSession: string;
@@ -148,9 +148,9 @@ export function piResumes(classroom: string): PiResume[] {
           r.classroom !== classroom ||
           !isValidSlug(r.lesson) ||
           typeof r.id !== "string" ||
-          !r.id.startsWith("resume:") ||
+          !["resume", "chat"].includes(r.kind) ||
+          !r.id.startsWith(`${r.kind}:`) ||
           typeof r.prompt !== "string" ||
-          r.kind !== "resume" ||
           !["running", "failed", "done"].includes(r.status) ||
           !Number.isInteger(r.ownerPid) ||
           r.ownerPid < 1 ||
