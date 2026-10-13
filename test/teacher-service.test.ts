@@ -1,8 +1,15 @@
+import { DAY_MS } from "../src/review.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeFixture, seedClassroom, termAnswer, type Fixture } from "./helpers.ts";
+import {
+  makeFixture,
+  seedClassroom,
+  termAnswer,
+  writeGradedAttempt,
+  type Fixture,
+} from "./helpers.ts";
 import { TeacherService } from "../src/teacher-service.ts";
 import { readTeacherState, saveTeacherState } from "../src/service-state.ts";
 import * as store from "../src/store.ts";
@@ -553,3 +560,29 @@ it.each([true, false])(
     expect(store.listGrades("rust", location.lesson)[0].score).toBe(0);
   },
 );
+
+it("requests a new plan on explicit retry after invalid panel evidence", async () => {
+  writeGradedAttempt({
+    at: Date.now() - 2 * DAY_MS,
+    answers: [termAnswer("q1", "owner")],
+    correct: { q1: false },
+  });
+  let runs = 0;
+  const teacher = new TeacherService(async (_identity, prompt) => {
+    runs++;
+    if (runs === 2)
+      expect(prompt).toContain("A learning record requires verified retrieval evidence.");
+    expect(prompt).toContain("001-ownership/check-1/q1");
+    return runs === 1 ? { ...plan([]), learning_record: "An unverified record." } : plan([]);
+  });
+  teacher.attach("rust", "codex");
+  const id = randomUUID();
+  teacher.chat("rust", "001-ownership", "The owner releases it.", id);
+  await teacher.idle();
+  expect(readTeacherState("rust")!.requests[0].status).toBe("failed");
+  teacher.retry("rust", `chat:${id}`);
+  await teacher.idle();
+  expect(runs).toBe(2);
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  await teacher.stop();
+});

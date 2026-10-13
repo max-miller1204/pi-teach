@@ -24,7 +24,13 @@ import type {
   QuizSubmission,
   Reflection,
 } from "../src/store.ts";
-import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
+import {
+  makeFixture,
+  seedClassroom,
+  writeGradedAttempt,
+  termAnswer,
+  type Fixture,
+} from "./helpers.ts";
 
 let fixture: Fixture;
 
@@ -141,6 +147,34 @@ describe("quiz highlights and the teacher panel", () => {
     expect(prompt).not.toContain("Do not give the answer");
   });
 
+  it("binds panel retrieval work to the configured classroom paths and graded keys", () => {
+    seedClassroom(fixture);
+    seedClassroom(fixture, { classroom: "other" });
+    writeGradedAttempt({
+      at: Date.now() - DAY_MS,
+      answers: [termAnswer("q1", "dropped")],
+      correct: { q1: false },
+    });
+    writeGradedAttempt({
+      classroom: "other",
+      at: Date.now() - DAY_MS,
+      answers: [termAnswer("unrelated", "SECRET OTHER ANSWER")],
+      correct: { unrelated: true },
+    });
+    const reply: PanelMessage = {
+      id: "reply",
+      lesson: card.lesson,
+      role: "learner",
+      text: "Rust drops it.",
+      at: Date.now(),
+    };
+    const prompt = panelReplyPrompt("rust", card.lesson, reply, []);
+    expect(prompt).toContain(paths.classroomDir("rust"));
+    expect(prompt).toContain(`${paths.classroomDir("rust")}/learning-records`);
+    expect(prompt).toContain("001-ownership/check-1/q1");
+    expect(prompt).not.toContain("SECRET OTHER ANSWER");
+    expect(prompt).not.toContain(paths.classroomDir("other"));
+  });
   it("restates the panel conversation a reply answers", () => {
     const earlier: PanelMessage[] = [
       { id: "quiz:s1", lesson: card.lesson, role: "teacher", text: "Who frees it?", at: 1 },

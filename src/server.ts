@@ -60,6 +60,16 @@ import { isDue, summarize } from "./review.ts";
 import { isContractId, isQuizKind } from "../assets/runtime/quiz.mjs";
 import { draftErrors, isDraftKey } from "../assets/runtime/draft.mjs";
 import * as store from "./store.ts";
+import {
+  currentReview,
+  publicReview,
+  requireReviewOwner,
+  reviewSessions,
+  startReview,
+  updateReview,
+  type ReviewSession,
+  type ReviewOwner,
+} from "./review-session.ts";
 
 // ── Callbacks into the extension ──────────────────────────────────────────────
 
@@ -67,6 +77,9 @@ export interface ServerHooks {
   delivery?: "push" | "wait" | "service";
   canAccept?(classroom: string): void;
   teacherState?(classroom: string, lesson: string): unknown;
+  reviewOwner?: ReviewOwner;
+  onReview?(session: ReviewSession): void;
+  onReviewRetry?(session: ReviewSession): void;
   onTeacherChat?(classroom: string, lesson: string, text: string, id: string): void;
   onTeacherRetry?(classroom: string, id: string): void;
   /** Called after a question is persisted, to wake the agent. */
@@ -276,11 +289,16 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
     for (const item of items) {
       if (isDue(item, now)) dueByLesson[item.lesson] = (dueByLesson[item.lesson] ?? 0) + 1;
     }
+    const pendingReviews = new Set(
+      reviewSessions(name)
+        .filter((s) => s.status !== "done")
+        .map((s) => s.lesson),
+    );
     return sendHtml(
       res,
       classroomPage({
         classroom,
-        lessons: store.listLessons(name),
+        lessons: store.listLessons(name).filter((l) => !pendingReviews.has(l.name)),
         docs: store.listClassroomDocs(name),
         learningRecords: store.listLearningRecords(name),
         referenceDocs: store.listReferenceDocs(name),
@@ -302,6 +320,8 @@ function handleClassroomRoute(res: http.ServerResponse, rest: string[]): void {
   }
 
   if (!isValidSlug(second)) return sendNotFound(res, "Unknown lesson");
+  if (reviewSessions(name).some((s) => s.lesson === second && s.status !== "done"))
+    return sendNotFound(res, "This review is not ready. Check its status on the classroom page.");
   const lesson = store.readLesson(name, second);
   if (!lesson) return sendNotFound(res, `Unknown lesson: ${second}`);
 
@@ -423,6 +443,59 @@ async function handleApi(
   url: URL,
 ): Promise<void> {
   const route = rest.join("/");
+  if (route === "review" && req.method === "GET") {
+    const classroom = url.searchParams.get("classroom");
+    if (!isValidSlug(classroom) || !store.readClassroom(classroom))
+      return sendJson(res, { error: "Unknown classroom." }, 404);
+    const session = currentReview(classroom);
+    try {
+      if (session && hooks?.reviewOwner) requireReviewOwner(session, hooks.reviewOwner);
+      return sendJson(res, { review: publicReview(session) });
+    } catch (err) {
+      return sendJson(res, { error: (err as Error).message }, 409);
+    }
+  }
+  if ((route === "review" || route === "review/retry") && req.method === "POST") {
+    const body = (await readJsonBody(req)) as Record<string, unknown>;
+    if (
+      !body ||
+      !isValidSlug(body.classroom) ||
+      typeof body.id !== "string" ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(body.id)
+    )
+      return sendJson(res, { error: "Invalid review request." }, 400);
+    if (!store.readClassroom(body.classroom))
+      return sendJson(res, { error: "Unknown classroom." }, 404);
+    if (!hooks?.onReview || !hooks.onReviewRetry || !hooks.reviewOwner)
+      return sendJson(res, { error: "No review teacher is connected." }, 409);
+    let session: ReviewSession | undefined;
+    try {
+      hooks.canAccept?.(body.classroom);
+      if (route === "review/retry") {
+        session = reviewSessions(body.classroom).find((s) => s.id === body.id);
+        if (!session || session.status !== "failed")
+          throw new Error("This review cannot be retried.");
+        requireReviewOwner(session, hooks.reviewOwner);
+        hooks.onReviewRetry(session);
+      } else {
+        session = startReview(body.classroom, body.id, hooks.reviewOwner).session;
+        if (session.status === "queued") hooks.onReview(session);
+      }
+      return sendJson(
+        res,
+        { review: publicReview(reviewSessions(body.classroom).find((s) => s.id === session!.id)!) },
+        202,
+      );
+    } catch (err) {
+      if (
+        session &&
+        session.owner === hooks.reviewOwner &&
+        (session.status === "queued" || route === "review/retry")
+      )
+        updateReview(session, "failed", (err as Error).message);
+      return sendJson(res, { error: (err as Error).message }, 409);
+    }
+  }
   if (route === "teacher/chat" && req.method === "POST") {
     const body = (await readJsonBody(req)) as Record<string, unknown>;
     const { classroom, lesson, text, id } = body;
@@ -559,6 +632,8 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
   if (quiz === undefined) return sendJson(res, { error: "Invalid quiz reference" }, 400);
 
   hooks?.canAccept?.(classroom);
+  if (reviewSessions(classroom).some((s) => s.lesson === lesson && s.status !== "done"))
+    return sendJson(res, { error: "This review is not ready." }, 409);
   // Before the save: a draft file that cannot be read must stop the request, not
   // leave a saved question that the teacher never hears about.
   store.clearDraft(classroom, lesson, "ask");
@@ -743,6 +818,8 @@ async function handleQuizSubmit(
   }
 
   hooks?.canAccept?.(classroom);
+  if (reviewSessions(classroom).some((s) => s.lesson === lesson && s.status !== "done"))
+    return sendJson(res, { error: "This review is not ready." }, 409);
   store.clearDraft(classroom, lesson, `quiz:${quizId}`);
   const submission = store.createSubmission({
     classroom,
@@ -780,6 +857,8 @@ async function handleReflect(req: http.IncomingMessage, res: http.ServerResponse
   if (!text) return sendJson(res, { error: "A reflection needs some text" }, 400);
 
   hooks?.canAccept?.(classroom);
+  if (reviewSessions(classroom).some((s) => s.lesson === lesson && s.status !== "done"))
+    return sendJson(res, { error: "This review is not ready." }, 409);
   store.clearDraft(classroom, lesson, `reflect:${reflectId}`);
   const reflection = store.createReflection({
     classroom,

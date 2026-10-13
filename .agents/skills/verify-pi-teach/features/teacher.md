@@ -8,6 +8,7 @@ The learner receives follow-up questions and answers them in the lesson's teache
 - Show new-message notices and render teacher Markdown.
 - Save replies and restore the conversation after reload.
 - Show specific failures and require an explicit retry.
+- Regenerate a plan rejected before writes. Keep valid plans for recovery.
 - Keep the persistent service available after MCP exit.
 
 ## How to get to it (user POV)
