@@ -13,6 +13,9 @@ export const REVIEW_POLICY = "elapsed-independent-v1";
 export const RETENTION_SPAN_DAYS = 7;
 export const RETENTION_SUCCESSES = 2;
 
+export const DEFAULT_REVIEW_SIZE = 5;
+export const MAX_REVIEW_SIZE = 12;
+
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** One quiz answer or linked chat check for an item. */

@@ -135,3 +135,38 @@ export function termAnswer(
 ): store.QuizAnswer {
   return { questionId, type: "term", prompt: `Prompt for ${questionId}`, value, ...extra };
 }
+
+/** A complete review document for browser and recovery fixtures. */
+export function reviewDocument(
+  items: import("../src/review.ts").ReviewItem[],
+): import("../src/review-session.ts").ReviewDocument {
+  const objectives: Record<string, unknown> = {};
+  const questions: Record<string, unknown> = {};
+  const rubric: Record<string, unknown> = {};
+  const body = items
+    .map((item, i) => {
+      const id = `r${i + 1}`;
+      objectives[id] = item.objective ?? { statement: "Explain ownership.", application: false };
+      questions[id] = { objective: id, task: "retrieval", support: "independent" };
+      rubric[id] = {
+        expected: "The new owner releases it.",
+        points: 1,
+        full: "Name the new owner.",
+        partial: "Zero points if the owner is wrong.",
+      };
+      return `<li class="cl-q" data-question-id="${id}" data-type="short" data-review-of="${item.key}"><p class="cl-q-prompt">A String moves to a second binding. Who releases it?</p><textarea></textarea></li>`;
+    })
+    .join("\n");
+  return {
+    lesson_html: lessonHtml(
+      "Ownership review",
+      `<h1>Ownership review</h1><form class="cl-quiz" data-quiz-id="review" data-kind="review" data-evidence="report"><ol class="cl-questions">${body}</ol></form>`,
+    ),
+    rubric_json: JSON.stringify({ review: rubric }),
+    teaching_plan_json: JSON.stringify({
+      version: 1,
+      objectives,
+      quizzes: { review: { purpose: "assessment", questions } },
+    }),
+  };
+}
