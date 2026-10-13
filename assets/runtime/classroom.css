@@ -1126,7 +1126,8 @@ mark.cl-hl.cl-hl-pending {
 }
 
 .cl-q textarea,
-.cl-q input[type="text"] {
+.cl-q input[type="text"],
+.cl-teacher textarea {
   width: 100%;
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--cl-border-strong);
@@ -1623,7 +1624,6 @@ figure:has(> .cl-diagram) figcaption {
 }
 .cl-teacher textarea {
   display: block;
-  width: 100%;
   min-height: 6rem;
   margin-block: 0.5rem;
 }
