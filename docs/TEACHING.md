@@ -303,11 +303,13 @@ cannot run, report the specific error. State when controls were not checked.
 
 After a grade, the browser quiz stays locked. Saved attempts and grades are kept.
 Do not ask the learner to repeat the same quiz immediately. Check missed ideas in
-chat with a different example. Review those ideas later through spaced review.
+the lesson's teacher panel with a different example. Review those ideas later
+through spaced review.
 
 After grading a check or review, check missed ideas before moving to another lesson. Explain the idea
-briefly. Ask one new retrieval question in chat with a different example. Wait for
-the learner's reply before giving the answer. Repeat until they show understanding.
+briefly. Ask one new retrieval question in the teacher panel with a different
+example. The learner stays on the lesson page and replies there. Wait for that
+reply before giving the answer. Repeat until they show understanding.
 Do not treat a score or an explanation as proof that they learned the idea. If they
 ask to skip the check, record the unresolved gap in notes. Ask for their agreement
 before starting another lesson.
@@ -355,6 +357,21 @@ Answer as their teacher: at the level the lesson is pitched at, in the lesson's 
 vocabulary, in a few short paragraphs. The answer renders in a small card beside the
 text they highlighted : replying only in chat never reaches them.
 
+Learners can also highlight the text of a quiz question or one of its options. The
+notification then names the quiz and question, and says whether it has been graded.
+Before grading, clarify what the question asks without giving the answer, ruling out
+options, or hinting at the solution. After grading, you may explain the expected
+answer.
+
+## The teacher panel
+
+Each lesson page has a teacher panel. It sits after the quiz the learner handed in
+last. Quiz feedback, the retrieval question for a missed idea, and the learner's
+replies all happen there, so the learner never has to come back to the terminal to
+keep learning. Only starting a new lesson needs the initiating chat. In Pi, your
+final message in a grading, self-explanation, or panel reply turn is posted to the
+panel as written. Address it to the learner.
+
 Cards are threads: the learner can ask a follow-up in the same card, and that arrives as
 another notification carrying the same annotation id, with the passage and every earlier
 turn quoted back to you. Answer it with `answer_lesson_question` as before : it attaches
@@ -383,7 +400,7 @@ Progress counts retained evidence only after two delayed independent successes w
 at least seven days from the first independent success to the latest delayed success.
 Application objectives also need delayed transfer. These are product thresholds.
 They are not a definition of universal mastery. Old records retain their grades.
-Missing evidence stays unknown. Immediate chat checks can document correction,
+Missing evidence stays unknown. Immediate panel checks can document correction,
 but cannot establish delayed retention or extend an interval.
 
 Group related strategies in private `quiz/plan.json` when review should require
@@ -434,7 +451,7 @@ prior knowledge, correct a misconception, or shift the mission. Not when materia
 merely covered : coverage is not learning. These are what tell the next session where
 the floor is.
 
-After a successful chat retrieval check resolves a quiz gap, write an active learning
+After a successful panel retrieval check resolves a quiz gap, write an active learning
 record. Call `record_retrieval_check` with the original review key, that record file
 name, the learner's actual answer, and the question and evidence of understanding.
 One record can resolve several items. Record each link once. This preserves scores
@@ -485,10 +502,11 @@ authoring. Use `scaffold_review` for due review items and preserve their keys.
 | `wait_for_learner`       | Receive browser requests in the legacy inbox adapter. The persistent service does not expose it.                   |
 | `answer_lesson_question` | Answer a question from the page. Only this tool puts the answer on the page.                                       |
 | `grade_lesson_quiz`      | Grade a submitted quiz from its private rubric.                                                                    |
-| `record_retrieval_check` | Link a successful chat retrieval check to its review item, with an active learning record.                         |
+| `record_retrieval_check` | Link a successful panel retrieval check to its review item, with an active learning record.                        |
 
-Pi receives browser requests in its live session. Claude Code and Codex use the
-persistent dedicated teacher and its panel. Only the legacy inbox adapter uses
+Pi receives browser requests in its live session and answers in the lesson's
+teacher panel. Claude Code and Codex use the persistent dedicated teacher and its
+panel. Only the legacy inbox adapter uses
 `wait_for_learner`. That tool receives browser requests, not chat replies.
 
 The Codex teacher stops after three minutes without progress or five minutes

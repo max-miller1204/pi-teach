@@ -25,7 +25,9 @@
  *   GET    /api/state                         annotations, quiz attempts, reflections, drafts
  *   GET    /api/glossary                      the classroom's GLOSSARY.md, parsed
  *   DELETE /api/annotations/<id>              remove a question
- *   GET    /api/events                        SSE: answer, grade, reload
+ *   POST   /api/teacher/chat                  reply to the teacher in the lesson's panel
+ *   POST   /api/teacher/retry                 run a failed teacher request again
+ *   GET    /api/events                        SSE: answer, grade, teacher, reload
  */
 
 import * as fs from "node:fs";
@@ -445,7 +447,11 @@ async function handleApi(
     if (!isValidSlug(body.classroom) || typeof body.id !== "string")
       return sendJson(res, { error: "Invalid request." }, 400);
     if (!hooks?.onTeacherRetry) return sendJson(res, { error: "No dedicated teacher." }, 409);
-    hooks.onTeacherRetry(body.classroom, body.id);
+    try {
+      hooks.onTeacherRetry(body.classroom, body.id);
+    } catch (err) {
+      return sendJson(res, { error: (err as Error).message }, 409);
+    }
     return sendJson(res, { queued: true });
   }
 
@@ -549,6 +555,8 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
   if (!question) return sendJson(res, { error: "A question is required" }, 400);
   if (!anchor) return sendJson(res, { error: "A valid anchor is required" }, 400);
   if (!store.readLesson(classroom, lesson)) return sendJson(res, { error: "Unknown lesson" }, 404);
+  const quiz = parseQuizRef(body["quiz"]);
+  if (quiz === undefined) return sendJson(res, { error: "Invalid quiz reference" }, 400);
 
   hooks?.canAccept?.(classroom);
   // Before the save: a draft file that cannot be read must stop the request, not
@@ -561,10 +569,34 @@ async function handleAsk(req: http.IncomingMessage, res: http.ServerResponse): P
     selection:
       typeof body["selection"] === "string" ? body["selection"].slice(0, 2000) : anchor.exact,
     anchor,
+    ...(quiz && { quiz: { ...quiz, graded: isGraded(classroom, lesson, quiz.quizId) } }),
   });
 
   hooks?.onAsk(annotation);
   sendJson(res, annotation, 201);
+}
+
+/**
+ * The quiz a highlight sits in. Null for lesson text, undefined when the browser sent
+ * something that is not a quiz reference.
+ */
+function parseQuizRef(
+  value: unknown,
+): { quizId: string; questionId: string | null } | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const { quizId, questionId } = value as Record<string, unknown>;
+  if (!isContractId(quizId)) return undefined;
+  if (questionId !== null && questionId !== undefined && !isContractId(questionId))
+    return undefined;
+  return { quizId, questionId: questionId ?? null };
+}
+
+/** Whether the latest attempt at a quiz has a grade. */
+function isGraded(classroom: string, lesson: string, quizId: string): boolean {
+  return store
+    .latestQuizStates(classroom, lesson)
+    .some((state) => state.quizId === quizId && state.grade !== null);
 }
 
 async function handleFollowUp(
@@ -591,6 +623,13 @@ async function handleFollowUp(
   }
 
   hooks?.canAccept?.(existing.classroom);
+  // The quiz may have been graded since the card was opened, and that changes what the
+  // teacher may say about it.
+  if (existing.quiz) {
+    const graded = isGraded(existing.classroom, existing.lesson, existing.quiz.quizId);
+    if (graded !== existing.quiz.graded)
+      store.updateAnnotation(annotationId, { quiz: { ...existing.quiz, graded } });
+  }
   store.clearDraft(existing.classroom, existing.lesson, `followup:${annotationId}`);
   const added = store.addFollowUp(annotationId, question.slice(0, 4000));
   if (!added) return sendJson(res, { error: "Could not save the follow-up" }, 500);

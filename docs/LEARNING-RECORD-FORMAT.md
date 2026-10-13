@@ -49,7 +49,7 @@ When a later record contradicts an earlier one (the user's understanding deepene
 
 ## Link a quiz correction
 
-After a successful chat retrieval check, use `record_retrieval_check` to link an
+After a successful panel retrieval check, use `record_retrieval_check` to link an
 active record to the original review item. Include the learner's actual answer and
 the new question. Explain how that answer demonstrates the missed idea. Use the
 item key `<lesson>/<quiz id>/<question id>` from the grade or review tool.

@@ -1535,6 +1535,8 @@ figure:has(> .cl-diagram) figcaption {
   .cl-badge-marker,
   .cl-quiz-footer,
   .cl-order-controls,
+  .cl-teacher form,
+  .cl-teacher-notice,
   .cl-term-pop {
     display: none !important;
   }
@@ -1556,7 +1558,50 @@ figure:has(> .cl-diagram) figcaption {
   margin: 2rem auto;
   padding: 1rem;
   border: 1px solid var(--cl-border);
+  border-left: 3px solid var(--cl-accent);
   border-radius: 0.5rem;
+  background: var(--cl-surface);
+}
+.cl-teacher h2 {
+  margin-top: 0;
+}
+.cl-teacher-identity,
+.cl-teacher-hint {
+  margin: 0.25rem 0;
+  color: var(--cl-text-muted);
+  font-size: 0.875rem;
+}
+.cl-teacher-message {
+  margin-block: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--cl-radius-sm);
+  background: var(--cl-surface-2);
+}
+.cl-teacher-message[data-role="learner"] {
+  background: var(--cl-accent-soft);
+}
+.cl-teacher-who {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--cl-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.cl-teacher-message[data-role="learner"] .cl-teacher-body {
+  white-space: pre-wrap;
+}
+.cl-teacher-body > :first-child {
+  margin-top: 0;
+}
+.cl-teacher-body > :last-child {
+  margin-bottom: 0;
+}
+.cl-teacher-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--cl-text-muted);
 }
 .cl-teacher textarea {
   display: block;
@@ -1566,6 +1611,24 @@ figure:has(> .cl-diagram) figcaption {
 }
 .cl-teacher-error {
   color: #b42318;
+}
+.cl-teacher-notice {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  padding: 0.5rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cl-accent);
+  color: #fff;
+  box-shadow: var(--cl-shadow-lifted);
+  cursor: pointer;
+}
+
+/* A card about a quiz question sits after the question, lined up with its text. */
+.cl-questions > .cl-card-inline {
+  margin: 0 0 0 2rem;
 }
 
 /* Reports describe feedback context. They do not change question credit. */

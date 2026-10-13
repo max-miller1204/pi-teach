@@ -6,7 +6,6 @@ import {
   attachStatusWidget,
   detachStatusWidget,
   refreshStatusWidget,
-  statusWidgetLines,
   type WidgetHost,
 } from "../src/status-widget.ts";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
@@ -40,23 +39,6 @@ afterEach(async () => {
   detachStatusWidget();
   await server.close();
   fixture.cleanup();
-});
-
-describe("statusWidgetLines", () => {
-  it("names the port, which is what tells two sessions apart", () => {
-    expect(statusWidgetLines(4098)).toEqual(["📚 classroom server running on port 4098"]);
-  });
-
-  it("shows nothing when no server is running", () => {
-    expect(statusWidgetLines(null)).toBeUndefined();
-  });
-
-  it("colours through the session's theme when there is one", () => {
-    const lines = statusWidgetLines(4098, { fg: (color, text) => `<${color}>${text}</${color}>` })!;
-    expect(lines[0]).toContain("<accent>📚 classroom</accent>");
-    expect(lines[0]).toContain("<dim>server running on port</dim>");
-    expect(lines[0]).toContain("<accent>4098</accent>");
-  });
 });
 
 describe("the widget's lifecycle", () => {

@@ -61,7 +61,7 @@ try {
     const buttons = page.locator('main[data-cl-content] button').filter({hasNot:page.locator('[type=submit]')});
     for (let pass = 0; pass < 2; pass++) {
       for (const button of await buttons.all()) {
-        if(!await button.evaluate(b => !b.closest('form, .cl-card-panel, .cl-header, .cl-teacher-panel'))) continue;
+        if(!await button.evaluate(b => !b.closest('form, .cl-card-panel, .cl-header, .cl-teacher'))) continue;
         if(!await button.isVisible() || await button.isDisabled()) continue;
         await button.focus();
         await page.keyboard.press('Enter');

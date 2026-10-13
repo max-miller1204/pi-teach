@@ -71,6 +71,17 @@ let askMarker = null;
 
 const MINIMISED_KEY = `pi-classroom-minimised:${location.pathname}`;
 
+/**
+ * What the runtime adds to a quiz after hydration: the grade, the verdicts, the
+ * footer, the reports, the order buttons. It changes as a quiz is graded, so a
+ * highlight never anchors to it. The questions themselves can be highlighted.
+ */
+const QUIZ_RUNTIME_UI =
+  "[data-cl-grade], .cl-q-verdict, .cl-quiz-footer, .cl-answer-report, .cl-order-controls";
+
+/** Our own UI, never lesson text: a highlight must not anchor into it. */
+const RUNTIME_UI = `script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram, .cl-teacher, .cl-teacher-notice, ${QUIZ_RUNTIME_UI}`;
+
 function loadMinimised() {
   try {
     return new Set(JSON.parse(localStorage.getItem(MINIMISED_KEY) || "[]"));
@@ -129,6 +140,20 @@ function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") cancelComposer();
   });
+  // Highlighting an option's text ends in a click on its label. That click must not
+  // also choose the option.
+  document.addEventListener("click", ignoreSelectingClick, true);
+}
+
+function ignoreSelectingClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || target.closest("input, select, textarea, button")) return;
+  const control = target.closest("form.cl-quiz label, form.cl-quiz .cl-segment");
+  const selection = window.getSelection();
+  if (!control || !selection || selection.isCollapsed || selection.rangeCount === 0) return;
+  if (!selection.getRangeAt(0).intersectsNode(control)) return;
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 /**
@@ -196,13 +221,7 @@ function buildTextIndex(root) {
       if (!parent) return NodeFilter.FILTER_REJECT;
       // The header and card UI are ours, not the lesson's — a highlight must never
       // anchor into them (and a lesson with no <main> makes contentRoot the body).
-      if (
-        parent.closest(
-          "script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram",
-        )
-      ) {
-        return NodeFilter.FILTER_REJECT;
-      }
+      if (parent.closest(RUNTIME_UI)) return NodeFilter.FILTER_REJECT;
       return node.nodeValue && node.nodeValue.trim().length > 0
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_REJECT;
@@ -313,13 +332,18 @@ function onSelectionSettled() {
     if (!contentRoot.contains(range.commonAncestorContainer)) return hideAskPill();
     if (
       range.commonAncestorContainer.parentElement?.closest(
-        "form.cl-quiz, form.cl-reflect, .cl-card-panel, .cl-term-pop",
+        "form.cl-reflect, .cl-card-panel, .cl-term-pop, .cl-teacher",
       )
     ) {
       return hideAskPill();
     }
-    // Diagram text is not in the text index, so a highlight could not anchor there.
-    if (inDiagram(range.startContainer) || inDiagram(range.endContainer)) return hideAskPill();
+    // Text selected inside an answer box belongs to the learner, not the lesson.
+    if (document.activeElement?.matches("input, textarea, select")) return hideAskPill();
+    // Diagram text and runtime UI are not in the text index, so a highlight that
+    // starts or ends there could not anchor.
+    if (outsideIndex(range.startContainer) || outsideIndex(range.endContainer)) {
+      return hideAskPill();
+    }
     if (normalizeText(range.toString()).length < 2) return hideAskPill();
 
     pendingRange = range.cloneRange();
@@ -333,9 +357,29 @@ function onSelectionSettled() {
   }, 0);
 }
 
-function inDiagram(node) {
-  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-  return Boolean(element?.closest(".cl-diagram"));
+function elementOf(node) {
+  return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+}
+
+function outsideIndex(node) {
+  return Boolean(elementOf(node)?.closest(`.cl-diagram, ${QUIZ_RUNTIME_UI}`));
+}
+
+/**
+ * The quiz and question a highlight sits in, or null for lesson text. The teacher
+ * needs it: before grading, an answer about a quiz question must not solve it.
+ */
+function quizRefFor(range) {
+  for (const node of [range.startContainer, range.endContainer]) {
+    const element = elementOf(node);
+    const form = element?.closest("form.cl-quiz");
+    if (!form?.dataset.quizId) continue;
+    return {
+      quizId: form.dataset.quizId,
+      questionId: element.closest(".cl-q")?.dataset.questionId ?? null,
+    };
+  }
+  return null;
 }
 
 /** Place an absolutely-positioned element at viewport coords, clamped on-screen. */
@@ -355,7 +399,10 @@ function position(element, viewportLeft, viewportTop) {
  * needs no repositioning on scroll or resize, and works the same at every width.
  */
 function placeCardInFlow(panel, mark) {
-  const anchor = blockAncestor(mark) ?? mark;
+  // In a quiz, a card goes after the whole question. Inside it, the card's fields
+  // would be locked, cleared, and read as answers along with the question's own.
+  const question = mark.parentElement?.closest("form.cl-quiz .cl-q");
+  const anchor = question ?? blockAncestor(mark) ?? mark;
   if (anchor.parentNode) anchor.after(panel);
   else contentRoot.appendChild(panel);
 }
@@ -549,6 +596,7 @@ async function onAskSubmit(event) {
     return;
   }
   const range = pendingRange.cloneRange();
+  const quiz = quizRefFor(range);
   await flushDraft("ask");
   closeComposer();
 
@@ -564,6 +612,7 @@ async function onAskSubmit(event) {
         question,
         selection: selector.exact,
         anchor: selector,
+        quiz,
       }),
     });
     if (!response.ok) throw new Error(await response.text());
@@ -606,6 +655,8 @@ function wrapRange(range, annotationId) {
   for (const mark of marks) {
     mark.addEventListener("click", (event) => {
       event.stopPropagation();
+      // A highlight in an option's label opens its card. It does not choose the option.
+      if (mark.closest("label")) event.preventDefault();
       toggleCard(annotationId);
     });
   }
@@ -1176,9 +1227,12 @@ function hydrateQuizzes() {
 
     for (const question of form.querySelectorAll(".cl-q")) enhanceQuestion(form, question);
     form.dataset.state = "fresh";
-    form.addEventListener("submit", (event) => onQuizSubmit(event, form));
-    const saveQuiz = () => {
-      if (form.dataset.state !== "fresh") return;
+    // A question card inside the quiz has its own form. Its events bubble here.
+    form.addEventListener("submit", (event) => {
+      if (event.target === form) onQuizSubmit(event, form);
+    });
+    const saveQuiz = (event) => {
+      if (form.dataset.state !== "fresh" || event.target.closest(".cl-card-panel")) return;
       scheduleDraft(
         `quiz:${form.dataset.quizId}`,
         () => quizDraft(form),
@@ -1467,14 +1521,21 @@ async function onQuizSubmit(event, form) {
   const questions = [...form.querySelectorAll(".cl-q")];
   const answers = [];
   let missing = 0;
-  for (const [i, question] of questions.entries()) {
-    const result = collectAnswer(question);
-    if (result.invalid) {
-      setQuizStatus(form, `Question ${i + 1}: ${result.invalid}`);
-      return;
+  // A question card leaves a marker in the question text. The marker is not part of
+  // the question, so it is taken out while the answers are read.
+  const putMarkersBack = detachMarkers(form);
+  try {
+    for (const [i, question] of questions.entries()) {
+      const result = collectAnswer(question);
+      if (result.invalid) {
+        setQuizStatus(form, `Question ${i + 1}: ${result.invalid}`);
+        return;
+      }
+      if (result.missing) missing += 1;
+      else answers.push(result.answer);
     }
-    if (result.missing) missing += 1;
-    else answers.push(result.answer);
+  } finally {
+    putMarkersBack();
   }
   if (missing > 0) {
     setQuizStatus(form, `Answer every question first (${missing} left).`);
@@ -1522,6 +1583,19 @@ async function onQuizSubmit(event, form) {
   applyQuizState({ submission, grade: null, attempts: submission.attempt });
 }
 
+/** Remove the card markers inside an element. Returns a function that restores them. */
+function detachMarkers(element) {
+  const markers = [...element.querySelectorAll(".cl-badge-marker")].map((marker) => ({
+    marker,
+    parent: marker.parentNode,
+    next: marker.nextSibling,
+  }));
+  for (const { marker } of markers) marker.remove();
+  return () => {
+    for (const { marker, parent, next } of markers.reverse()) parent.insertBefore(marker, next);
+  };
+}
+
 function setQuizState(form, state) {
   form.dataset.state = state;
   const locked = state !== "fresh";
@@ -1533,7 +1607,10 @@ function setQuizState(form, state) {
   for (const segment of form.querySelectorAll(".cl-segment")) {
     segment.setAttribute("tabindex", locked ? "-1" : "0");
   }
-  const submit = form.querySelector('button[type="submit"], .cl-submit');
+  // In the footer: a question card in the quiz has a submit button of its own.
+  const submit = form.querySelector(
+    '.cl-quiz-footer button[type="submit"], .cl-quiz-footer .cl-submit',
+  );
   if (submit) {
     submit.disabled = locked;
     if (state === "graded") submit.textContent = "Graded";
@@ -1672,6 +1749,7 @@ function applyQuizState(state) {
   form.dataset.submissionId = submission.id;
   form.dataset.submittedAt = String(submission.submittedAt);
   form.dataset.attempts = String(attempts);
+  placeTeacherPanel();
 
   // Clear first: a grade can arrive for an attempt the form is already showing.
   form.querySelector("[data-cl-grade]")?.remove();
@@ -2274,89 +2352,186 @@ function cssEscape(value) {
   return String(value).replace(/["\\\]\[]/g, "\\$&");
 }
 
-// ── Bootstrap ─────────────────────────────────────────────────────────────────
+// ── Teacher panel ─────────────────────────────────────────────────────────────
 
-// Runs last on purpose: init() touches the module's `let` bindings, which are in the
-// temporal dead zone until their declarations above have been evaluated.
-if (config) init();
-
-// Dedicated teacher chat stays available after the initiating chat ends.
+/**
+ * The conversation with the teacher about this lesson. Quiz feedback, the follow-up
+ * question for a missed idea, and the learner's replies all happen here, so the
+ * learner never has to go back to the terminal to keep learning.
+ *
+ * It sits right after the quiz the learner last handed in, because that is where they
+ * are looking when the teacher answers. Before any quiz, it sits at the end.
+ */
 let teacherPanel = null;
 let teacherReplyId = null;
+/** Teacher messages already shown. Null until the first render. */
+let teacherSeen = null;
+let teacherNotice = null;
+
+/** What the panel says while a request runs. Cards show their own progress. */
+const TEACHER_WORKING = {
+  quiz: "Your teacher is grading your quiz…",
+  reflect: "Your teacher is reading your explanation…",
+  chat: "Your teacher is replying…",
+};
+
 function renderTeacher(state) {
   if (!state) return;
-  if (!teacherPanel) {
-    teacherPanel = document.createElement("section");
-    teacherPanel.className = "cl-teacher";
-    teacherPanel.innerHTML =
-      '<h2>Your teacher</h2><p class="cl-teacher-identity"></p><div class="cl-teacher-messages" aria-live="polite"></div><div class="cl-teacher-requests" aria-live="polite"></div><form><label>Reply to your teacher<textarea required maxlength="8000"></textarea></label><button class="cl-button" type="submit">Send reply</button><p class="cl-teacher-error" role="alert"></p></form>';
-    document.body.appendChild(teacherPanel);
-    teacherPanel.querySelector("form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const field = teacherPanel.querySelector("textarea"),
-        button = teacherPanel.querySelector('button[type="submit"]');
-      teacherReplyId ??= crypto.randomUUID();
-      button.disabled = true;
-      await flushDraft("teacher");
-      try {
-        await teacherPost("chat", { text: field.value, id: teacherReplyId });
-        field.value = "";
-        teacherReplyId = null;
-        teacherPanel.querySelector(".cl-teacher-error").textContent = "";
-      } catch (err) {
-        teacherPanel.querySelector(".cl-teacher-error").textContent = err.message;
-      } finally {
-        button.disabled = false;
-      }
-    });
-    teacherPanel.querySelector("textarea").addEventListener("input", (event) => {
-      teacherReplyId = null;
-      const field = event.currentTarget;
-      scheduleDraft(
-        "teacher",
-        () => (field.value.trim() ? field.value : null),
-        draftStatus((text) => {
-          teacherPanel.querySelector(".cl-teacher-error").textContent = text;
-        }, ""),
-      );
-    });
-  }
+  if (!teacherPanel) buildTeacherPanel();
+  placeTeacherPanel();
   teacherPanel.querySelector(".cl-teacher-identity").textContent =
-    `${state.identity.backend} teacher. Session: ${state.identity.sessionId || "Starts with your first request"}.`;
+    state.identity.backend === "pi"
+      ? "Your teacher is the Pi session that opened this classroom."
+      : `${state.identity.backend} teacher. Session: ${state.identity.sessionId || "Starts with your first request"}.`;
+
   const messages = teacherPanel.querySelector(".cl-teacher-messages");
   messages.replaceChildren();
   for (const message of state.messages) {
-    const item = document.createElement("p");
-    item.style.whiteSpace = "pre-wrap";
-    item.textContent = `${message.role === "teacher" ? "Teacher" : "You"}: ${message.text}`;
+    const item = document.createElement("div");
+    item.className = "cl-teacher-message";
+    item.dataset.role = message.role;
+    const who = document.createElement("span");
+    who.className = "cl-teacher-who";
+    who.textContent = message.role === "teacher" ? "Teacher" : "You";
+    const body = document.createElement("div");
+    body.className = "cl-teacher-body";
+    // innerHTML is safe here: teacher markdown was rendered server-side. The
+    // learner's own text is set as text.
+    if (message.role === "teacher" && message.html) body.innerHTML = message.html;
+    else body.textContent = message.text;
+    item.append(who, body);
     messages.appendChild(item);
   }
+
   const requests = teacherPanel.querySelector(".cl-teacher-requests");
   requests.replaceChildren();
   for (const request of state.requests.filter((r) => r.status !== "done")) {
+    if (request.status !== "failed" && !TEACHER_WORKING[request.kind]) continue;
     const item = document.createElement("p");
-    item.textContent =
-      request.status === "failed"
-        ? `Teacher failed: ${request.error}`
-        : `${request.kind}: ${request.status}`;
-    if (request.status === "failed") {
-      const retry = document.createElement("button");
-      retry.className = "cl-button";
-      retry.textContent = "Retry request";
-      retry.onclick = async () => {
-        retry.disabled = true;
-        try {
-          await teacherPost("retry", { id: request.id });
-        } catch (err) {
-          teacherPanel.querySelector(".cl-teacher-error").textContent = err.message;
-          retry.disabled = false;
-        }
-      };
-      item.appendChild(retry);
+    item.className = "cl-teacher-request";
+    if (request.status !== "failed") {
+      item.innerHTML = '<span class="cl-spinner"></span> ';
+      item.append(TEACHER_WORKING[request.kind]);
+      requests.appendChild(item);
+      continue;
     }
+    item.textContent = `Teacher failed: ${request.error}`;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "cl-button";
+    retry.textContent = "Retry request";
+    retry.onclick = async () => {
+      retry.disabled = true;
+      try {
+        await teacherPost("retry", { id: request.id });
+      } catch (err) {
+        teacherPanel.querySelector(".cl-teacher-error").textContent = err.message;
+        retry.disabled = false;
+      }
+    };
+    item.appendChild(retry);
     requests.appendChild(item);
   }
+
+  const teacherCount = state.messages.filter((m) => m.role === "teacher").length;
+  if (teacherSeen !== null && teacherCount > teacherSeen && !onScreen(teacherPanel)) {
+    showTeacherNotice();
+  }
+  teacherSeen = teacherCount;
 }
+
+function buildTeacherPanel() {
+  teacherPanel = document.createElement("section");
+  teacherPanel.className = "cl-teacher";
+  teacherPanel.setAttribute("aria-label", "Your teacher");
+  teacherPanel.innerHTML = `
+    <h2>Your teacher</h2>
+    <p class="cl-teacher-identity"></p>
+    <p class="cl-teacher-hint">Feedback and follow-up questions appear here. Answer them here too.</p>
+    <div class="cl-teacher-messages" aria-live="polite"></div>
+    <div class="cl-teacher-requests" aria-live="polite"></div>
+    <form>
+      <label>Reply to your teacher<textarea required maxlength="8000"></textarea></label>
+      <div class="cl-card-form-actions">
+        <span class="cl-hint">⌘/Ctrl + Enter to send</span>
+        <button class="cl-button" type="submit">Send reply</button>
+      </div>
+      <p class="cl-teacher-error" role="alert"></p>
+    </form>`;
+  const form = teacherPanel.querySelector("form");
+  const field = teacherPanel.querySelector("textarea");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    teacherReplyId ??= crypto.randomUUID();
+    button.disabled = true;
+    await flushDraft("teacher");
+    try {
+      await teacherPost("chat", { text: field.value, id: teacherReplyId });
+      field.value = "";
+      teacherReplyId = null;
+      teacherPanel.querySelector(".cl-teacher-error").textContent = "";
+    } catch (err) {
+      teacherPanel.querySelector(".cl-teacher-error").textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  field.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  field.addEventListener("input", () => {
+    teacherReplyId = null;
+    scheduleDraft(
+      "teacher",
+      () => (field.value.trim() ? field.value : null),
+      draftStatus((text) => {
+        teacherPanel.querySelector(".cl-teacher-error").textContent = text;
+      }, ""),
+    );
+  });
+}
+
+/** Put the panel after the quiz handed in last, or at the end of the lesson. */
+function placeTeacherPanel() {
+  if (!teacherPanel) return;
+  const latest = quizForms()
+    .filter((form) => form.dataset.submittedAt)
+    .sort((a, b) => Number(b.dataset.submittedAt) - Number(a.dataset.submittedAt))[0];
+  if (latest) {
+    if (latest.nextElementSibling !== teacherPanel) latest.after(teacherPanel);
+  } else if (!teacherPanel.isConnected) {
+    contentRoot.appendChild(teacherPanel);
+  }
+}
+
+function onScreen(element) {
+  const rect = element.getBoundingClientRect();
+  return rect.bottom > 0 && rect.top < window.innerHeight;
+}
+
+/** A teacher reply arrived out of view. Say so, without moving the page. */
+function showTeacherNotice() {
+  if (!teacherNotice) {
+    teacherNotice = document.createElement("button");
+    teacherNotice.type = "button";
+    teacherNotice.className = "cl-teacher-notice";
+    teacherNotice.textContent = "Your teacher replied ↓";
+    teacherNotice.addEventListener("click", () => {
+      teacherNotice.hidden = true;
+      teacherPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    document.body.appendChild(teacherNotice);
+    new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) teacherNotice.hidden = true;
+    }).observe(teacherPanel);
+  }
+  teacherNotice.hidden = false;
+}
+
 async function teacherPost(action, body) {
   const response = await fetch(`/api/teacher/${action}`, {
     method: "POST",
@@ -2367,3 +2542,9 @@ async function teacherPost(action, body) {
   if (!response.ok) throw new Error(result.error || `Teacher request returned ${response.status}`);
   return result;
 }
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
+// Runs last on purpose: init() touches the module's `let` bindings, which are in the
+// temporal dead zone until their declarations above have been evaluated.
+if (config) init();

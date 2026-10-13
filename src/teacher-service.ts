@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
-import { applyTurnAnswer } from "./bridge.ts";
+import { applyTurnAnswer, withHtml } from "./bridge.ts";
 import { classroomDir, lessonDir, safeStaticFile } from "./paths.ts";
 import { stageLesson } from "./pretest.ts";
 import {
@@ -180,7 +180,7 @@ export class TeacherService {
       requests: state.requests
         .filter((r) => r.lesson === lesson)
         .map((r) => ({ id: r.id, kind: r.kind, status: r.status, error: r.error })),
-      messages: state.messages.filter((m) => m.lesson === lesson),
+      messages: state.messages.filter((m) => m.lesson === lesson).map(withHtml),
     };
   }
   private publish(classroom: string, lesson: string): void {

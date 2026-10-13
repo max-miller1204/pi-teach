@@ -6,7 +6,7 @@ import { dedicatedTeacherPrompt, gradePrompt } from "../src/prompts.ts";
 import { classroomTools, PI_HOST, isFailure } from "../src/tools.ts";
 import { runTeacher } from "../src/teacher.ts";
 import * as store from "../src/store.ts";
-import { parseHarness } from "./harness.ts";
+import { parseHarness, useTestModel } from "./harness.ts";
 
 const backend = parseHarness(
   process.argv[2],
@@ -98,6 +98,7 @@ fixture.write(
   JSON.stringify({ title: "Feedback evaluation", assessmentContract: 1 }),
 );
 fixture.write("rust/001-ownership/quiz/key.json", JSON.stringify(rubric));
+const restoreModel = useTestModel(backend);
 try {
   const submission = store.createSubmission({
     classroom: "rust",
@@ -168,4 +169,5 @@ try {
   console.log(JSON.stringify(report, null, 2));
 } finally {
   fixture.cleanup();
+  restoreModel();
 }

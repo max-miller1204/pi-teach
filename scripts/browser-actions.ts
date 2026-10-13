@@ -22,3 +22,11 @@ export async function highlightText(page: any, selector: string, phrase: string)
   if ((await page.evaluate(() => getSelection()!.toString())) !== phrase)
     throw new Error(`Mouse selection did not select ${phrase}.`);
 }
+
+/** Keep a restored locate answer selected during the authoring evaluation. */
+export async function selectLocateAnswer(segment: {
+  getAttribute(name: string): Promise<string | null>;
+  click(): Promise<void>;
+}): Promise<void> {
+  if ((await segment.getAttribute("aria-pressed")) !== "true") await segment.click();
+}

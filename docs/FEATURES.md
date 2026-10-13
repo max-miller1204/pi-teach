@@ -84,8 +84,13 @@ the top. Submissions and grades live in the lesson directory, so a reload brings
 thing back.
 
 After a wrong answer, the teacher explains the missed idea and asks a new question
-in your Pi chat or the lesson's teacher panel in Claude Code and Codex.
-Reply there so the teacher can check your understanding before moving on.
+in the lesson's teacher panel, right under the quiz. Reply there so the teacher can
+check your understanding before moving on. You only go back to the chat to start a
+new lesson.
+
+You can highlight the text of a quiz question or option and ask about it, just like
+lesson text. Before the quiz is graded, the teacher clarifies the question without
+giving the answer away.
 
 ![A graded quiz showing 92%, overall feedback, and per-question verdicts](../screenshots/quiz.png)
 

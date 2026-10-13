@@ -43,6 +43,10 @@ export default function classroomExtension(pi: ExtensionAPI): void {
     onFollowUp: (annotation, followUp) => bridge.followUp(annotation, followUp),
     onQuizSubmit: (submission) => bridge.grade(submission),
     onReflect: (reflection) => bridge.reflect(reflection),
+    // The teacher panel: grades, retrieval questions, and replies stay on the page.
+    teacherState: (classroom, lesson) => bridge.panelState(classroom, lesson),
+    onTeacherChat: (classroom, lesson, text, id) => bridge.chat(classroom, lesson, text, id),
+    onTeacherRetry: (classroom, id) => bridge.retry(classroom, id),
   });
 
   registerClassroomTools(pi);

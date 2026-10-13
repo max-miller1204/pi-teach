@@ -85,7 +85,7 @@ describe("waking the agent", () => {
     expect(text).toContain("What about borrows?"); // the new question
   });
 
-  it("shows the teacher a saved self-explanation and records a foreign origin", () => {
+  it("shows the teacher a saved self-explanation and never fills a card with the reply", () => {
     const reflection = store.createReflection({
       classroom: "rust",
       lesson: "001-ownership",
@@ -141,7 +141,7 @@ describe("agent_end fallback", () => {
     bridge.ask(annotation);
     applyAnswer(annotation.id, "The real answer.");
 
-    bridge.onAgentEnd(assistantRun("Done — I've answered that in the card."));
+    bridge.onAgentEnd(assistantRun("Done : I've answered that in the card."));
 
     expect(store.findAnnotation(annotation.id)!.answerMarkdown).toBe("The real answer.");
   });
@@ -215,14 +215,14 @@ describe("agent_end fallback", () => {
     bridge.followUp(followUp.annotation, followUp.followUp);
     applyAnswer(card.id, "The real follow-up answer."); // routed to the pending turn
 
-    bridge.onAgentEnd(assistantRun("Done — answered in the card."));
+    bridge.onAgentEnd(assistantRun("Done : answered in the card."));
 
     expect(store.findAnnotation(card.id)!.followUps![0].answerMarkdown).toBe(
       "The real follow-up answer.",
     );
   });
 
-  it("never invents a grade from prose — grading only happens through the tool", () => {
+  it("never invents a grade from prose : grading only happens through the tool", () => {
     const submission = store.createSubmission({
       classroom: "rust",
       lesson: "001-ownership",
@@ -240,6 +240,127 @@ describe("agent_end fallback", () => {
 
   it("ignores an agent_end with no queued origin at all", () => {
     expect(() => bridge.onAgentEnd(assistantRun("Unrelated turn."))).not.toThrow();
+  });
+});
+
+describe("teacher panel", () => {
+  const panel = () =>
+    bridge.panelState("rust", "001-ownership") as {
+      identity: { backend: string };
+      requests: Array<{ id: string; kind: string; status: string; error?: string }>;
+      messages: Array<{ role: string; text: string; html?: string }>;
+    };
+
+  function submit(): store.QuizSubmission {
+    return store.createSubmission({
+      classroom: "rust",
+      lesson: "001-ownership",
+      quizId: "check-1",
+      quizTitle: "Check",
+      kind: "check",
+      answers: [{ questionId: "q1", value: "a" }],
+    });
+  }
+
+  it("posts the grading run's retrieval question to the panel, not the terminal", () => {
+    const submission = submit();
+    bridge.grade(submission);
+    applyGrade(submission, {
+      score: 0,
+      feedbackMarkdown: "Check the owner.",
+      questions: [{ questionId: "q1", correct: false, feedback: "Check the owner." }],
+    });
+    expect(sent[0].text).toContain("teacher panel");
+    expect(panel().requests).toMatchObject([{ kind: "quiz", status: "running" }]);
+
+    bridge.onAgentEnd(assistantRun("Close. **Which** owner frees the value?"));
+
+    const state = panel();
+    expect(state.identity.backend).toBe("pi");
+    expect(state.requests).toEqual([]);
+    expect(state.messages).toMatchObject([
+      { role: "teacher", text: "Close. **Which** owner frees the value?" },
+    ]);
+    expect(state.messages[0].html).toContain("<strong>Which</strong>");
+  });
+
+  it("sends a panel reply with the conversation it answers, and posts the answer back", () => {
+    const submission = submit();
+    bridge.grade(submission);
+    applyGrade(submission, {
+      score: 0,
+      feedbackMarkdown: "Check the owner.",
+      questions: [{ questionId: "q1", correct: false, feedback: "Check the owner." }],
+    });
+    bridge.onAgentEnd(assistantRun("Which owner frees the value?"));
+    const id = "6f1c3c2e-8a8e-4b7e-9d43-0a3f1f0b7c11";
+
+    bridge.chat("rust", "001-ownership", "The last one in scope.", id);
+
+    const prompt = sent[1].text;
+    expect(prompt).toContain("Which owner frees the value?");
+    expect(prompt).toContain("The last one in scope.");
+    expect(prompt).toContain("record_retrieval_check");
+    expect(panel().requests).toMatchObject([{ kind: "chat", status: "running" }]);
+
+    bridge.onAgentEnd(assistantRun("Yes. The owner drops it."));
+    expect(panel().messages.map((m) => [m.role, m.text])).toEqual([
+      ["teacher", "Which owner frees the value?"],
+      ["learner", "The last one in scope."],
+      ["teacher", "Yes. The owner drops it."],
+    ]);
+  });
+
+  it("does not wake the agent twice when the page resends a reply", () => {
+    const id = "6f1c3c2e-8a8e-4b7e-9d43-0a3f1f0b7c12";
+    bridge.chat("rust", "001-ownership", "Hello?", id);
+    bridge.chat("rust", "001-ownership", "Hello?", id);
+    expect(sent).toHaveLength(1);
+    expect(panel().messages).toHaveLength(1);
+  });
+
+  it("offers a retry when a reply run ends without text, and sends it again", () => {
+    bridge.chat("rust", "001-ownership", "Hello?", "6f1c3c2e-8a8e-4b7e-9d43-0a3f1f0b7c13");
+    bridge.onAgentEnd([]);
+    const [failed] = panel().requests;
+    expect(failed).toMatchObject({ kind: "chat", status: "failed" });
+
+    bridge.retry("rust", failed.id);
+    expect(sent).toHaveLength(2);
+    expect(sent[1].text).toBe(sent[0].text);
+    expect(panel().requests).toMatchObject([{ status: "running" }]);
+    expect(() => bridge.retry("rust", failed.id)).toThrow();
+  });
+
+  it.each(["", "Your answer needs work."])(
+    "requires an explicit retry when a quiz run has no grade and prose is %j",
+    (text) => {
+      const submission = submit();
+      bridge.grade(submission);
+      bridge.onAgentEnd(assistantRun(text));
+      const [failed] = panel().requests;
+      expect(failed).toMatchObject({
+        status: "failed",
+        error: "Your teacher finished without grading this quiz.",
+      });
+      expect(store.listGrades(submission.classroom, submission.lesson)).toEqual([]);
+      expect(panel().messages).toEqual([]);
+      bridge.retry(submission.classroom, failed.id);
+      expect(panel().requests).toMatchObject([{ status: "running" }]);
+      expect(sent).toHaveLength(2);
+    },
+  );
+
+  it("never offers to grade a quiz again when the grade was written without a reply", () => {
+    const submission = submit();
+    bridge.grade(submission);
+    applyGrade(submission, {
+      score: 100,
+      feedbackMarkdown: "All right.",
+      questions: [{ questionId: "q1", correct: true, feedback: "Right." }],
+    });
+    bridge.onAgentEnd([]);
+    expect(panel().requests).toEqual([]);
   });
 });
 

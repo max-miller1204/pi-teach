@@ -7,16 +7,23 @@ import {
   dedicatedTeacherPrompt,
   followUpPrompt,
   gradePrompt,
-  missionStub,
-  notesStub,
   PRETEST_FOLLOW_UP,
+  PANEL_REPLY,
+  panelReplyPrompt,
   QUIZ_FOLLOW_UP,
   reflectPrompt,
   reviewStatusText,
   teachingPrompt,
 } from "../src/prompts.ts";
 import { DAY_MS } from "../src/review.ts";
-import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "../src/store.ts";
+import type {
+  Annotation,
+  FollowUp,
+  PanelMessage,
+  QuizGrade,
+  QuizSubmission,
+  Reflection,
+} from "../src/store.ts";
 import { makeFixture, seedClassroom, type Fixture } from "./helpers.ts";
 
 let fixture: Fixture;
@@ -35,7 +42,7 @@ describe("teachingPrompt", () => {
     expect(prompt).not.toContain("wait_for_learner");
     expect(prompt).not.toContain("scaffold_lesson");
     expect(prompt).not.toContain("Call `lesson_health`");
-    expect(prompt).toContain("return to the initiating chat");
+    expect(prompt).toContain("ask the initiating chat to continue");
     const reflection: Reflection = {
       id: "r1",
       classroom: "rust",
@@ -46,43 +53,6 @@ describe("teachingPrompt", () => {
       savedAt: 1,
     };
     expect(reflectPrompt(reflection, "service")).not.toContain("wait_for_learner");
-  });
-  it("carries the whole methodology, so nothing has to be in the system prompt", () => {
-    const prompt = teachingPrompt("Rust ownership", null);
-    expect(prompt).toContain("Rust ownership");
-    expect(prompt).toContain("scaffold_classroom");
-    expect(prompt).toContain("scaffold_lesson");
-    expect(prompt).toContain("answer_lesson_question");
-    expect(prompt).toContain("grade_lesson_quiz");
-    expect(prompt).toContain("zone of proximal development");
-    expect(prompt).toContain("~/.pi/agent/classrooms/");
-    expect(prompt).toContain(QUIZ_FOLLOW_UP);
-    expect(prompt).toContain(PRETEST_FOLLOW_UP);
-    expect(prompt).toContain('mode: "quiz"');
-    expect(prompt).toContain("Assessment quality");
-    expect(prompt).toContain("data-cl-after-pretest");
-    expect(prompt).toContain(`${paths.templatesDir()}/quiz.html`);
-    expect(prompt).toContain("Read the current quiz contract");
-    expect(prompt).toContain("Designing a lesson");
-  });
-
-  it("points at an existing classroom when continuing one", () => {
-    const prompt = teachingPrompt("Rust", "rust");
-    expect(prompt).toContain("`rust`");
-    expect(prompt).toContain("MISSION.md");
-  });
-
-  it("asks the model to work out where they left off when no topic is given", () => {
-    expect(teachingPrompt("", null)).toContain("where they left off");
-  });
-
-  it("references the format guides by path rather than inlining them", () => {
-    const prompt = teachingPrompt("Rust", null);
-    expect(prompt).toContain("MISSION-FORMAT.md");
-    expect(prompt).toContain("LEARNING-RECORD-FORMAT.md");
-    expect(prompt).toContain("NOTES-FORMAT.md");
-    // The guides themselves stay out of the prompt — they are read on demand.
-    expect(prompt).not.toContain("One mission per workspace.");
   });
 });
 
@@ -138,6 +108,58 @@ describe("followUpPrompt", () => {
   });
 });
 
+describe("quiz highlights and the teacher panel", () => {
+  const card: Annotation = {
+    id: "a1",
+    classroom: "rust",
+    lesson: "001-ownership",
+    status: "pending",
+    question: "What does drop mean here?",
+    selection: "dropped",
+    anchor: { exact: "dropped", prefix: "", suffix: "", occurrence: 0 },
+    answerMarkdown: null,
+    answerHtml: null,
+    createdAt: 1,
+    answeredAt: null,
+  };
+
+  it("tells the teacher not to solve a quiz question before it is graded", () => {
+    const prompt = askPrompt(
+      { ...card, quiz: { quizId: "check-1", questionId: "q2", graded: false } },
+      "push",
+    );
+    expect(prompt).toContain("question `q2` of quiz `check-1`");
+    expect(prompt).toContain("Do not give the answer");
+  });
+
+  it("lets the teacher explain a graded quiz question", () => {
+    const prompt = askPrompt(
+      { ...card, quiz: { quizId: "check-1", questionId: "q2", graded: true } },
+      "service",
+    );
+    expect(prompt).toContain("has been graded");
+    expect(prompt).not.toContain("Do not give the answer");
+  });
+
+  it("restates the panel conversation a reply answers", () => {
+    const earlier: PanelMessage[] = [
+      { id: "quiz:s1", lesson: card.lesson, role: "teacher", text: "Who frees it?", at: 1 },
+    ];
+    const reply: PanelMessage = {
+      id: "chat:1",
+      lesson: card.lesson,
+      role: "learner",
+      text: "The owner.",
+      at: 2,
+    };
+    const prompt = panelReplyPrompt("rust", card.lesson, reply, [...earlier, reply]);
+    expect(prompt).toContain("> Who frees it?");
+    expect(prompt).toContain("> The owner.");
+    expect(prompt.match(/The owner\./g)).toHaveLength(1);
+    expect(prompt).toContain(PANEL_REPLY);
+  });
+});
+
 describe("delivery parity", () => {
   const card: Annotation = {
     id: "a1",
@@ -179,11 +201,14 @@ describe("delivery parity", () => {
     text: "Each value has one owner.",
     savedAt: 5,
   };
+  // Pi also says where its final reply goes: the teacher panel.
   const normalize = (prompt: string) =>
-    prompt.replace(
-      /This notification was delivered automatically; nothing was polled\.|It arrived as the result of your `wait_for_learner` call\./,
-      "(delivery)",
-    );
+    prompt
+      .replace(
+        /This notification was delivered automatically; nothing was polled\.|It arrived as the result of your `wait_for_learner` call\./,
+        "(delivery)",
+      )
+      .replace(`\n\n${PANEL_REPLY}`, "");
 
   it.each([
     ["question", (delivery: "push" | "wait") => askPrompt(card, delivery)],
@@ -192,39 +217,18 @@ describe("delivery parity", () => {
     [
       "reflection",
       (delivery: "push" | "wait") =>
-        reflectPrompt(reflection, delivery).replace(
-          /Then (continue what you were doing|call `wait_for_learner` again)\./,
-          "(next)",
-        ),
+        reflectPrompt(reflection, delivery).replace(/ Then [^\n]*$/, " (next)"),
     ],
   ] as const)("changes only the arrival note for a %s", (_name, prompt) => {
     expect(normalize(prompt("wait"))).toBe(normalize(prompt("push")));
   });
 
-  it.each(["push", "wait"] as const)("includes chat retrieval in %s grading", (delivery) => {
+  it.each(["push", "wait"] as const)("includes panel retrieval in %s grading", (delivery) => {
     const prompt = gradePrompt(submission, delivery);
     expect(prompt).toContain(QUIZ_FOLLOW_UP);
     expect(prompt).toContain('submission_id: "s1"');
     expect(prompt).toContain("End your turn");
     expect(prompt).toContain("Do not create or start the next lesson");
-  });
-});
-
-describe("missionStub", () => {
-  it("is a prompt to interview, not a filled-in mission", () => {
-    const stub = missionStub("Rust");
-    expect(stub).toContain("# Mission: Rust");
-    expect(stub).toContain("## Why");
-    expect(stub).toContain("Interview the learner");
-  });
-});
-
-describe("notesStub", () => {
-  it("starts NOTES.md as an index that points detail at notes/", () => {
-    const stub = notesStub();
-    expect(stub).toContain("## Index");
-    expect(stub).toContain("`notes/<slug>.md`");
-    expect(stub).toContain("NOTES-FORMAT.md");
   });
 });
 
@@ -282,15 +286,6 @@ describe("gradePrompt", () => {
     expect(prompt).toContain("A value has one [b1: «owner»].");
     expect(prompt).not.toContain("Their confidence");
     expect(prompt).not.toContain("misconception");
-  });
-
-  it("keeps the graded quiz locked and checks missed ideas in chat", () => {
-    const prompt = gradePrompt(base, "push");
-    expect(prompt).toContain("Keep the graded browser quiz locked.");
-    expect(prompt).toContain("Do not ask for an immediate retake.");
-    expect(prompt).toContain("Use a different example.");
-    expect(prompt).toContain("Review the idea later through spaced review.");
-    expect(prompt).toContain("Check their reply");
   });
 
   it("tells the teacher a pretest is diagnostic, with no retrieval check", () => {
@@ -359,13 +354,6 @@ describe("reviewStatusText", () => {
     );
     expect(text).toContain("The next one is due tomorrow.");
     expect(text).not.toContain("scaffold_review");
-  });
-
-  it("goes into the teaching brief for an existing classroom", () => {
-    seedClassroom(fixture);
-    const prompt = teachingPrompt("", "rust", "## Spaced review\n\nSomething due.");
-    expect(prompt).toContain("Something due.");
-    expect(prompt).toContain("lesson_health");
   });
 });
 

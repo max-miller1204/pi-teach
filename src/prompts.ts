@@ -14,7 +14,14 @@ import * as path from "node:path";
 import { assetsDir, classroomDir, docsDir, lessonDir, templatesDir } from "./paths.ts";
 import { answerDetail, answersByQuestion, kindOf } from "./quiz.ts";
 import { relativeDay, type ReviewSummary } from "./review.ts";
-import type { Annotation, FollowUp, QuizGrade, QuizSubmission, Reflection } from "./store.ts";
+import type {
+  Annotation,
+  FollowUp,
+  PanelMessage,
+  QuizGrade,
+  QuizSubmission,
+  Reflection,
+} from "./store.ts";
 
 /** Read a required teaching document. */
 function readDoc(name: string): string {
@@ -33,10 +40,10 @@ export function dedicatedTeacherPrompt(
     "Return only the structured service plan. Do not use shell, file, MCP, or browser tools. Allowed calls are answer_lesson_question, grade_lesson_quiz, and record_retrieval_check. The service applies them. For a passage answer, message may be empty. For grading, reflection, or a panel reply, message must give useful feedback or the next question. Use short sentences and active voice. Do not use an em dash.",
     "Use the teacher panel as chat. A wrong answer on a check or review needs a brief explanation and one new retrieval question. Do not give its answer. Wait for the learner's panel reply by returning the plan. Keep graded quizzes locked and preserve their scores. Use a different situation, not a leading paraphrase of the answer. A pretest asks about the upcoming lesson before instruction, unless explicitly requested as a prerequisite diagnostic. Wrong answers are expected. Give targeted emphasis or clarification in feedback. The gate releases prewritten teaching; you cannot rewrite it. Do not run a retrieval check after it. Direct the learner to teaching released after grading.",
     "Grade from the private rubric set before submission. Accept equivalent solutions. Apply partial credit to specific reasoning components. Confidence changes feedback only. Reinforce a correct but uncertain answer with an explanation. Never change credit because of confidence or assistance. Distinguish assisted, immediate independent, delayed retrieval, and transfer evidence. Supply points for every question when the request names the validated assessment contract. Do not invent criteria or change weights. Feedback may explain submitted answers. Before submission, clarify instructions without solving the assessment. Never quote the whole private rubric. Use only teaching released by the pretest gate.",
-    "lessonStage.gatedPretests names the pretests that release teaching. lessonStage.pendingPretests names those still awaiting grading. If the submitted pretest is gated, direct the learner to teaching released after grading. The service deliberately removes that teaching from your current HTML context. Do not claim that teaching is missing. For a standalone pretest, offer a lesson through the initiating chat.",
-    "Write learning_record only for demonstrated understanding. A successful chat retrieval check also needs record_retrieval_check with its original review key, actual learner reply, and evidence. Use assistance unknown unless the learner states how they answered. Never infer independence from correctness. Label immediate corrections honestly. The service supplies the record file name. Correct quiz work may support a record for fully credited questions. Cite each supported question as quiz-id/question-id in the record. A pretest record describes correct prior knowledge only when answered without help. Label assistance and unknown context. Do not claim mastery from a reflection or from material merely covered.",
+    "lessonStage.gatedPretests names the pretests that release teaching. lessonStage.pendingPretests names those still awaiting grading. If the submitted pretest is gated, direct the learner to teaching released after grading. The service deliberately removes that teaching from your current HTML context. Do not claim that teaching is missing. For a standalone pretest, offer a lesson. The learner starts it from the initiating chat, for example with /teach.",
+    "Write learning_record only for demonstrated understanding. A successful panel retrieval check also needs record_retrieval_check with its original review key, actual learner reply, and evidence. Use assistance unknown unless the learner states how they answered. Never infer independence from correctness. Label immediate corrections honestly. The service supplies the record file name. Correct quiz work may support a record for fully credited questions. Cite each supported question as quiz-id/question-id in the record. A pretest record describes correct prior knowledge only when answered without help. Label assistance and unknown context. Do not claim mastery from a reflection or from material merely covered.",
     "Put a reflection gap or an explicitly skipped retrieval gap in notes_markdown. Otherwise leave notes_markdown empty. Leave learning_record empty when no evidence qualifies. Do not add records just to log activity.",
-    "You cannot create or advance lessons, change a page, or research new sources. When the learner agrees to continue or requests authoring, tell them to return to the initiating chat and ask to continue in this classroom. State the requested next objective and preserve their agreement. Do not pretend that a panel reply starts a new lesson.",
+    "You cannot create or advance lessons, change a page, or research new sources. When the learner agrees to continue or requests authoring, tell them to ask the initiating chat to continue in this classroom, for example with /teach. Starting a lesson is the only step that needs the chat. State the requested next objective and preserve their agreement. Do not pretend that a panel reply starts a new lesson.",
     "Learning record format:\n" + readDoc("LEARNING-RECORD-FORMAT.md"),
     "Tool definitions:\n" + JSON.stringify(definitions),
     `Request ${requestId}:\n${request}`,
@@ -58,9 +65,16 @@ function arrivalNote(delivery: Delivery): string {
     : "It arrived as the result of your `wait_for_learner` call.";
 }
 
+/**
+ * Where a teacher reply reaches the learner, for requests that have no card. The
+ * learner stays on the lesson page, so the reply goes to its teacher panel.
+ */
+export const PANEL_REPLY =
+  "The learner is on the lesson page and reads your reply in its teacher panel. Your final message in this turn is posted there as written, so address it to the learner. Do not ask them to answer in the terminal or chat: they reply in the panel, and that reply comes back to you.";
+
 /** The same quiz follow-up rule applies to every host. */
 export const QUIZ_FOLLOW_UP =
-  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question in chat about that idea. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's chat reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. Then call record_retrieval_check with the original review key, the active learning record file name, their actual chat answer, and the evidence. Ask them to report assistance. Use assistance unknown unless they state how they answered. Record task transfer only for a fresh unfamiliar application. Immediate correction does not establish retained knowledge. Do not change the quiz score. If every answer is correct, ask whether they are ready to continue before starting the next lesson.";
+  "If any answer is wrong, stay on this lesson. Explain the missed idea briefly, then ask one new retrieval question about that idea in the lesson's teacher panel. Use a different example. Keep the graded browser quiz locked. Do not ask for an immediate retake. Review the idea later through spaced review. Do not give its answer yet. End your turn and wait for the learner's panel reply. Check their reply and repeat with one question at a time until they demonstrate understanding. Do not create or start the next lesson during this check. If the learner asks to skip the check, record the unresolved gap in notes. A wrong answer alone is not evidence of learning. Write a learning record only after they demonstrate understanding. Then call record_retrieval_check with the original review key, the active learning record file name, their actual panel reply, and the evidence. Ask them to report assistance. Use assistance unknown unless they state how they answered. Record task transfer only for a fresh unfamiliar application. Immediate correction does not establish retained knowledge. Do not change the quiz score. If every answer is correct, ask in the panel whether they are ready to continue before starting the next lesson.";
 
 /** What to do after grading a pretest. Wrong answers are expected before teaching. */
 export const PRETEST_FOLLOW_UP =
@@ -194,6 +208,7 @@ export function askPrompt(annotation: Annotation, delivery: Delivery): string {
     `Lesson: \`${annotation.lesson}\` (${path.join(lessonDir(annotation.classroom, annotation.lesson), "lesson.html")})`,
     "",
     "Before an assessment is submitted, clarify instructions without solving its questions or quoting its private rubric. Do not expose answers through a passage card.",
+    ...quizContext(annotation),
     "They highlighted:",
     "",
     quote(annotation.selection),
@@ -206,6 +221,20 @@ export function askPrompt(annotation: Annotation, delivery: Delivery): string {
     "",
     `When you have the answer, call \`answer_lesson_question\` with \`annotation_id: "${annotation.id}"\` and your answer as markdown. That is what puts it on their screen : replying in chat alone will not reach them.`,
   ].join("\n");
+}
+
+/** What the teacher may say about a highlight inside a quiz. Empty for lesson text. */
+function quizContext(annotation: Annotation): string[] {
+  const quiz = annotation.quiz;
+  if (!quiz) return [];
+  const where = quiz.questionId
+    ? `question \`${quiz.questionId}\` of quiz \`${quiz.quizId}\``
+    : `the heading of quiz \`${quiz.quizId}\``;
+  return [
+    quiz.graded
+      ? `The highlight is in ${where}, which has been graded. You may explain the expected answer and why their answer earned the credit it did. Do not change the grade.`
+      : `The highlight is in ${where}, which has not been graded. Clarify what the question asks and the terms it uses. Do not give the answer, eliminate options, or hint at the solution.`,
+  ];
 }
 
 /**
@@ -250,6 +279,7 @@ export function followUpPrompt(
     quote(annotation.selection),
     "",
     "Before an assessment is submitted, clarify instructions without solving its questions or quoting its private rubric. Do not expose answers through a follow-up card.",
+    ...quizContext(annotation),
     "The thread so far:",
     "",
     ...earlier,
@@ -325,6 +355,7 @@ export function gradePrompt(
     `Then call \`grade_lesson_quiz\` with \`submission_id: "${submission.id}"\`, a \`score\` out of 100, short \`feedback_markdown\` covering the whole quiz, and a \`questions\` entry for every question id above. Set \`correct\` to true only for full credit. For partial credit or weighted questions, supply \`points_earned\` and \`points_possible\` for every question. The score must equal 100 times total earned points divided by total possible points. Integer rounding is allowed. With no points, answers use equal-weight binary grading. That is what renders the grade on their page.`,
     "",
     kind === "pretest" ? PRETEST_FOLLOW_UP : QUIZ_FOLLOW_UP,
+    ...(delivery === "push" ? ["", PANEL_REPLY] : []),
   ].join("\n");
 }
 
@@ -335,7 +366,7 @@ export function gradePrompt(
 export function reflectPrompt(reflection: Reflection, delivery: Delivery): string {
   const next =
     delivery === "push"
-      ? "Then continue what you were doing."
+      ? `Then reply to the learner in a sentence or two. ${PANEL_REPLY}`
       : delivery === "service"
         ? "Return the service plan. The service receives the next request."
         : "Then call `wait_for_learner` again.";
@@ -354,6 +385,44 @@ export function reflectPrompt(reflection: Reflection, delivery: Delivery): strin
     quote(reflection.text),
     "",
     `Do not grade it. Read it for what it shows about their understanding. If it shows a gap or a misconception, record it in the classroom notes and address it in the next lesson or check. A self-explanation alone does not establish mastery. Do not write a learning record without a verified retrieval check. ${next}`,
+  ].join("\n");
+}
+
+/** How many earlier panel messages a reply prompt restates. */
+const PANEL_HISTORY = 12;
+
+/**
+ * Sent when the learner replies in the teacher panel. Pi only: the service gives its
+ * teacher the whole conversation as context.
+ *
+ * The recent conversation is inlined because the reply ("a mutex", "yes") is
+ * meaningless without the question it answers, and that question may be many turns
+ * back.
+ */
+export function panelReplyPrompt(
+  classroom: string,
+  lesson: string,
+  reply: PanelMessage,
+  earlier: readonly PanelMessage[],
+): string {
+  const history = earlier
+    .filter((m) => m.at < reply.at)
+    .slice(-PANEL_HISTORY)
+    .flatMap((m) => [m.role === "teacher" ? "You wrote:" : "They wrote:", "", quote(m.text), ""]);
+  return [
+    `💬 The learner replied in the teacher panel on a lesson page. ${arrivalNote("push")}`,
+    "",
+    `Classroom: \`${classroom}\``,
+    `Lesson: \`${lesson}\` (${path.join(lessonDir(classroom, lesson), "lesson.html")})`,
+    "",
+    ...(history.length > 0 ? ["The panel conversation so far:", "", ...history] : []),
+    "Their reply:",
+    "",
+    quote(reply.text),
+    "",
+    "If it answers a retrieval question you asked, check it. Follow up with one new question at a time until they demonstrate understanding. When they do, write a learning record and call record_retrieval_check with this exact reply as the answer. If they ask about the lesson, answer it as their teacher. If they agree to continue, start the next lesson in this classroom with the authoring steps, then give them its URL.",
+    "",
+    PANEL_REPLY,
   ].join("\n");
 }
 

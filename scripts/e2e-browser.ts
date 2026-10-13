@@ -1,4 +1,6 @@
 /** Check browser state against the real HTTP server and grading tool. */
+import { browserRegression } from "./browser-regression.mjs";
+import { highlightText } from "./browser-actions.ts";
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -9,6 +11,7 @@ import * as server from "../src/server.ts";
 import { classroomTools, PI_HOST } from "../src/tools.ts";
 import * as store from "../src/store.ts";
 import { makeFixture, lessonHtml, seedClassroom } from "../test/helpers.ts";
+import { verifyPiPanelBrowser } from "./e2e-pi-panel-browser.ts";
 import { verifyServiceBrowser } from "./e2e-service-browser.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 
@@ -178,8 +181,11 @@ try {
     session,
     fixture.root,
     "run-code",
-    "--filename",
-    path.join(root, "test/browser.playwright.js"),
+    `async page => {
+      const highlightText = ${highlightText.toString()};
+      const browserRegression = ${browserRegression.toString()};
+      return browserRegression(page, highlightText);
+    }`,
   );
   console.log(browserResult);
   fixture.write(
@@ -303,4 +309,5 @@ try {
   fixture.cleanup();
 }
 
+await verifyPiPanelBrowser(artifacts ? path.join(artifacts, "pi-panel") : null);
 await verifyServiceBrowser(artifacts ? path.join(artifacts, "service") : null);

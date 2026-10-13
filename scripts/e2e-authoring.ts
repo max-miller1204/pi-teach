@@ -52,14 +52,14 @@ import * as store from "../src/store.ts";
 import {
   browserCommands,
   packagedPageChecks,
-  codexHome,
+  useTestModel,
   harnessCommand,
   parseHarness,
   toolCalls,
   until,
   type Harness,
 } from "./harness.ts";
-import { selectLocateAnswer } from "./authoring-browser.ts";
+import { selectLocateAnswer } from "./browser-actions.ts";
 import { playwright, playwrightCode } from "./playwright.ts";
 
 const AUTHORING_TIMEOUT_MS = 30 * 60_000;
@@ -336,7 +336,7 @@ const SUBMIT_LESSON = `async page => {
       if (controls.get(i)?.keyboard) continue;
       const button = buttons.nth(i);
       const authored = await button.evaluate((b) =>
-        !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error'));
+        !b.closest('form, .cl-header, .cl-card-inline, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, .cl-teacher'));
       if (!authored || !(await button.isVisible())) continue;
       const label = ((await button.getAttribute('aria-label')) || (await button.innerText())).trim();
       if (await button.isDisabled()) {
@@ -436,7 +436,7 @@ async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-teach-e2e-authoring-"));
   _overrideClassroomsDir(root);
   seedClassroom(root);
-  const home = harness === "codex" ? codexHome() : null;
+  const restoreModel = useTestModel(harness);
   const listener = net.createServer();
   await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
   process.env.PI_CLASSROOM_SERVICE_PORT = String((listener.address() as net.AddressInfo).port);
@@ -447,7 +447,6 @@ async function main(): Promise<void> {
     PI_CLASSROOM_AUTO_OPEN: "0",
     PI_CLASSROOM_TEACHER: harness,
   };
-  if (home) env["CODEX_HOME"] = home;
   const browser = `pi-teach-authoring-${harness}-${process.pid}`;
   let browserOpen = false;
   const sessions: Session[] = [];
@@ -746,7 +745,7 @@ async function main(): Promise<void> {
         fs.copyFileSync(servicePaths().log, path.join(artifacts, `${harness}-service.log`));
     }
     fs.rmSync(root, { recursive: true, force: true });
-    if (home) fs.rmSync(home, { recursive: true, force: true });
+    restoreModel();
   }
 }
 

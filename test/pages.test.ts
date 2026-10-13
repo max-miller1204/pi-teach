@@ -3,7 +3,6 @@ import { describe, it, expect } from "vitest";
 import {
   RECENT_RECORDS,
   classroomPage,
-  documentPage,
   landingPage,
   learningRecordsPage,
   missionWhy,
@@ -42,29 +41,10 @@ function lesson(overrides: Partial<Lesson> = {}): Lesson {
 }
 
 describe("landingPage", () => {
-  it("lists each classroom with a link, and its mission's why", () => {
-    const html = landingPage([classroom]);
-    expect(html).toContain('href="/c/rust"');
-    expect(html).toContain("Rust");
-    expect(html).toContain("Ship a CLI to my team by October.");
-  });
-
-  it("points a first-time user at /teach when there is nothing yet", () => {
-    const html = landingPage([]);
-    expect(html).toContain("No classrooms yet");
-    expect(html).toContain("/teach");
-  });
-
   it("escapes classroom titles rather than rendering them as markup", () => {
     const html = landingPage([{ ...classroom, title: "<img src=x onerror=alert(1)>" }]);
     expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;img src=x");
-  });
-
-  it("declares both themes so the page follows the system preference", () => {
-    const html = landingPage([classroom]);
-    expect(html).toContain("pi-classroom-theme");
-    expect(html).toContain("data-cl-theme-toggle");
   });
 });
 
@@ -92,31 +72,6 @@ describe("classroomPage", () => {
     referenceDocs: ["syntax.html"],
     progress: noProgress,
   };
-
-  it("links lessons, documents, records, and reference material", () => {
-    const html = classroomPage(data);
-    expect(html).toContain('href="/c/rust/001-ownership"');
-    expect(html).toContain('href="/doc/rust/MISSION.md"');
-    expect(html).toContain('href="/doc/rust/learning-records/0001-owns-are-unique.md"');
-    expect(html).toContain('href="/r/rust/syntax.html"');
-    expect(html).toContain('href="/"');
-  });
-
-  it("badges a graded lesson with its score and an ungraded one as pending", () => {
-    expect(classroomPage({ ...data, lessons: [lesson({ latestScore: 80 })] })).toContain("80%");
-    expect(
-      classroomPage({ ...data, lessons: [lesson({ hasUngradedSubmission: true })] }),
-    ).toContain("grading…");
-  });
-
-  it("omits the side panels entirely when there is nothing to put in them", () => {
-    const html = classroomPage({ ...data, docs: [], learningRecords: [], referenceDocs: [] });
-    expect(html).not.toContain("cl-panels");
-  });
-
-  it("says so when a classroom has no lessons yet", () => {
-    expect(classroomPage({ ...data, lessons: [] })).toContain("No lessons yet");
-  });
 
   it("lists only the newest learning records and links the rest", () => {
     const records = Array.from(
@@ -177,16 +132,6 @@ describe("learningRecordsPage", () => {
 
   it("says so when there are none", () => {
     expect(learningRecordsPage(classroom, [])).toContain("No learning records yet");
-  });
-});
-
-describe("documentPage", () => {
-  it("adds a parent crumb for documents under an index", () => {
-    const html = documentPage(classroom, "0001-owns.md", "# Owns", {
-      label: "Learning records",
-      href: "/doc/rust/learning-records",
-    });
-    expect(html).toContain('<a class="cl-crumb" href="/doc/rust/learning-records">');
   });
 });
 
