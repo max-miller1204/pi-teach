@@ -1,7 +1,7 @@
 /**
  * commands.ts — /classroom and /teach.
  *
- * /classroom manages the local server and opens pages in a browser.
+ * /classroom manages the local server and reports page links. It never opens a browser.
  * /teach is the entry point to a teaching session, and replaces the old teach skill.
  *
  * Anything here that starts or stops the server also refreshes the status widget, so the
@@ -10,8 +10,6 @@
 
 import * as fs from "node:fs";
 
-import { shouldAutoOpen } from "./config.ts";
-import { openUrl } from "./open-browser.ts";
 import { classroomDir, slugify } from "./paths.ts";
 import { reviewStatusText, teachingPrompt } from "./prompts.ts";
 import { summarize } from "./review.ts";
@@ -33,7 +31,7 @@ export function registerClassroomCommands(pi: any, bridge: ClassroomBridge): voi
 
   pi.registerCommand("classroom", {
     description:
-      "Browse your classrooms in the browser. Usage: /classroom [start|stop|status|list|open [<name>]]",
+      "Get a link to your classrooms. Usage: /classroom [start|stop|status|list|open [<name>]]",
     getArgumentCompletions: async (prefix: string) => {
       const verbs = ["start", "stop", "status", "list", "open"];
       const names = store.listClassrooms().map((c) => c.name);
@@ -228,6 +226,5 @@ async function handleOpen(ctx: any, requested: string | null): Promise<void> {
   const baseUrl = await server.start();
   attachStatusWidget(ctx.ui);
   const url = target ? server.urlFor(target)! : baseUrl;
-  if (shouldAutoOpen()) openUrl(url);
   ctx.ui.notify(`📚 ${url}`, "info");
 }

@@ -15,11 +15,6 @@ import {
   waitSeconds,
   type JsonRpcResponse,
 } from "../src/mcp.ts";
-import * as config from "../src/config.ts";
-import { openUrl } from "../src/open-browser.ts";
-
-vi.mock("../src/open-browser.ts", () => ({ openUrl: vi.fn() }));
-
 import { gradePrompt, QUIZ_FOLLOW_UP } from "../src/prompts.ts";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
@@ -31,7 +26,6 @@ let session: McpSession;
 let nextId = 1;
 
 beforeEach(() => {
-  process.env["PI_CLASSROOM_AUTO_OPEN"] = "0";
   fixture = makeFixture();
   seedClassroom(fixture);
   inbox = new LearnerInbox();
@@ -41,7 +35,6 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  vi.mocked(openUrl).mockClear();
   inbox.reset();
   await server.close();
   fixture.cleanup();
@@ -82,22 +75,15 @@ async function askFromBrowser(question: string): Promise<store.Annotation> {
   return (await res.json()) as store.Annotation;
 }
 
-describe("browser launch", () => {
-  it("returns a link without opening a browser unless requested", async () => {
-    vi.spyOn(config, "shouldAutoOpen").mockReturnValue(true);
+describe("classroom link", () => {
+  it("returns a link and offers no browser launch", async () => {
     const result = await call("open_classroom", { classroom: "rust" });
     expect(text(result)).toContain(server.urlFor("rust"));
-    expect(openUrl).not.toHaveBeenCalled();
-    await call("open_classroom", { classroom: "rust", open_browser: false });
-    expect(openUrl).not.toHaveBeenCalled();
-    await call("open_classroom", { classroom: "rust", open_browser: true });
-    expect(openUrl).toHaveBeenCalledWith(server.urlFor("rust"));
-  });
-
-  it("respects the disabled auto-open setting for an explicit launch", async () => {
-    vi.spyOn(config, "shouldAutoOpen").mockReturnValue(false);
-    await call("open_classroom", { classroom: "rust", open_browser: true });
-    expect(openUrl).not.toHaveBeenCalled();
+    const listed = (await request("tools/list")) as {
+      result: { tools: Array<{ name: string; inputSchema: { properties: object } }> };
+    };
+    const open = listed.result.tools.find((t) => t.name === "open_classroom")!;
+    expect(Object.keys(open.inputSchema.properties)).not.toContain("open_browser");
   });
 });
 

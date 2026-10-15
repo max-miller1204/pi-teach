@@ -9,8 +9,8 @@
 /teach                  continue where you left off
 /teach rust-ownership   continue a specific classroom
 
-/classroom              open the classroom browser (starts the server if needed)
-/classroom rust         open one classroom directly
+/classroom              print the classroom link (starts the server if needed)
+/classroom rust         print one classroom's link
 /classroom list         list classrooms and lessons in the TUI
 /classroom status       is the server running, and where
 /classroom start|stop   manage the server explicitly

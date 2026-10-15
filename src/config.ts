@@ -5,7 +5,6 @@ import * as path from "node:path";
 
 export interface ClassroomConfig {
   port?: number;
-  autoOpen?: boolean;
 }
 
 let testConfigPath: string | undefined;
@@ -36,9 +35,6 @@ export function readConfig(file = configPath()): ClassroomConfig {
     }
     const config = parsed as ClassroomConfig;
     resolveConfiguredPort(config.port);
-    if (config.autoOpen !== undefined && typeof config.autoOpen !== "boolean") {
-      throw new Error("autoOpen must be a boolean.");
-    }
     return config;
   } catch (err) {
     throw new Error(`Invalid classroom config ${file}: ${(err as Error).message}`, { cause: err });
@@ -50,10 +46,4 @@ export function resolveConfiguredPort(port: unknown): number {
   if (port === undefined) return 0;
   if (typeof port === "number" && Number.isInteger(port) && port >= 1 && port <= 65535) return port;
   throw new Error("Configured port must be an integer from 1 to 65535.");
-}
-
-/** The environment setting takes priority. */
-export function shouldAutoOpen(config: ClassroomConfig = readConfig()): boolean {
-  if (process.env["PI_CLASSROOM_AUTO_OPEN"] === "0") return false;
-  return config.autoOpen !== false;
 }

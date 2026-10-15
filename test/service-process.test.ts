@@ -73,7 +73,6 @@ lines.on('line', line => {
   env = {
     ...process.env,
     PI_CLASSROOMS_DIR: f.root,
-    PI_CLASSROOM_AUTO_OPEN: "0",
     PATH: `${bin}:${process.env.PATH}`,
   };
 });

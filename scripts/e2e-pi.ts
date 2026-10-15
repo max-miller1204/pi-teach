@@ -83,7 +83,6 @@ const child = spawn(
     env: {
       ...process.env,
       PI_CLASSROOMS_DIR: fixture.root,
-      PI_CLASSROOM_AUTO_OPEN: "0",
       PI_CLASSROOM_CONFIG: path.join(fixture.root, "test-config.json"),
     },
     stdio: ["pipe", "pipe", "pipe"],

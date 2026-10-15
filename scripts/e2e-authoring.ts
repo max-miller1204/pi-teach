@@ -444,7 +444,6 @@ async function main(): Promise<void> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PI_CLASSROOMS_DIR: root,
-    PI_CLASSROOM_AUTO_OPEN: "0",
     PI_CLASSROOM_TEACHER: harness,
   };
   const browser = `pi-teach-authoring-${harness}-${process.pid}`;

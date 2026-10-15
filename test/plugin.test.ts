@@ -50,7 +50,6 @@ describe("Codex plugin", () => {
       cwd: ".",
       env_vars: [
         "PI_CLASSROOMS_DIR",
-        "PI_CLASSROOM_AUTO_OPEN",
         "PI_CLASSROOM_CONFIG",
         "PI_CLASSROOM_SERVICE_PORT",
         "PI_CLASSROOM_TEACHER",

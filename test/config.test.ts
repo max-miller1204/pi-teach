@@ -19,14 +19,7 @@ describe("classroom configuration", () => {
     expect(resolveConfiguredPort(undefined)).toBe(0);
   });
   it("reports corrupt settings with the file path", () => {
-    for (const source of [
-      "{",
-      "null",
-      "[]",
-      '{"port":0}',
-      '{"port":"4098"}',
-      '{"autoOpen":"yes"}',
-    ]) {
+    for (const source of ["{", "null", "[]", '{"port":0}', '{"port":"4098"}']) {
       const file = fixture.write("config.json", source);
       expect(() => readConfig(file)).toThrow(/config.json/);
     }

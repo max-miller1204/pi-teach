@@ -1,13 +1,13 @@
 ---
 name: classroom
-description: Open the user's classrooms in the browser, or list their classrooms and lessons with quiz scores. Use when the user asks to see, open, browse, or list their lessons or classrooms.
+description: Give the user a link to their classrooms, or list their classrooms and lessons with quiz scores. Use when the user asks to see, open, browse, or list their lessons or classrooms.
 ---
 
 # Classroom
 
-- To open the classrooms in a browser, call `open_classroom` from the `classroom` MCP
-  server with `open_browser: true`. Pass a classroom name as `classroom` to open
-  that classroom. Give the user the URL it returns.
+- To open the classrooms, call `open_classroom` from the `classroom` MCP server.
+  Pass a classroom name as `classroom` to open that classroom. Give the user the
+  URL it returns. Never open a browser for the user.
 - To list classrooms and lessons in the terminal, call `list_classrooms`.
 
 Claude Code and Codex attach to a persistent local service. Closing this chat does
