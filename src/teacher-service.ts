@@ -447,7 +447,16 @@ export class TeacherService {
       r.id,
       `Current request kind: ${r.kind}. ${contract.required ? "Return exactly one call from the tool definitions." : contract.operations.length ? "Return only retrieval calls supported by this learner reply. Otherwise return calls=[]." : "Return calls=[]."}\n\n${r.prompt}`,
       context,
-      defs.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+      defs.map((t) => {
+        const parameters = structuredClone(t.parameters);
+        if (t.name === "record_retrieval_check") {
+          delete (parameters.properties as Record<string, unknown>).learning_record;
+          parameters.required = (parameters.required as string[]).filter(
+            (key) => key !== "learning_record",
+          );
+        }
+        return { name: t.name, description: t.description, parameters };
+      }),
     );
   }
   private async drain(classroom: string): Promise<void> {

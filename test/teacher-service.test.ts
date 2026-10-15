@@ -65,6 +65,8 @@ describe("persistent teacher", () => {
           return plan([grade(s.id)]);
         }
         expect(contract.required).not.toBe(true);
+        expect(definitions[0].parameters.required).not.toContain("learning_record");
+        expect(definitions[0].parameters.properties).not.toHaveProperty("learning_record");
         return plan([]);
       },
     );
