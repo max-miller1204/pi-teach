@@ -35,6 +35,7 @@ import { draftId, draftKind } from "./draft.mjs";
 import { diagramSource, initDiagrams } from "./diagrams.mjs";
 import { findTerms, firstUses } from "./glossary.mjs";
 import { initLinks } from "./links.mjs";
+import { initMath, swapMathForSource } from "./math.mjs";
 import { QUIZ_KINDS, isContractId, isQuizKind, parseNumber, questionErrors } from "./quiz.mjs";
 import { initTheme } from "./theme.mjs";
 
@@ -80,7 +81,7 @@ const QUIZ_RUNTIME_UI =
   "[data-cl-grade], .cl-q-verdict, .cl-quiz-footer, .cl-answer-report, .cl-order-controls";
 
 /** Our own UI, never lesson text: a highlight must not anchor into it. */
-const RUNTIME_UI = `script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram, .cl-teacher, .cl-teacher-notice, ${QUIZ_RUNTIME_UI}`;
+const RUNTIME_UI = `script, style, noscript, .cl-header, .cl-card-panel, .cl-ask-pill, .cl-badge-marker, .cl-term-pop, .cl-contract-error, .cl-diagram, .cl-math, .cl-teacher, .cl-teacher-notice, ${QUIZ_RUNTIME_UI}`;
 
 function loadMinimised() {
   try {
@@ -112,6 +113,8 @@ function init() {
   initLinks();
   // Before anything indexes the text: this swaps each diagram source for its drawing.
   initDiagrams(contentRoot).catch((err) => console.error("[classroom] diagrams failed", err));
+  // Also before the text index: each formula becomes a span.cl-math, which it skips.
+  initMath(contentRoot).catch((err) => console.error("[classroom] math failed", err));
 
   buildAskPill();
   buildComposer();
@@ -339,7 +342,7 @@ function onSelectionSettled() {
     }
     // Text selected inside an answer box belongs to the learner, not the lesson.
     if (document.activeElement?.matches("input, textarea, select")) return hideAskPill();
-    // Diagram text and runtime UI are not in the text index, so a highlight that
+    // Diagram and math text and runtime UI are not in the text index, so a highlight that
     // starts or ends there could not anchor.
     if (outsideIndex(range.startContainer) || outsideIndex(range.endContainer)) {
       return hideAskPill();
@@ -362,7 +365,7 @@ function elementOf(node) {
 }
 
 function outsideIndex(node) {
-  return Boolean(elementOf(node)?.closest(`.cl-diagram, ${QUIZ_RUNTIME_UI}`));
+  return Boolean(elementOf(node)?.closest(`.cl-diagram, .cl-math, ${QUIZ_RUNTIME_UI}`));
 }
 
 /**
@@ -483,7 +486,9 @@ async function openComposer() {
 /** Show the composer at `pendingRange`, holding `text`. */
 function showComposer(text) {
   const rect = pendingRange.getBoundingClientRect();
-  composer.querySelector("[data-cl-quote]").textContent = normalizeText(pendingRange.toString());
+  const composerQuote = composer.querySelector("[data-cl-quote]");
+  composerQuote.textContent = quoteOf(pendingRange, null);
+  drawQuoteMath(composerQuote);
   composer.querySelector("[data-cl-question]").value = text;
   composerAnchor = selectorFor(pendingRange);
   composer.hidden = false;
@@ -585,6 +590,25 @@ function selectorFor(range) {
   return offsets ? createSelector(index.text, offsets.start, offsets.end) : null;
 }
 
+/**
+ * The quoted text of a highlight. The anchor skips formulas, so a highlight that
+ * covers one quotes it as TeX, and the teacher sees the whole passage.
+ */
+function quoteOf(range, selector) {
+  const fragment = range.cloneContents();
+  if (!fragment.querySelector(".cl-math")) {
+    return selector ? selector.exact : normalizeText(range.toString());
+  }
+  swapMathForSource(fragment);
+  for (const element of fragment.querySelectorAll(RUNTIME_UI)) element.remove();
+  return normalizeText(fragment.textContent);
+}
+
+/** Draw the TeX in a quote. The teacher reads the TeX; the learner sees the formula. */
+function drawQuoteMath(quote) {
+  initMath(quote).catch((err) => console.error("[classroom] quote math failed", err));
+}
+
 async function onAskSubmit(event) {
   event.preventDefault();
   const question = composer.querySelector("[data-cl-question]").value.trim();
@@ -610,7 +634,7 @@ async function onAskSubmit(event) {
         classroom: config.classroom,
         lesson: config.lesson,
         question,
-        selection: selector.exact,
+        selection: quoteOf(range, selector),
         anchor: selector,
         quiz,
       }),
@@ -639,10 +663,13 @@ function wrapRange(range, annotationId) {
   const marks = [];
   const nodes = textNodesInRange(range);
 
-  for (const { node, start, end } of nodes) {
-    let target = node;
-    if (end < target.nodeValue.length) target.splitText(end);
-    if (start > 0) target = target.splitText(start);
+  for (const { node, start, end, formula } of nodes) {
+    let target = formula;
+    if (!target) {
+      target = node;
+      if (end < target.nodeValue.length) target.splitText(end);
+      if (start > 0) target = target.splitText(start);
+    }
 
     const mark = document.createElement("mark");
     mark.className = "cl-hl cl-hl-pending";
@@ -665,7 +692,13 @@ function wrapRange(range, annotationId) {
   return marks[marks.length - 1] ?? null;
 }
 
-/** Text nodes intersecting a range, with the covered slice of each. */
+/**
+ * Text nodes intersecting a range, with the covered slice of each.
+ *
+ * A formula is one whole item: a mark inside MathML breaks the drawing. A highlight
+ * never ends inside a formula, so a formula it touches is inside it. Diagram text is
+ * skipped for the same reason.
+ */
 function textNodesInRange(range) {
   const out = [];
   const walker = document.createTreeWalker(
@@ -679,9 +712,14 @@ function textNodesInRange(range) {
   let node = walker.nextNode();
   while (node) {
     if (range.intersectsNode(node) && node.nodeValue.length > 0) {
-      const start = node === range.startContainer ? range.startOffset : 0;
-      const end = node === range.endContainer ? range.endOffset : node.nodeValue.length;
-      if (end > start) out.push({ node, start, end });
+      const formula = node.parentElement?.closest(".cl-math");
+      if (formula) {
+        if (out[out.length - 1]?.formula !== formula) out.push({ formula });
+      } else if (!node.parentElement?.closest(".cl-diagram")) {
+        const start = node === range.startContainer ? range.startOffset : 0;
+        const end = node === range.endContainer ? range.endOffset : node.nodeValue.length;
+        if (end > start) out.push({ node, start, end });
+      }
     }
     node = walker.nextNode();
   }
@@ -712,7 +750,9 @@ function renderCard(annotation, mark) {
   const pending = turns.some((turn) => turn.status === "pending");
   for (const m of marks) m.classList.toggle("cl-hl-pending", pending);
 
-  panel.querySelector("[data-cl-quote]").textContent = annotation.selection;
+  const quote = panel.querySelector("[data-cl-quote]");
+  quote.textContent = annotation.selection;
+  drawQuoteMath(quote);
   renderThread(panel.querySelector("[data-cl-thread]"), turns);
 
   // Following up needs something to follow up on, and the server refuses a follow-up on
@@ -1329,6 +1369,7 @@ function enhanceOrder(question) {
 function itemLabel(item) {
   const clone = item.cloneNode(true);
   clone.querySelector(".cl-order-controls")?.remove();
+  swapMathForSource(clone);
   return normalizeText(clone.textContent);
 }
 
@@ -1338,7 +1379,7 @@ function enhanceMatch(question) {
     const select = document.createElement("select");
     select.className = "cl-match-select";
     select.dataset.matchFor = left.dataset.item;
-    select.setAttribute("aria-label", `Match for ${normalizeText(left.textContent)}`);
+    select.setAttribute("aria-label", `Match for ${textOf(left)}`);
     const blank = document.createElement("option");
     blank.value = "";
     blank.textContent = "Choose a match…";
@@ -1346,7 +1387,7 @@ function enhanceMatch(question) {
     for (const right of rights) {
       const option = document.createElement("option");
       option.value = right.dataset.item;
-      option.textContent = normalizeText(right.textContent);
+      option.textContent = textOf(right);
       select.appendChild(option);
     }
     left.appendChild(select);
@@ -1385,13 +1426,15 @@ function enhanceLocate(form, question) {
  * Plain text of a stimulus block. Line breaks are kept, because code needs them.
  *
  * A diagram is sent as its Mermaid source, because the SVG labels omit the arrows.
- * The diagrams are hidden while the text is read, and shown again before the browser
- * can paint.
+ * A formula is sent as its TeX. The diagrams are hidden and the formulas swapped while
+ * the text is read, and both are put back before the browser can paint.
  */
 function stimulusText(element) {
   const diagrams = [...element.querySelectorAll(".cl-diagram")];
   for (const diagram of diagrams) diagram.hidden = true;
+  const restoreMath = swapMathForSource(element);
   const text = (element.innerText || element.textContent || "").trim();
+  restoreMath();
   for (const diagram of diagrams) diagram.hidden = false;
   const images = [...element.querySelectorAll("img")].map(
     (img) => `[image: ${img.getAttribute("alt") || "no alt text"}]`,
@@ -1402,12 +1445,24 @@ function stimulusText(element) {
   return [text, ...images, ...sources].filter(Boolean).join("\n");
 }
 
+/** The text of a lesson element, with each formula as its TeX. */
+function textOf(element) {
+  if (!element) return "";
+  const restore = swapMathForSource(element);
+  try {
+    return normalizeText(element.textContent);
+  } finally {
+    restore();
+  }
+}
+
 /** A cloze passage as text, with each blank written as `[[<blank id>]]`. */
 function clozeText(element) {
   const clone = element.cloneNode(true);
   for (const blank of clone.querySelectorAll("input[data-blank]")) {
     blank.replaceWith(document.createTextNode(`[[${blank.dataset.blank}]]`));
   }
+  swapMathForSource(clone);
   return normalizeText(clone.textContent);
 }
 
@@ -1422,7 +1477,7 @@ function collectAnswer(question) {
   const answer = {
     questionId: question.dataset.questionId,
     type,
-    prompt: normalizeText(question.querySelector(".cl-q-prompt")?.textContent ?? ""),
+    prompt: textOf(question.querySelector(".cl-q-prompt")),
   };
   const confidence = question.querySelector("[data-cl-confidence]")?.value;
   const assistance = question.querySelector("[data-cl-assistance]")?.value;
@@ -1432,7 +1487,10 @@ function collectAnswer(question) {
   if (stimulus) answer.stimulus = stimulusText(stimulus);
   if (question.dataset.reviewOf) answer.reviewOf = question.dataset.reviewOf;
 
-  const labelOf = (input) => normalizeText(input.closest("label")?.textContent ?? input.value);
+  const labelOf = (input) => {
+    const label = input.closest("label");
+    return label ? textOf(label) : input.value;
+  };
 
   switch (type) {
     case "choice": {
@@ -1498,7 +1556,7 @@ function collectAnswer(question) {
       if (chosen.length === 0) return { missing: true };
       answer.parts = chosen.map((segment) => ({
         id: segment.dataset.segment,
-        value: normalizeText(segment.textContent),
+        value: textOf(segment),
       }));
       break;
     }
@@ -1511,6 +1569,7 @@ function collectAnswer(question) {
 function itemText(item) {
   const clone = item.cloneNode(true);
   clone.querySelector("select")?.remove();
+  swapMathForSource(clone);
   return normalizeText(clone.textContent);
 }
 
@@ -1899,7 +1958,7 @@ async function onReflectSubmit(event, form) {
         classroom: config.classroom,
         lesson: config.lesson,
         reflectId: form.dataset.reflectId,
-        prompt: normalizeText(form.querySelector(".cl-reflect-prompt").textContent),
+        prompt: textOf(form.querySelector(".cl-reflect-prompt")),
         text,
       }),
     });
@@ -2242,7 +2301,7 @@ function glossarySections() {
 const NO_TERMS =
   "script, style, pre, code, a, button, label, select, h1, h2, h3, h4, h5, h6, " +
   "form.cl-quiz, form.cl-reflect, .cl-header, .cl-card-panel, .cl-ask-pill, " +
-  ".cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, .cl-diagram, mark.cl-hl";
+  ".cl-badge-marker, .cl-term, .cl-term-pop, .cl-contract-error, .cl-diagram, .cl-math, mark.cl-hl";
 
 function markTerms(section, terms) {
   const nodes = [];

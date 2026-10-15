@@ -589,6 +589,122 @@ export async function browserRegression(page, highlightText) {
   await page.goto(page.url().replace("/c/rust/002-diagrams", "/r/rust/diagrams.html"));
   await page.locator(".cl-diagram svg").waitFor();
   await screenshot("diagram-reference");
+
+  await page.goto(page.url().replace("/r/rust/diagrams.html", "/c/rust/003-math"));
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(".cl-math").length === 10 &&
+      !document.querySelector(".cl-math[aria-busy]"),
+  );
+  assert(
+    (await page.locator(".cl-math > math").count()) === 9,
+    `Expected 9 drawn formulas, got ${await page.locator(".cl-math > math").count()}`,
+  );
+  assert(
+    (await page.locator('.cl-math-display > math[display="block"]').count()) === 1,
+    "Display math did not draw as a block",
+  );
+  assert(
+    (await page.locator("section > p > code").innerText()) === String.raw`\(x\)`,
+    "Math in code did not stay literal",
+  );
+  assert(
+    (await page.locator("[data-math-bound] math mo").textContent()) === "<",
+    "An escaped < inside math did not draw",
+  );
+  assert(
+    (await page.locator(".cl-math .cl-contract-error").innerText()).includes("Math did not render"),
+    "Broken TeX shows no error",
+  );
+  assert(
+    diagramErrors.some((text) => text.includes("Math did not render")),
+    "Broken TeX logs no console error",
+  );
+  await page.locator("[data-math-prose] math").first().selectText();
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  assert(await page.locator(".cl-ask-pill").isHidden(), "The ask pill offers math text");
+  await page.locator("[data-math-prose]").evaluate((paragraph) => {
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild, 0);
+    range.setEnd(paragraph.lastChild, paragraph.lastChild.nodeValue.length);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.locator(".cl-ask-pill").click();
+  const mathQuote = String.raw`A move costs \(O(1)\) time, so \(n\) moves cost \(O(n)\) in total.`;
+  await page
+    .locator(".cl-card-panel:not(.cl-card-inline) [data-cl-quote] .cl-math > math")
+    .nth(2)
+    .waitFor();
+  await page.locator("[data-cl-question]").fill("Why is the total linear?");
+  const mathAsked = page.waitForResponse(
+    (r) => r.url().endsWith("/api/ask") && r.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Ask your teacher", exact: true }).click();
+  const mathAnnotation = await (await mathAsked).json();
+  assert(
+    mathAnnotation.selection === mathQuote,
+    `A highlight around math quoted ${JSON.stringify(mathAnnotation.selection)}`,
+  );
+  const mathCard = page.locator(`.cl-card-panel[data-annotation-id="${mathAnnotation.id}"]`);
+  await mathCard.locator(".cl-math-display > math").waitFor();
+  assert(
+    (await mathCard.locator(".cl-card-answer .cl-math > math").count()) === 2,
+    "A Markdown answer did not draw its math",
+  );
+  const highlightedMath = async () =>
+    page.evaluate(() => ({
+      inside: document.querySelectorAll(".cl-math mark").length,
+      whole: document.querySelectorAll("mark.cl-hl > .cl-math").length,
+    }));
+  let marked = await highlightedMath();
+  assert(
+    marked.inside === 0 && marked.whole === 3,
+    `A highlight around math marked ${JSON.stringify(marked)}`,
+  );
+  assert(
+    (await mathCard.locator("[data-cl-quote] .cl-math > math").count()) === 3,
+    "The card quote did not draw its math",
+  );
+  await page.reload();
+  await mathCard.locator(".cl-math-display > math").waitFor();
+  marked = await highlightedMath();
+  assert(
+    marked.inside === 0 && marked.whole === 3,
+    `A restored highlight around math marked ${JSON.stringify(marked)}`,
+  );
+  await screenshot("math-light");
+  await page.locator("[data-cl-theme-toggle]").click();
+  await screenshot("math-dark");
+  await page.locator("[data-cl-theme-toggle]").click();
+
+  let sentMath = null;
+  await page.route("**/api/quiz/submit", async (route) => {
+    sentMath = route.request().postDataJSON().answers[0];
+    await route.abort();
+  });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  const mathQuiz = page.locator('form[data-quiz-id="math-check"]');
+  await mathQuiz.locator('input[value="a"]').check();
+  await mathQuiz.getByRole("button", { name: "Submit for grading", exact: true }).click();
+  for (let i = 0; i < 50 && sentMath === null; i++) await page.waitForTimeout(100);
+  await page.unroute("**/api/quiz/submit");
+  assert(
+    sentMath?.stimulus === String.raw`Let \(f(x) = x^2\).` &&
+      sentMath.prompt === String.raw`What is \(f'(3)\)?` &&
+      sentMath.label === String.raw`\(6\)`,
+    `Wrong math answer text: ${JSON.stringify(sentMath)}`,
+  );
+  assert(
+    (await mathQuiz.locator(".cl-math > math").count()) === 4,
+    "Reading the question removed its formulas",
+  );
+
+  await page.goto(page.url().replace("/c/rust/003-math", "/r/rust/math.html"));
+  await page.locator(".cl-math > math").waitFor();
+  await screenshot("math-reference");
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
   await observer.close();
   return {
@@ -610,6 +726,7 @@ export async function browserRegression(page, highlightText) {
       "partial credit display and reload",
       "MCP delivery explanation",
       "diagrams draw, fail loudly, follow the theme, and send their source",
+      "math draws, fails loudly, stays out of highlights, and sends its TeX",
     ],
   };
 }

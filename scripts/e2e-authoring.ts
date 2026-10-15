@@ -14,10 +14,10 @@
  *   3. Check that the agent opened its pages in a browser tool. Claude Code may run
  *      playwright-cli. Codex runs without a sandbox in temporary directories.
  *   4. Inspect each lesson: its outline, quiz kinds, response types, stimuli,
- *      self-explanations, diagrams, local controls, and private rubric.
+ *      self-explanations, diagrams, formulas, local controls, and private rubric.
  *   5. Open each lesson in a real browser with this script's own classroom server.
- *      Wait for its diagrams to draw. Check for contract errors, which include a
- *      diagram that did not render, and page errors. Press each local control. Answer
+ *      Wait for its diagrams and math to draw. Check for contract errors, which
+ *      include a diagram or formula that did not render, and page errors. Press each local control. Answer
  *      every quiz and submit it.
  *   6. Grading session: a second agent session opens the classroom, which restores
  *      the ungraded submissions from disk. It grades each one from its rubric.
@@ -154,7 +154,7 @@ const AUTHORING_PROMPT = [
   "Do not call wait_for_learner and do not ask the learner anything. Nobody will reply during this run.",
   // Reason: a real session knows its own browser tool. This run has only a shell
   // command, so name it. This describes the environment and gives no authoring hint.
-  "Check each lesson page and its local controls in headless mode. Use the packaged config named in the scaffold instructions. Do not use --headed or show a visible window. Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Close any browser session you open.",
+  "Check each lesson page and its local controls in headless mode. Use the packaged config named in the scaffold instructions. Do not use --headed or show a visible window. Your browser tool in this run is the playwright-cli shell command. Run playwright-cli --help to see its commands. Use a unique named browser session. Close only the named sessions you open. Never run close-all or kill-all. Other checks can run at the same time.",
   "When all three lessons are written, end with one line per lesson that states why you chose its activities.",
 ].join("\n");
 
@@ -233,6 +233,7 @@ interface LessonReport {
   typeCounts: string;
   stimuli: number;
   diagrams: number;
+  formulas: number;
   reflections: number;
   inlineScripts: number;
   localControls: Array<{ label: string; keyboard: boolean; changed: boolean }>;
@@ -293,6 +294,7 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
     typeCounts: typeCounts(types),
     stimuli: count(body, /class="[^"]*\bcl-q-stimulus\b/g),
     diagrams: count(body, /<pre\b[^>]*class="[^"]*\bmermaid\b/g),
+    formulas: count(body, /\\[([]/g),
     reflections: count(body, /class="[^"]*\bcl-reflect\b/g),
     inlineScripts: count(body, /<script\b(?![^>]*type="application\/json")/g),
     localControls: [],
@@ -318,7 +320,7 @@ const SUBMIT_LESSON = `async page => {
   page.on('requestfailed', (r) => { if (r.url().endsWith('/api/quiz/submit')) requests.push('failed ' + r.failure()?.errorText); });
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every((f) => f.dataset.state));
-  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy]'), null, { timeout: 30000 });
+  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy], .cl-math[aria-busy]'), null, { timeout: 30000 });
   const contract = await page.locator('.cl-contract-error').allInnerTexts();
   const outline = await page.evaluate(() =>
     [...document.querySelector('main[data-cl-content]').children].map((el) => {
@@ -396,7 +398,7 @@ const READ_GRADED = `async page => {
   page.on('pageerror', (error) => errors.push(error.message));
   await page.reload();
   await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every((f) => f.dataset.state));
-  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy]'), null, { timeout: 30000 });
+  await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy], .cl-math[aria-busy]'), null, { timeout: 30000 });
   const quizzes = await page.evaluate(() => [...document.querySelectorAll('form.cl-quiz')].map((f) => ({
     quizId: f.dataset.quizId,
     state: f.dataset.state,
@@ -697,6 +699,7 @@ async function main(): Promise<void> {
         lessonsWithLocalControls: reports.filter((r) => r.localControls.length > 0).length,
         lessonsWithReflection: reports.filter((r) => r.reflections > 0).length,
         lessonsWithDiagrams: reports.filter((r) => r.diagrams > 0).length,
+        lessonsWithMath: reports.filter((r) => r.formulas > 0).length,
       },
     };
     for (const r of reports) {
@@ -708,7 +711,7 @@ async function main(): Promise<void> {
         `   quizzes: ${r.quizzes.map((q) => `${q.id} [${q.kind}] ${q.types.join(", ")}`).join("; ")}`,
       );
       log(
-        `   stimuli ${r.stimuli}, diagrams ${r.diagrams}, reflections ${r.reflections}, scripts ${r.inlineScripts}, details ${r.details}, tables ${r.tables}, images ${r.images}`,
+        `   stimuli ${r.stimuli}, diagrams ${r.diagrams}, formulas ${r.formulas}, reflections ${r.reflections}, scripts ${r.inlineScripts}, details ${r.details}, tables ${r.tables}, images ${r.images}`,
       );
       log(
         `   local controls: ${r.localControls.map((c) => `${c.label}${c.changed ? "" : " (no visible change)"}`).join(", ") || "none"}`,

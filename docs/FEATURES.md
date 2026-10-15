@@ -45,6 +45,10 @@
 - **Diagrams.** A `<pre class="mermaid">` block in a lesson or a reference document is
   drawn as a Mermaid diagram, in the colours of the current theme. Mermaid is bundled,
   so diagrams work offline. A diagram that does not parse shows its error on the page.
+- **Math.** TeX between `\(` and `\)`, or `\[` and `\]`, in a lesson or a reference
+  document is drawn as MathML. Answers, feedback, and other Markdown also accept
+  `$...$` and `$$...$$`. Temml is bundled, so math works offline. TeX that does not
+  parse shows its error on the page. Grading receives the TeX.
 - **Glossary terms in lessons.** The first use of each `GLOSSARY.md` term in each
   section is underlined. A click asks the learner to recall the meaning before it
   shows the definition.

@@ -98,11 +98,41 @@ fixture.write(
   "rust/reference/diagrams.html",
   lessonHtml("Diagram reference", `<pre class="mermaid">stateDiagram-v2\n  [*] --> Owned</pre>`),
 );
+fixture.write(
+  "rust/003-math/lesson.html",
+  lessonHtml(
+    "Math",
+    String.raw`
+  <section>
+    <p data-math-prose>A move costs \(O(1)\) time, so \(n\) moves cost \(O(n)\) in total.</p>
+    <p>\[ \sum_{i=1}^{n} i = \frac{n(n+1)}{2} \]</p>
+    <p>Write <code>\(x\)</code> for inline math.</p>
+    <p data-math-bound>Bound: \(0 &lt; x\)</p>
+    <p>Broken: \(\frac{a\)</p>
+  </section>
+  <form class="cl-quiz" data-quiz-id="math-check" data-title="Math check">
+    <ol class="cl-questions"><li class="cl-q" data-question-id="q1" data-type="choice">
+      <div class="cl-q-stimulus"><p>Let \(f(x) = x^2\).</p></div>
+      <p class="cl-q-prompt">What is \(f'(3)\)?</p>
+      <label><input type="radio" name="q1" value="a">\(6\)</label>
+      <label><input type="radio" name="q1" value="b">\(9\)</label>
+    </li></ol>
+  </form>`,
+  ).replace("<main data-cl-content>", '<main class="cl-lesson-shell" data-cl-content>'),
+);
+fixture.write(
+  "rust/reference/math.html",
+  lessonHtml("Math reference", String.raw`<p>\(e^{i\pi} + 1 = 0\)</p>`),
+);
 
 server.setHooks({
   delivery: "wait",
   onAsk(annotation) {
-    setTimeout(() => applyAnswer(annotation.id, "The owner releases the value."), 100);
+    const answer =
+      annotation.lesson === "003-math"
+        ? String.raw`Each move is $O(1)$, so the total is $$\sum_{i=1}^{n} O(1) = O(n).$$`
+        : "The owner releases the value.";
+    setTimeout(() => applyAnswer(annotation.id, answer), 100);
   },
   onFollowUp() {},
   onReflect() {},

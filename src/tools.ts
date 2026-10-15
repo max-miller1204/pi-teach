@@ -138,7 +138,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
       parameters: object({
         annotation_id: str("The annotation id from the question or follow-up notification."),
         answer_markdown: str(
-          "The answer, as markdown. Renders in a narrow card, so favour a few short paragraphs over headings and long lists.",
+          "The answer, as markdown. Renders in a narrow card, so favour a few short paragraphs over headings and long lists. Write math in TeX: $...$ inline, $$...$$ on its own lines.",
         ),
       }),
       async execute(params: { annotation_id: string; answer_markdown: string }) {
@@ -250,7 +250,7 @@ export function classroomTools(host: ToolHost): ClassroomTool[] {
             "Overall score out of 100. Must equal 100 times total points earned divided by total points possible. Integer rounding is allowed.",
         },
         feedback_markdown: str(
-          "Short markdown feedback on the quiz as a whole — what they have, and what to work on.",
+          "Short markdown feedback on the quiz as a whole: what they have, and what to work on. Write math in TeX: $...$ inline, $$...$$ on its own lines.",
         ),
         questions: {
           type: "array",

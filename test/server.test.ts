@@ -389,11 +389,12 @@ describe("pages", () => {
     expect(html).toContain('href="/doc/rust/NOTES.md"');
   });
 
-  it("gives reference documents the link behaviour and the diagrams", async () => {
+  it("gives reference documents the link behaviour, the diagrams, and the math", async () => {
     fixture.write("rust/reference/syntax.html", "<html><head></head><body>Ref</body></html>");
     const html = await (await get("/r/rust/syntax.html")).text();
     expect(html).toContain("/static/links.mjs");
     expect(html).toContain("/static/diagrams.mjs");
+    expect(html).toContain("/static/math.mjs");
   });
 
   it("serves the bundled runtime assets", async () => {
@@ -411,6 +412,17 @@ describe("pages", () => {
     expect((await get("/static/links.mjs")).status).toBe(200);
     expect((await get("/static/draft.mjs")).status).toBe(200);
     expect((await get("/static/diagrams.mjs")).status).toBe(200);
+    expect((await get("/static/math.mjs")).status).toBe(200);
+  });
+
+  it("serves the vendored Temml build and stylesheet that math.mjs and classroom.css load", async () => {
+    const module = await get("/static/vendor/temml/temml.mjs");
+    expect(module.status).toBe(200);
+    expect(module.headers.get("content-type")).toMatch(/javascript/);
+    const css = await get("/static/vendor/temml/Temml-Local.css");
+    expect(css.status).toBe(200);
+    expect(css.headers.get("content-type")).toMatch(/text\/css/);
+    expect((await get("/static/vendor/temml/Temml.woff2")).status).toBe(200);
   });
 
   it("serves the vendored Mermaid build that diagrams.mjs loads", async () => {
