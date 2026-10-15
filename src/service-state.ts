@@ -18,6 +18,10 @@ export interface TeacherRequest {
   status: "queued" | "running" | "planned" | "done" | "failed";
   error?: string;
   plan?: TeacherPlan;
+  /** Original model response, saved before contract decoding. */
+  modelOutput?: unknown;
+  /** Version 2 uses score-free grade_quiz_answers. Absent on older saved plans. */
+  planVersion?: 2;
   planRubricDigest?: string;
   planValidated?: boolean;
   applied?: number;
@@ -47,6 +51,9 @@ export function readTeacherState(classroom: string): TeacherState | null {
       state.version !== 1 ||
       !["codex", "claude"].includes(state.identity.backend) ||
       !Array.isArray(state.requests) ||
+      state.requests.some(
+        (request) => request.planVersion !== undefined && request.planVersion !== 2,
+      ) ||
       !Array.isArray(state.messages)
     )
       throw new Error(`Invalid teacher state for ${classroom}.`);

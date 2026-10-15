@@ -189,6 +189,15 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   schemas require an empty `notes_markdown` string. The service also checks this
   rule before applying a saved plan.
 
+  Dedicated service teachers return `grade_quiz_answers` with per-question grades
+  and no total score. The service calculates the score from those allocations.
+  It then calls the public `grade_lesson_quiz` tool. That tool still validates
+  question identity, rubric weights, correctness, and score arithmetic. A supplied
+  score in `grade_quiz_answers` is an error. New saved plans use `planVersion: 2`.
+  Older saved plans keep their original `grade_lesson_quiz` calls and score checks.
+  Recovery does not replace an inconsistent saved score. The service saves the raw
+  model response in `modelOutput` before it decodes the plan.
+
 - **Answers render server-side.** `applyAnswer` and `applyGrade` store markdown _and_
   HTML, so the browser needs no markdown parser.
 - **Submission timestamps are strictly increasing per lesson.** "Latest submission" is

@@ -24,10 +24,9 @@ const plan = (
   message = "What happens with a second example?",
 ): TeacherPlan => ({ calls, message, learning_record: "", notes_markdown: "" });
 const grade = (id: string) => ({
-  name: "grade_lesson_quiz",
+  name: "grade_quiz_answers",
   arguments_json: JSON.stringify({
     submission_id: id,
-    score: 0,
     feedback_markdown: "Check the owner.",
     questions: [{ question_id: "q1", correct: false, feedback: "The owner releases the value." }],
   }),
@@ -63,6 +62,8 @@ describe("persistent teacher", () => {
         if (seen.length === 1) {
           expect(contract.required).toBe(true);
           expect(contract.notesAllowed).not.toBe(true);
+          expect(definitions[0].parameters.required).not.toContain("score");
+          expect(definitions[0].parameters.properties).not.toHaveProperty("score");
           return plan([grade(s.id)]);
         }
         expect(contract.required).not.toBe(true);
@@ -76,7 +77,7 @@ describe("persistent teacher", () => {
     await teacher.idle();
     teacher.chat("rust", location.lesson, "I need another example.", randomUUID());
     await teacher.idle();
-    expect(seen).toEqual([["grade_lesson_quiz"], ["record_retrieval_check"]]);
+    expect(seen).toEqual([["grade_quiz_answers"], ["record_retrieval_check"]]);
     expect(readTeacherState("rust")!.requests.every((request) => request.status === "done")).toBe(
       true,
     );
@@ -383,7 +384,6 @@ it("preserves a pretest grade and records only demonstrated prior knowledge", as
   });
   const correct = grade(s.id);
   const args = JSON.parse(correct.arguments_json);
-  args.score = 100;
   args.questions[0].correct = true;
   correct.arguments_json = JSON.stringify(args);
   const teacher = new TeacherService(async () => ({
@@ -407,7 +407,6 @@ it.each([true, false])(
     const s = submission();
     const call = grade(s.id);
     const args = JSON.parse(call.arguments_json);
-    args.score = correct ? 100 : 0;
     args.questions[0].correct = correct;
     call.arguments_json = JSON.stringify(args);
     const teacher = new TeacherService(async () => ({
@@ -485,10 +484,9 @@ it.each(["check-1/q10", "check-1/q1 and check-1/q10"])(
     const teacher = new TeacherService(async () => ({
       ...plan([
         {
-          name: "grade_lesson_quiz",
+          name: "grade_quiz_answers",
           arguments_json: JSON.stringify({
             submission_id: s.id,
-            score: 50,
             feedback_markdown: "One correct answer.",
             questions: [
               { question_id: "q1", correct: true, feedback: "Correct." },
@@ -659,7 +657,7 @@ it("regenerates a rejected grade on explicit retry without repeating a saved gra
       const args = JSON.parse(call.arguments_json);
       args.score = 10;
       call.arguments_json = JSON.stringify(args);
-    } else expect(prompt).toContain("Score must match question points");
+    } else expect(prompt).toContain("grade_quiz_answers must omit score");
     return plan([call]);
   });
   teacher.attach("rust", "codex");
@@ -700,6 +698,8 @@ it("regenerates an older rejected score marked as a valid plan", async () => {
   await first.idle();
   const state = readTeacherState("rust")!;
   state.requests[0].planValidated = true;
+  state.requests[0].plan!.calls[0].name = "grade_lesson_quiz";
+  delete state.requests[0].planVersion;
   saveTeacherState("rust", state);
   let runs = 0;
   const restored = new TeacherService(async () => {
@@ -716,4 +716,59 @@ it("regenerates an older rejected score marked as a valid plan", async () => {
   expect(store.listGrades("rust", location.lesson)).toHaveLength(1);
   await first.stop();
   await restored.stop();
+});
+
+it("applies a valid saved legacy grade without requesting another model plan", async () => {
+  const s = submission();
+  const supplied = grade(s.id);
+  const args = JSON.parse(supplied.arguments_json);
+  args.score = 0;
+  supplied.arguments_json = JSON.stringify(args);
+  const first = new TeacherService(async () => plan([supplied]));
+  first.attach("rust", "codex");
+  await first.idle();
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(0);
+  const state = readTeacherState("rust")!;
+  const request = state.requests[0];
+  request.plan!.calls[0].name = "grade_lesson_quiz";
+  delete request.planVersion;
+  request.status = "planned";
+  request.planValidated = true;
+  saveTeacherState("rust", state);
+  const restored = new TeacherService(async () => {
+    throw new Error("Recovery must use the saved legacy plan.");
+  });
+  restored.restore();
+  await restored.idle();
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(1);
+  expect(store.listGrades("rust", location.lesson)[0].score).toBe(0);
+  await first.stop();
+  await restored.stop();
+});
+
+it("rejects a legacy grade operation in a new teacher plan", async () => {
+  const s = submission();
+  const call = grade(s.id);
+  call.name = "grade_lesson_quiz";
+  const teacher = new TeacherService(async () => plan([call]));
+  teacher.attach("rust", "codex");
+  await teacher.idle();
+  expect(readTeacherState("rust")!.requests[0].error).toContain("one grade_quiz_answers call");
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(0);
+  await teacher.stop();
+});
+
+it("rejects an unknown saved plan version before recovery", async () => {
+  submission();
+  const teacher = new TeacherService(async () => {
+    throw new Error("Leave the request failed for the recovery check.");
+  });
+  teacher.attach("rust", "codex");
+  await teacher.idle();
+  const state = readTeacherState("rust")!;
+  Object.assign(state.requests[0], { planVersion: 3 });
+  saveTeacherState("rust", state);
+  expect(() => readTeacherState("rust")).toThrow("Invalid teacher state");
+  await teacher.stop();
 });

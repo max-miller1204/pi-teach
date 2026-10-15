@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { makeFixture, seedClassroom } from "../test/helpers.ts";
 import { dedicatedTeacherPrompt, gradePrompt } from "../src/prompts.ts";
 import { classroomTools, PI_HOST, isFailure } from "../src/tools.ts";
+import { answerGradingTool, GRADE_ANSWERS } from "../src/teacher-grading.ts";
 import { runTeacher } from "../src/teacher.ts";
 import * as store from "../src/store.ts";
 import { parseHarness, useTestModel } from "./harness.ts";
@@ -115,7 +116,9 @@ try {
       ...(q.assistance ? { assistance: q.assistance } : {}),
     })),
   });
-  const definitions = classroomTools(PI_HOST).filter((t) => t.name === "grade_lesson_quiz");
+  const definitions = classroomTools(PI_HOST)
+    .filter((t) => t.name === "grade_lesson_quiz")
+    .map(answerGradingTool);
   const plan = await runTeacher(
     { backend },
     dedicatedTeacherPrompt(
@@ -127,16 +130,24 @@ try {
     fixture.root,
     () => {},
     undefined,
-    { operations: ["grade_lesson_quiz"], required: true, messageRequired: true },
+    { operations: [GRADE_ANSWERS], required: true, messageRequired: true },
+    (raw) => {
+      if (artifacts)
+        fs.writeFileSync(
+          path.join(artifacts, `${backend}-feedback-raw.json`),
+          JSON.stringify(raw, null, 2),
+        );
+    },
   );
   if (artifacts)
     fs.writeFileSync(
       path.join(artifacts, `${backend}-feedback-plan.json`),
       JSON.stringify(plan, null, 2),
     );
-  if (plan.calls.length !== 1 || plan.calls[0].name !== "grade_lesson_quiz")
+  if (plan.calls.length !== 1 || plan.calls[0].name !== GRADE_ANSWERS)
     throw new Error("Feedback evaluation needs one grade call.");
   const args = JSON.parse(plan.calls[0].arguments_json);
+  if (Object.hasOwn(args, "score")) throw new Error("The dedicated teacher must omit score.");
   for (const q of questions) {
     const verdict = args.questions.find((g: { question_id: string }) => g.question_id === q.id);
     if (!verdict || verdict.points_earned !== q.earned || verdict.points_possible !== q.points)
@@ -152,6 +163,8 @@ try {
     throw new Error("Uncertain correct answer needs explanatory reinforcement.");
   const result = await definitions[0].execute(args);
   if (isFailure(result)) throw new Error(result.content[0].text);
+  if (result.details.score !== 87.5)
+    throw new Error(`Feedback score is ${result.details.score}, expected 87.5.`);
   if (store.reviewItems("rust").some((i) => i.progress === "retained-evidence"))
     throw new Error("Immediate or old answers cannot prove retained knowledge.");
   const report = {

@@ -55,10 +55,9 @@ export async function verifyReviewBrowser(artifacts: string | null): Promise<voi
         return {
           calls: [
             {
-              name: "grade_lesson_quiz",
+              name: "grade_quiz_answers",
               arguments_json: JSON.stringify({
                 submission_id: submission.id,
-                score: 100,
                 feedback_markdown: "The new owner releases it.",
                 questions: submission.answers.map((a) => ({
                   question_id: a.questionId,
