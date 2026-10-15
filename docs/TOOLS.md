@@ -35,4 +35,4 @@ The dedicated teacher owns answer, grade, and retrieval writes:
 | `open_classroom`    | Start the service and return the URL. Never open a browser. Replaces `/classroom`. |
 | `list_classrooms`   | List classrooms and lessons with scores. Replaces `/classroom list`.               |
 | `classroom_service` | Start, inspect, or explicitly stop the service.                                    |
-| `classroom_phone`   | Start, inspect, or stop the owned phone route.                                     |
+| `classroom_phone`   | Inspect or stop the owned tailnet route, or start it on an explicit port.          |

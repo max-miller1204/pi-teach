@@ -80,6 +80,7 @@ async function main(): Promise<void> {
   const port = await freePort(),
     browser = `pi-teach-${harness}-${process.pid}`;
   process.env.PI_CLASSROOM_SERVICE_PORT = String(port);
+  process.env.PI_CLASSROOM_TAILSCALE = "0";
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PI_CLASSROOMS_DIR: root,

@@ -52,6 +52,7 @@ describe("Codex plugin", () => {
         "PI_CLASSROOMS_DIR",
         "PI_CLASSROOM_CONFIG",
         "PI_CLASSROOM_SERVICE_PORT",
+        "PI_CLASSROOM_TAILSCALE",
         "PI_CLASSROOM_TEACHER",
       ],
     });

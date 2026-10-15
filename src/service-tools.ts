@@ -16,7 +16,7 @@ export const serviceToolDefinitions: Array<Omit<ClassroomTool, "execute">> = [
     name: "classroom_phone",
     label: "Classroom Phone Access",
     description:
-      "Opt in to tailnet-only phone access. Return a checked complete classroom or lesson URL. Inspect or remove only this service's Serve route.",
+      "Inspect or remove this service's tailnet-only Serve route, or start it on an explicit HTTPS port. Return a checked complete classroom or lesson URL. open_classroom starts the route automatically while Tailscale is connected.",
     parameters: {
       type: "object",
       properties: {

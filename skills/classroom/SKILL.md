@@ -17,7 +17,7 @@ Pi keeps its in-process server and direct bridge.
 
 - Use `classroom_service` with action status to inspect ownership and the stable URL.
 - Use action stop to stop the service explicitly. Material and grades stay on disk.
-- When the learner asks for phone access, call `classroom_phone` with action start,
-  classroom, and lesson. Give the complete checked URL it returns. This opts in to
-  tailnet-only Tailscale Serve. Use status to inspect it. Use stop to remove its route.
+- When Tailscale is connected, `open_classroom` returns a checked tailnet-only link
+  that also works on a phone. Give it as returned. Use `classroom_phone` status to
+  inspect the route and stop to remove it. Use start only for an explicit HTTPS port.
 - If a port or route conflicts, report the error. Do not select another port silently.

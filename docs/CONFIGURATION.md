@@ -12,12 +12,14 @@ Optional, at `~/.pi/agent/classroom.json`:
 }
 ```
 
-| Key    | Default   | Meaning                                                  |
-| ------ | --------- | -------------------------------------------------------- |
-| `port` | ephemeral | Fixed port. An occupied or invalid port causes an error. |
+| Key             | Default   | Meaning                                                                               |
+| --------------- | --------- | ------------------------------------------------------------------------------------- |
+| `port`          | ephemeral | Fixed port. An occupied or invalid port causes an error.                              |
+| `tailscale`     | `true`    | Use tailnet links while Tailscale is connected. `PI_CLASSROOM_TAILSCALE=0` overrides. |
+| `tailscalePort` | `8443`    | HTTPS port for the tailnet route. An occupied port causes an error.                   |
 
 Claude Code and Codex read the same file. `/classroom`, `/teach`, and `open_classroom`
-return a link. They never open a browser. Lesson checks run in a separate headless
+return a link. They never open a browser. See [phone and remote links](USAGE.md#phone-and-remote-links). Lesson checks run in a separate headless
 session. The scaffold instructions name the packaged headless config.
 Set `PI_CLASSROOM_CONFIG` to read the settings from another file.
 

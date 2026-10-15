@@ -84,9 +84,11 @@ lines.on("line", (line) => {
         return;
       }
     }
+    // A running service must see phone stop so its links return to loopback.
     if (
       message.params?.name === "classroom_phone" &&
-      ["status", "stop"].includes(message.params?.arguments?.action)
+      ["status", "stop"].includes(message.params?.arguments?.action) &&
+      !(await serviceStatus()).running
     ) {
       const phone = new PhoneAccess();
       const value =

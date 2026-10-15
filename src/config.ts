@@ -5,6 +5,8 @@ import * as path from "node:path";
 
 export interface ClassroomConfig {
   port?: number;
+  tailscale?: boolean;
+  tailscalePort?: number;
 }
 
 let testConfigPath: string | undefined;
@@ -35,6 +37,9 @@ export function readConfig(file = configPath()): ClassroomConfig {
     }
     const config = parsed as ClassroomConfig;
     resolveConfiguredPort(config.port);
+    if (config.tailscale !== undefined && typeof config.tailscale !== "boolean")
+      throw new Error("tailscale must be a boolean.");
+    if (config.tailscalePort !== undefined) resolveConfiguredPort(config.tailscalePort);
     return config;
   } catch (err) {
     throw new Error(`Invalid classroom config ${file}: ${(err as Error).message}`, { cause: err });
@@ -46,4 +51,15 @@ export function resolveConfiguredPort(port: unknown): number {
   if (port === undefined) return 0;
   if (typeof port === "number" && Number.isInteger(port) && port >= 1 && port <= 65535) return port;
   throw new Error("Configured port must be an integer from 1 to 65535.");
+}
+
+/** Automatic tailnet links. `PI_CLASSROOM_TAILSCALE=0` takes priority. */
+export function tailscaleLinks(config: ClassroomConfig = readConfig()): {
+  enabled: boolean;
+  port?: number;
+} {
+  return {
+    enabled: process.env["PI_CLASSROOM_TAILSCALE"] !== "0" && config.tailscale !== false,
+    port: config.tailscalePort,
+  };
 }

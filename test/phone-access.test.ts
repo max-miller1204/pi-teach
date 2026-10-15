@@ -83,6 +83,34 @@ describe("phone routes", () => {
       f.cleanup();
     }
   });
+  it("reports availability only for a connected node", async () => {
+    const reply = (status: unknown) => new PhoneAccess(async () => JSON.stringify(status));
+    expect(
+      await reply({ BackendState: "Running", Self: { DNSName: "a.b.ts.net." } }).available(),
+    ).toBe(true);
+    expect(
+      await reply({ BackendState: "Stopped", Self: { DNSName: "a.b.ts.net." } }).available(),
+    ).toBe(false);
+    expect(await reply({ BackendState: "NeedsLogin", Self: {} }).available()).toBe(false);
+    const missing = new PhoneAccess(async () => {
+      throw new Error("tailscale: ENOENT");
+    });
+    expect(await missing.available()).toBe(false);
+  });
+  it("reuses the owned route port when no port is given", async () => {
+    const f = fixture();
+    try {
+      expect(await f.phone.start("http://127.0.0.1:43123", 8444)).toBe(
+        "https://test.tailnet.ts.net:8444",
+      );
+      expect(await f.phone.start("http://127.0.0.1:43123")).toBe(
+        "https://test.tailnet.ts.net:8444",
+      );
+      expect(f.calls.filter((c) => c.includes("--bg"))).toHaveLength(1);
+    } finally {
+      f.cleanup();
+    }
+  });
   it("fails clearly when Tailscale is unavailable", async () => {
     const phone = new PhoneAccess(async () => {
       throw new Error("tailscale: ENOENT");

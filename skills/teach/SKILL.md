@@ -29,9 +29,9 @@ description: Teach a topic or create challenging quizzes and tests in the classr
    An empty historical panel starts one corrective question. Use the panel retry
    control after failure. Do not ask the corrective question in the initiating chat.
 9. Do not start the next lesson without learner agreement. Use `classroom_service`
-   to inspect or explicitly stop the service. For requested phone access, use
-   `classroom_phone` with action start and the classroom and lesson. Give the full
-   checked URL it returns. Use status or stop to inspect or remove its route.
+   to inspect or explicitly stop the service. When Tailscale is connected, the
+   links from `open_classroom` and the scaffold tools are tailnet links. Give them
+   as returned. Use `classroom_phone` status or stop to inspect or remove its route.
 10. When `begin_teaching` reports questions due for review, offer a review before new
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.

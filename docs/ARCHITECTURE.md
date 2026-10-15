@@ -33,7 +33,8 @@ owns browser SSE connections. Keep requests durable and sequential per classroom
 Save each plan before applying writes. Do not grade a submission twice after recovery.
 Failed or interrupted work must show a specific error and require an explicit retry.
 
-Phone access is opt-in and tailnet-only. Use the classroom_phone helper. Keep the
+Tailnet links are automatic while Tailscale is connected and tailnet-only. Users can
+disable them in config. Use the PhoneAccess helper. Keep the
 HTTP server on loopback. Preserve unrelated Tailscale Serve routes. Never enable
 Funnel or silently select another port or backend.
 

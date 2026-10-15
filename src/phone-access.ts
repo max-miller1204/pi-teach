@@ -76,12 +76,25 @@ export class PhoneAccess {
       conflict: current && current.Proxy !== owner.target ? "Owned route changed." : undefined,
     };
   }
-  async start(target: string, port = 8443): Promise<string> {
+  /** Whether the Tailscale CLI runs and reports a connected node with a DNS name. */
+  async available(): Promise<boolean> {
+    let text: string;
+    try {
+      text = await this.run(["status", "--json"]);
+    } catch {
+      return false;
+    }
+    const status = JSON.parse(text);
+    return status.BackendState === "Running" && !!status.Self?.DNSName;
+  }
+  /** Without a port, reuse the owned route for this target, else use 8443. */
+  async start(target: string, requested?: number): Promise<string> {
+    const owner = this.owner();
+    const port = requested ?? (owner?.target === target ? owner.port : 8443);
     if (!Number.isInteger(port) || port < 1 || port > 65535)
       throw new Error("Phone HTTPS port must be an integer from 1 to 65535.");
     const { host, config } = await this.inspect();
-    const owner = this.owner(),
-      key = `${host}:${port}`;
+    const key = `${host}:${port}`;
     if (config.AllowFunnel?.[key])
       throw new Error("This HTTPS port has Funnel enabled. Select a tailnet-only port explicitly.");
     const handlers = config.Web?.[key]?.Handlers;

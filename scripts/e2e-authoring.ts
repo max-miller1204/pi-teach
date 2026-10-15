@@ -440,6 +440,7 @@ async function main(): Promise<void> {
   const listener = net.createServer();
   await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
   process.env.PI_CLASSROOM_SERVICE_PORT = String((listener.address() as net.AddressInfo).port);
+  process.env.PI_CLASSROOM_TAILSCALE = "0";
   await new Promise<void>((resolve) => listener.close(() => resolve()));
   const env: NodeJS.ProcessEnv = {
     ...process.env,

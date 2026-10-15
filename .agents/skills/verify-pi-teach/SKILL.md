@@ -36,7 +36,7 @@ Use the installed `playwright-cli` through the repository harness. Each run has 
 | Grading policy                                                      | Select `feedback claude` and `feedback codex`                                  |
 | Semantic evaluator                                                  | Select `quality claude` and `quality codex`                                    |
 | Plugin manifests                                                    | `claude plugin validate .`                                                     |
-| Phone access                                                        | Read the coverage gap in the feature index before selecting `phone`            |
+| Tailnet links or phone access                                       | Read the tailnet note in the feature index before selecting `phone`            |
 
 Pass `--artifacts <directory>` to any target. Use a new directory for each run. `checks` runs only formatting, types, and automated tests. `browser` runs only browser checks. Do not repeat completed checks unless code changes or a finding requires it.
 

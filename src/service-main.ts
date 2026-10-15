@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 import { LearnerInbox, McpSession, type JsonRpcMessage } from "./mcp.ts";
+import { configPath, tailscaleLinks } from "./config.ts";
 import { classroomsRoot, packageRoot } from "./paths.ts";
 import { servicePaths, servicePort } from "./service-client.ts";
 import { PhoneAccess } from "./phone-access.ts";
@@ -60,6 +61,41 @@ function status(): unknown {
     log: paths.log,
   };
 }
+/** Start the owned route and check its base URL before any link uses it. */
+async function checkedRoute(port?: number): Promise<string> {
+  const base = await phone.start(server.getBaseUrl()!, port);
+  const checked = await fetch(base, { signal: AbortSignal.timeout(15_000) }).catch((err) => {
+    const cause = (err as Error).cause as Error | undefined;
+    throw new Error(`Tailnet URL check failed for ${base}: ${cause?.message ?? err.message}.`);
+  });
+  if (!checked.ok) throw new Error(`Tailnet URL check returned ${checked.status}: ${base}.`);
+  await checked.body?.cancel();
+  server.setLinkBase(base);
+  return base;
+}
+/** Use tailnet links while Tailscale is connected. A connected node with a failed route is an error. */
+async function shareLinks(): Promise<void> {
+  const settings = tailscaleLinks();
+  if (!settings.enabled) return;
+  if (!(await phone.available())) {
+    server.setLinkBase(null);
+    return;
+  }
+  try {
+    await checkedRoute(settings.port);
+  } catch (err) {
+    throw new Error(
+      `Tailscale is connected, but its classroom link failed: ${(err as Error).message} ` +
+        `Set "tailscalePort" to a free port, or set "tailscale": false in ${configPath()} for local links.`,
+      { cause: err },
+    );
+  }
+}
+async function stopPhone(): Promise<unknown> {
+  const removed = await phone.stop();
+  server.setLinkBase(null);
+  return removed;
+}
 function result(value: unknown): ToolResult {
   return {
     content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }],
@@ -71,7 +107,7 @@ async function stop(): Promise<void> {
   closing = true;
   for (const c of clients.values()) c.inbox.reset();
   try {
-    await phone.stop();
+    await stopPhone();
   } catch (err) {
     closing = false;
     throw err;
@@ -90,7 +126,7 @@ const tools: ClassroomTool[] = [
       if (args.action === "status" || args.action === "start") return result(status());
       if (args.action !== "stop") throw new Error("Unknown service action.");
       // Clean the route before reporting success. Keep the service live if cleanup fails.
-      await phone.stop();
+      await stopPhone();
       setTimeout(() => {
         void stop()
           .then(() => process.exit(0))
@@ -111,15 +147,15 @@ const tools: ClassroomTool[] = [
       https_port?: number;
     }) {
       if (args.action === "status") return result(await phone.status());
-      if (args.action === "stop") return result(await phone.stop());
+      if (args.action === "stop") return result(await stopPhone());
       if (args.action !== "start") throw new Error("Unknown phone action.");
       if (!args.classroom || !store.readClassroom(args.classroom))
         throw new Error("A classroom is required for phone access.");
       if (args.lesson && !store.readLesson(args.classroom, args.lesson))
         throw new Error("No such lesson.");
       teacher.attach(args.classroom);
-      const base = await phone.start(server.getBaseUrl()!, args.https_port);
-      const url = `${base}/c/${encodeURIComponent(args.classroom)}${args.lesson ? `/${encodeURIComponent(args.lesson)}` : ""}`;
+      await checkedRoute(args.https_port);
+      const url = server.urlFor(args.classroom, args.lesson)!;
       const checked = await fetch(url, { signal: AbortSignal.timeout(15_000) });
       if (!checked.ok) throw new Error(`Phone URL check returned ${checked.status}: ${url}`);
       await checked.body?.cancel();
@@ -143,6 +179,7 @@ function session(id: string, backend?: Backend): McpSession {
           name,
           requested === undefined && readTeacherState(name) ? undefined : selected,
         );
+      await shareLinks();
       return server.urlFor(classroom ?? undefined)!;
     },
   });
@@ -165,7 +202,7 @@ const ipc = http.createServer((req, res) => {
         clients.delete(args.client);
         value = { detached: true };
       } else if (req.url === "/stop") {
-        await phone.stop();
+        await stopPhone();
         value = { stopping: true };
         setTimeout(() => {
           void stop()

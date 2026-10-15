@@ -5,6 +5,7 @@ import {
   configPath,
   readConfig,
   resolveConfiguredPort,
+  tailscaleLinks,
 } from "../src/config.ts";
 import { makeFixture, type Fixture } from "./helpers.ts";
 let fixture: Fixture;
@@ -39,5 +40,16 @@ describe("classroom configuration", () => {
     for (const port of [0, -1, 65536, 1.5, "4098", null])
       expect(() => resolveConfiguredPort(port)).toThrow();
     expect(resolveConfiguredPort(4098)).toBe(4098);
+  });
+  it("enables tailnet links unless the config or environment disables them", () => {
+    expect(tailscaleLinks({})).toEqual({ enabled: true, port: undefined });
+    expect(tailscaleLinks({ tailscale: false })).toMatchObject({ enabled: false });
+    expect(tailscaleLinks({ tailscalePort: 8445 })).toEqual({ enabled: true, port: 8445 });
+    process.env["PI_CLASSROOM_TAILSCALE"] = "0";
+    try {
+      expect(tailscaleLinks({ tailscale: true })).toMatchObject({ enabled: false });
+    } finally {
+      delete process.env["PI_CLASSROOM_TAILSCALE"];
+    }
   });
 });
