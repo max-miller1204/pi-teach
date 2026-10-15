@@ -62,9 +62,11 @@ describe("persistent teacher", () => {
         expect(definitions.map((tool: { name: string }) => tool.name)).toEqual(contract.operations);
         if (seen.length === 1) {
           expect(contract.required).toBe(true);
+          expect(contract.notesAllowed).not.toBe(true);
           return plan([grade(s.id)]);
         }
         expect(contract.required).not.toBe(true);
+        expect(contract.notesAllowed).toBe(true);
         expect(definitions[0].parameters.required).not.toContain("learning_record");
         expect(definitions[0].parameters.properties).not.toHaveProperty("learning_record");
         return plan([]);

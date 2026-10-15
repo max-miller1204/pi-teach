@@ -49,6 +49,7 @@ export interface PlanContract {
   operations: TeacherOperation[];
   required?: boolean;
   messageRequired?: boolean;
+  notesAllowed?: boolean;
 }
 
 /** Limit structured output to operations permitted by the current request. */
@@ -58,6 +59,9 @@ export function planSchema(contract: PlanContract) {
     ...PLAN_SCHEMA,
     properties: {
       ...PLAN_SCHEMA.properties,
+      notes_markdown: contract.notesAllowed
+        ? PLAN_SCHEMA.properties.notes_markdown
+        : { type: "string", enum: [""] },
       message: contract.messageRequired
         ? { type: "string", minLength: 1, pattern: "\\S" }
         : PLAN_SCHEMA.properties.message,

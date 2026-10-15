@@ -376,8 +376,13 @@ export class TeacherService {
       case "review":
         return { operations: ["publish_review"], required: true, messageRequired: true };
       case "chat":
-        return { operations: ["record_retrieval_check"], messageRequired: true };
+        return {
+          operations: ["record_retrieval_check"],
+          messageRequired: true,
+          notesAllowed: true,
+        };
       case "reflect":
+        return { operations: [], messageRequired: true, notesAllowed: true };
       case "resume":
         return { operations: [], messageRequired: true };
     }
