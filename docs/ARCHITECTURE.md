@@ -183,6 +183,12 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
 - **Grading has no prose fallback.** A half-invented grade is worse than none, so only
   `grade_lesson_quiz` writes a grade. The grading run's prose goes to the teacher panel,
   never into the grade.
+
+  Dedicated service teachers receive a plan schema for the active request only.
+  Only chat and reflection request schemas permit gap notes. Other request
+  schemas require an empty `notes_markdown` string. The service also checks this
+  rule before applying a saved plan.
+
 - **Answers render server-side.** `applyAnswer` and `applyGrade` store markdown _and_
   HTML, so the browser needs no markdown parser.
 - **Submission timestamps are strictly increasing per lesson.** "Latest submission" is
