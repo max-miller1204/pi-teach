@@ -92,7 +92,6 @@ describe("skills", () => {
       "scaffold_review",
       "wait_for_learner",
       "classroom_service",
-      "classroom_phone",
     ];
     for (const tool of tools) expect(known).toContain(tool);
   });

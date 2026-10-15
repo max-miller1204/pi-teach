@@ -61,12 +61,18 @@ export class PhoneAccess {
   private handler(config: any, host: string, port: number): any {
     return config.Web?.[`${host}:${port}`]?.Handlers?.["/"];
   }
+  /** Whether this helper recorded a route. */
+  owns(): boolean {
+    return this.owner() !== null;
+  }
   async status(): Promise<unknown> {
+    if (!(await this.available())) return { connected: false, owned: this.owner() ?? undefined };
     const { host, config } = await this.inspect(),
       owner = this.owner();
-    if (!owner) return { enabled: false };
+    if (!owner) return { connected: true, enabled: false };
     const current = this.handler(config, owner.host, owner.port);
     return {
+      connected: true,
       enabled:
         host === owner.host &&
         current?.Proxy === owner.target &&
@@ -87,10 +93,13 @@ export class PhoneAccess {
     const status = JSON.parse(text);
     return status.BackendState === "Running" && !!status.Self?.DNSName;
   }
-  /** Without a port, reuse the owned route for this target, else use 8443. */
-  async start(target: string, requested?: number): Promise<string> {
-    const owner = this.owner();
-    const port = requested ?? (owner?.target === target ? owner.port : 8443);
+  /** Move this target's owned route when the configured port changes. */
+  async start(target: string, port = 8443): Promise<string> {
+    let owner = this.owner();
+    if (owner?.target === target && owner.port !== port) {
+      await this.stop();
+      owner = null;
+    }
     if (!Number.isInteger(port) || port < 1 || port > 65535)
       throw new Error("Phone HTTPS port must be an integer from 1 to 65535.");
     const { host, config } = await this.inspect();
@@ -122,9 +131,15 @@ export class PhoneAccess {
       throw new Error("Tailscale did not create the requested tailnet-only route.");
     return `https://${host}:${port}`;
   }
+  /** Tailscale must be connected to remove a route. Otherwise keep the record and report it. */
   async stop(): Promise<unknown> {
     const owner = this.owner();
     if (!owner) return { removed: false };
+    if (!(await this.available()))
+      return {
+        removed: false,
+        kept: `Tailscale is not connected, so the owned route on port ${owner.port} stays. The next start reuses or removes it.`,
+      };
     const { config } = await this.inspect();
     const current = this.handler(config, owner.host, owner.port);
     if (current && current.Proxy !== owner.target)

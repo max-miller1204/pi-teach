@@ -31,7 +31,7 @@ description: Teach a topic or create challenging quizzes and tests in the classr
 9. Do not start the next lesson without learner agreement. Use `classroom_service`
    to inspect or explicitly stop the service. When Tailscale is connected, the
    links from `open_classroom` and the scaffold tools are tailnet links. Give them
-   as returned. Use `classroom_phone` status or stop to inspect or remove its route.
+   as returned. `classroom_service` status reports the tailnet route.
 10. When `begin_teaching` reports questions due for review, offer a review before new
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.

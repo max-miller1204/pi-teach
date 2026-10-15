@@ -95,12 +95,16 @@ including over SSH. Without Tailscale, or while it is logged out or stopped, lin
 use `127.0.0.1`.
 
 The route uses port 8443 by default. Set `tailscalePort` in the
-[configuration](CONFIGURATION.md) to select another port. A connected node whose
-route fails returns that error. It never switches ports or falls back to a local
-link. The helper rejects conflicts and Funnel-enabled ports. It preserves unrelated
-Serve routes. Use `classroom_phone` status and stop to inspect and remove the owned
-route. Service stop removes that route first. Set `"tailscale": false` to keep links
-local.
+[configuration](CONFIGURATION.md) to select another port. The next `open_classroom`
+moves the route. A connected node whose route fails returns that error. It never
+switches ports or falls back to a local link. The helper rejects conflicts and
+Funnel-enabled ports. It preserves unrelated Serve routes.
+
+The route lasts as long as the service. Closing a Claude Code or Codex session does
+not remove it. `classroom_service` status reports it, and service stop removes it
+first. Set `"tailscale": false` to keep links local. The next `open_classroom` then
+removes the route. While Tailscale is disconnected, the route cannot be removed.
+Stop keeps its record and reports it. The next start reuses or removes it.
 
 This does not enable public access. Tailnet members allowed by your Tailscale policy
 can reach the classroom pages and submit requests.

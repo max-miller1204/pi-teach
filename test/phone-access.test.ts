@@ -97,18 +97,35 @@ describe("phone routes", () => {
     });
     expect(await missing.available()).toBe(false);
   });
-  it("reuses the owned route port when no port is given", async () => {
+  it("moves the owned route when the configured port changes", async () => {
     const f = fixture();
     try {
-      expect(await f.phone.start("http://127.0.0.1:43123", 8444)).toBe(
-        "https://test.tailnet.ts.net:8444",
+      await f.phone.start("http://127.0.0.1:43123");
+      expect(await f.phone.start("http://127.0.0.1:43123", 8445)).toBe(
+        "https://test.tailnet.ts.net:8445",
       );
-      expect(await f.phone.start("http://127.0.0.1:43123")).toBe(
-        "https://test.tailnet.ts.net:8444",
+      expect(f.config.Web["test.tailnet.ts.net:8443"]?.Handlers["/"]).toBeUndefined();
+      expect(f.config.Web["test.tailnet.ts.net:8445"].Handlers["/"].Proxy).toBe(
+        "http://127.0.0.1:43123",
       );
-      expect(f.calls.filter((c) => c.includes("--bg"))).toHaveLength(1);
     } finally {
       f.cleanup();
+    }
+  });
+  it("keeps the route record while Tailscale is disconnected", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-phone-test-"));
+    const file = path.join(dir, "phone.json");
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ host: "test.tailnet.ts.net", port: 8443, target: "http://127.0.0.1:43123" }),
+    );
+    try {
+      const phone = new PhoneAccess(async () => JSON.stringify({ BackendState: "Stopped" }), file);
+      expect(await phone.stop()).toMatchObject({ removed: false, kept: expect.any(String) });
+      expect(await phone.status()).toMatchObject({ connected: false, owned: { port: 8443 } });
+      expect(fs.existsSync(file)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
   it("fails clearly when Tailscale is unavailable", async () => {

@@ -48,7 +48,7 @@ const teacher = new TeacherService(),
   phone = new PhoneAccess();
 const clients = new Map<string, { session: McpSession; inbox: LearnerInbox }>();
 let closing = false;
-function status(): unknown {
+function status(): Record<string, unknown> {
   return {
     running: true,
     stopping: closing,
@@ -73,10 +73,15 @@ async function checkedRoute(port?: number): Promise<string> {
   server.setLinkBase(base);
   return base;
 }
-/** Use tailnet links while Tailscale is connected. A connected node with a failed route is an error. */
+/** Use tailnet links while Tailscale is connected. A connected node with a failed route is an error.
+ * Disabling them in config removes the owned route on the next open. */
 async function shareLinks(): Promise<void> {
   const settings = tailscaleLinks();
-  if (!settings.enabled) return;
+  if (!settings.enabled) {
+    if (phone.owns()) await stopPhone();
+    server.setLinkBase(null);
+    return;
+  }
   if (!(await phone.available())) {
     server.setLinkBase(null);
     return;
@@ -123,10 +128,11 @@ const tools: ClassroomTool[] = [
   {
     ...serviceToolDefinitions[0],
     async execute(args: { action: string }) {
-      if (args.action === "status" || args.action === "start") return result(status());
+      if (args.action === "status" || args.action === "start")
+        return result({ ...status(), tailnet: await phone.status() });
       if (args.action !== "stop") throw new Error("Unknown service action.");
       // Clean the route before reporting success. Keep the service live if cleanup fails.
-      await stopPhone();
+      const tailnet = await stopPhone();
       setTimeout(() => {
         void stop()
           .then(() => process.exit(0))
@@ -135,31 +141,7 @@ const tools: ClassroomTool[] = [
             closing = false;
           });
       }, 50);
-      return result("Classroom service is stopping.");
-    },
-  },
-  {
-    ...serviceToolDefinitions[1],
-    async execute(args: {
-      action: string;
-      classroom?: string;
-      lesson?: string;
-      https_port?: number;
-    }) {
-      if (args.action === "status") return result(await phone.status());
-      if (args.action === "stop") return result(await stopPhone());
-      if (args.action !== "start") throw new Error("Unknown phone action.");
-      if (!args.classroom || !store.readClassroom(args.classroom))
-        throw new Error("A classroom is required for phone access.");
-      if (args.lesson && !store.readLesson(args.classroom, args.lesson))
-        throw new Error("No such lesson.");
-      teacher.attach(args.classroom);
-      await checkedRoute(args.https_port);
-      const url = server.urlFor(args.classroom, args.lesson)!;
-      const checked = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-      if (!checked.ok) throw new Error(`Phone URL check returned ${checked.status}: ${url}`);
-      await checked.body?.cancel();
-      return result(`[Open ${args.lesson ? "lesson" : "classroom"}](${url})`);
+      return result({ stopping: true, tailnet });
     },
   },
 ];

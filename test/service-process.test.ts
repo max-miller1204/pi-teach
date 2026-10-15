@@ -126,7 +126,6 @@ it("keeps HTTP and submissions alive after MCP exit, reconnects, and preserves g
   expect(tools.result.tools.map((t: any) => t.name).sort()).toEqual(
     [
       "begin_teaching",
-      "classroom_phone",
       "classroom_service",
       "lesson_health",
       "list_classrooms",
@@ -467,6 +466,13 @@ else {
   expect(failed.result?.isError ?? true).toBe(true);
   expect(JSON.stringify(failed)).toContain('\\"tailscale\\": false');
   expect(JSON.stringify(failed)).not.toContain("http://127.0.0.1:");
+  // Disabling tailnet links in config removes the owned route on the next open.
+  f.write("config.json", '{"tailscale":false}');
+  const disabled = await open();
+  expect(disabled.result.content[0].text).toContain("http://127.0.0.1:");
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, "tailscale-state.json"), "utf8"))).toEqual({
+    Web: {},
+  });
   mcp.child.stdin.end();
   await mcp.exited;
   const { pid } = await serviceStatus();

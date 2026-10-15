@@ -15,9 +15,11 @@ not stop it. Each classroom has one dedicated teacher backend and session. Brows
 requests start teacher work. Use the teacher panel for retrieval questions and replies.
 Pi keeps its in-process server and direct bridge.
 
-- Use `classroom_service` with action status to inspect ownership and the stable URL.
-- Use action stop to stop the service explicitly. Material and grades stay on disk.
+- Use `classroom_service` with action status to inspect ownership, the stable URL,
+  and the tailnet route.
+- Use action stop to stop the service explicitly. It removes the tailnet route.
+  Material and grades stay on disk.
 - When Tailscale is connected, `open_classroom` returns a checked tailnet-only link
-  that also works on a phone. Give it as returned. Use `classroom_phone` status to
-  inspect the route and stop to remove it. Use start only for an explicit HTTPS port.
+  that also works on a phone. Give it as returned. The learner turns tailnet links
+  off or changes their port in `classroom.json`.
 - If a port or route conflicts, report the error. Do not select another port silently.
