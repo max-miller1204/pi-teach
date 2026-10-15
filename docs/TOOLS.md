@@ -29,10 +29,9 @@ unknown. Use task `transfer` only for an unfamiliar application of the principle
 The Claude Code and Codex plugin exposes authoring tools and these service tools.
 The dedicated teacher owns answer, grade, and retrieval writes:
 
-| Tool                | Purpose                                                                                            |
-| ------------------- | -------------------------------------------------------------------------------------------------- |
-| `begin_teaching`    | Return the teaching method and the learner's classroom. Replaces `/teach`.                         |
-| `open_classroom`    | Start the service and return the URL. Open the browser only when requested. Replaces `/classroom`. |
-| `list_classrooms`   | List classrooms and lessons with scores. Replaces `/classroom list`.                               |
-| `classroom_service` | Start, inspect, or explicitly stop the service.                                                    |
-| `classroom_phone`   | Start, inspect, or stop the owned phone route.                                                     |
+| Tool                | Purpose                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `begin_teaching`    | Return the teaching method and the learner's classroom. Replaces `/teach`.         |
+| `open_classroom`    | Start the service and return the URL. Never open a browser. Replaces `/classroom`. |
+| `list_classrooms`   | List classrooms and lessons with scores. Replaces `/classroom list`.               |
+| `classroom_service` | Start, inspect, or explicitly stop the service and its tailnet route.              |

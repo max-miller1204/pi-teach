@@ -50,9 +50,9 @@ describe("Codex plugin", () => {
       cwd: ".",
       env_vars: [
         "PI_CLASSROOMS_DIR",
-        "PI_CLASSROOM_AUTO_OPEN",
         "PI_CLASSROOM_CONFIG",
         "PI_CLASSROOM_SERVICE_PORT",
+        "PI_CLASSROOM_TAILSCALE",
         "PI_CLASSROOM_TEACHER",
       ],
     });
@@ -92,7 +92,6 @@ describe("skills", () => {
       "scaffold_review",
       "wait_for_learner",
       "classroom_service",
-      "classroom_phone",
     ];
     for (const tool of tools) expect(known).toContain(tool);
   });

@@ -9,8 +9,8 @@
 /teach                  continue where you left off
 /teach rust-ownership   continue a specific classroom
 
-/classroom              open the classroom browser (starts the server if needed)
-/classroom rust         open one classroom directly
+/classroom              print the classroom link (starts the server if needed)
+/classroom rust         print one classroom's link
 /classroom list         list classrooms and lessons in the TUI
 /classroom status       is the server running, and where
 /classroom start|stop   manage the server explicitly
@@ -86,15 +86,30 @@ An interrupted model call becomes a visible error. Use Retry request in the teac
 panel to run it again. Saved plans finish without another model call. Model calls
 have a 180-second limit. Model and authentication errors remain visible.
 
-### Phone access
+### Phone and remote links
 
-For phone access, ask the agent to call `classroom_phone` with action start,
-classroom, and lesson. The helper uses the existing Tailscale installation and node.
-It creates a tailnet-only HTTPS Serve route on explicit port 8443 by default. It
-checks the complete URL before returning it. Use `https_port` to select a free port
-explicitly if that port is occupied. The helper rejects conflicts and Funnel-enabled
-ports. It preserves unrelated Serve routes. Use its status and stop actions to
-inspect and remove the owned route. Service stop removes that route first.
+When the `tailscale` command reports a connected node, `open_classroom` and Pi's
+`/classroom` create a tailnet-only HTTPS Serve route and check it. Classroom and lesson links then use
+your node's tailnet name, so the same link works on a phone or from another computer,
+including over SSH. Without Tailscale, or while it is logged out or stopped, links
+use `127.0.0.1`.
+
+The service route uses port 8443 by default. Set `tailscalePort` in the
+[configuration](CONFIGURATION.md) to select another port. The next `open_classroom`
+moves the route. A connected node whose route fails returns that error. It never
+switches ports or falls back to a local link. The helper rejects conflicts and
+Funnel-enabled ports. It preserves unrelated Serve routes.
+
+The route lasts as long as the service. Closing a Claude Code or Codex session does
+not remove it. `classroom_service` status reports it, and service stop removes it
+first. Set `"tailscale": false` to keep links local. The next `open_classroom` then
+removes the route. While Tailscale is disconnected, the route cannot be removed.
+Stop keeps its record and reports it. The next start reuses or removes it.
+
+Pi uses its own route on port 8444, or `piTailscalePort`. `/classroom stop` and the
+end of the Pi session remove it. If a Pi session exits without cleanup, the next
+session replaces its route once the old server no longer listens.
+
 This does not enable public access. Tailnet members allowed by your Tailscale policy
 can reach the classroom pages and submit requests.
 
@@ -126,5 +141,5 @@ The adapters follow the official [Codex app-server documentation](https://learn.
   matched back to questions by that id.
 - **Teacher failures require a retry.** The teacher panel shows the specific error.
   Saved requests stay on disk. Click Retry request after resolving the cause.
-- **Loopback only.** The HTTP service binds to `127.0.0.1`. Phone access uses an
-  opt-in Tailscale Serve route. It does not use Funnel.
+- **Loopback only.** The HTTP service binds to `127.0.0.1`. Tailnet links use a
+  Tailscale Serve route. They do not use Funnel.

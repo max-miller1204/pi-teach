@@ -60,7 +60,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     PATH: process.env.PATH,
     PI_CLASSROOM_SERVICE_PORT: process.env.PI_CLASSROOM_SERVICE_PORT,
     PI_CLASSROOMS_DIR: process.env.PI_CLASSROOMS_DIR,
-    PI_CLASSROOM_AUTO_OPEN: process.env.PI_CLASSROOM_AUTO_OPEN,
+    PI_CLASSROOM_TAILSCALE: process.env.PI_CLASSROOM_TAILSCALE,
   };
   const socket = net.createServer();
   await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
@@ -70,7 +70,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     PATH: `${bin}:${previous.PATH}`,
     PI_CLASSROOM_SERVICE_PORT: String(port),
     PI_CLASSROOMS_DIR: fixture.root,
-    PI_CLASSROOM_AUTO_OPEN: "0",
+    PI_CLASSROOM_TAILSCALE: "0",
   });
   const session = `pi-teach-service-browser-${process.pid}`;
   let browserOpen = false;

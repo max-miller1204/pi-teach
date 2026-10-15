@@ -440,11 +440,11 @@ async function main(): Promise<void> {
   const listener = net.createServer();
   await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
   process.env.PI_CLASSROOM_SERVICE_PORT = String((listener.address() as net.AddressInfo).port);
+  process.env.PI_CLASSROOM_TAILSCALE = "0";
   await new Promise<void>((resolve) => listener.close(() => resolve()));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PI_CLASSROOMS_DIR: root,
-    PI_CLASSROOM_AUTO_OPEN: "0",
     PI_CLASSROOM_TEACHER: harness,
   };
   const browser = `pi-teach-authoring-${harness}-${process.pid}`;

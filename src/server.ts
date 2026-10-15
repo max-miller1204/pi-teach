@@ -971,6 +971,7 @@ export async function close(): Promise<void> {
     const s = server;
     server = null;
     serverPort = null;
+    linkBase = null;
     // End the SSE streams first: an open event-stream keeps close() pending forever.
     for (const clients of sseClients.values()) {
       for (const res of clients) {
@@ -984,6 +985,12 @@ export async function close(): Promise<void> {
     sseClients.clear();
     s.close(() => resolve());
   });
+}
+
+let linkBase: string | null = null;
+/** Build links on a checked tailnet base. The server still listens on loopback. */
+export function setLinkBase(base: string | null): void {
+  linkBase = base;
 }
 
 export function getBaseUrl(): string | null {
@@ -1000,8 +1007,9 @@ export function isRunning(): boolean {
 
 /** URL for a classroom, or the landing page when no name is given. */
 export function urlFor(classroom?: string, lesson?: string): string | null {
-  const base = getBaseUrl();
-  if (!base) return null;
+  const local = getBaseUrl();
+  if (!local) return null;
+  const base = linkBase ?? local;
   if (!classroom) return base;
   if (!lesson) return `${base}/c/${encodeURIComponent(classroom)}`;
   return `${base}/c/${encodeURIComponent(classroom)}/${encodeURIComponent(lesson)}`;

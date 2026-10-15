@@ -80,10 +80,10 @@ async function main(): Promise<void> {
   const port = await freePort(),
     browser = `pi-teach-${harness}-${process.pid}`;
   process.env.PI_CLASSROOM_SERVICE_PORT = String(port);
+  process.env.PI_CLASSROOM_TAILSCALE = "0";
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PI_CLASSROOMS_DIR: root,
-    PI_CLASSROOM_AUTO_OPEN: "0",
     PI_CLASSROOM_TEACHER: harness,
   };
   const prompt = `Call begin_teaching with topic rust. Call open_classroom with classroom rust and teacher_backend ${harness}. Return the URL and end this turn. Do not write material or wait for browser requests. The persistent service handles them.`;

@@ -73,7 +73,7 @@ lines.on('line', line => {
   env = {
     ...process.env,
     PI_CLASSROOMS_DIR: f.root,
-    PI_CLASSROOM_AUTO_OPEN: "0",
+    PI_CLASSROOM_TAILSCALE: "0",
     PATH: `${bin}:${process.env.PATH}`,
   };
 });
@@ -126,7 +126,6 @@ it("keeps HTTP and submissions alive after MCP exit, reconnects, and preserves g
   expect(tools.result.tools.map((t: any) => t.name).sort()).toEqual(
     [
       "begin_teaching",
-      "classroom_phone",
       "classroom_service",
       "lesson_health",
       "list_classrooms",
@@ -426,3 +425,68 @@ it("discovers and resumes a historical review through the actual MCP transport",
   expect(state.teacher.messages.map((m: any) => m.role)).toEqual(["teacher"]);
   expect(state.quizzes[0].grade.score).toBe(67);
 });
+
+it("uses local links without Tailscale and reports a failed tailnet route", async () => {
+  // The fake CLI fails until tailscale-up exists, then emulates a connected node.
+  fs.writeFileSync(
+    path.join(f.root, "bin", "tailscale"),
+    `#!${process.execPath}\n` +
+      String.raw`
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.join(__dirname, '..');
+const file = path.join(root, 'tailscale-state.json');
+if (!fs.existsSync(path.join(root, 'tailscale-up'))) process.exit(1);
+const state = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+const args = process.argv.slice(2);
+if (args[0] === 'status') console.log(JSON.stringify({ BackendState: 'Running', Self: { DNSName: 'test.tailnet.ts.net.' } }));
+else if (args[1] === 'status') console.log(JSON.stringify(state));
+else {
+ const key = 'test.tailnet.ts.net:' + args.find((a) => a.startsWith('--https=')).split('=')[1];
+ state.Web ??= {};
+ if (args.at(-1) === 'off') delete state.Web[key];
+ else state.Web[key] = { Handlers: { '/': { Proxy: args.at(-1) } } };
+ fs.writeFileSync(file, JSON.stringify(state));
+}
+`,
+    { mode: 0o700 },
+  );
+  delete env.PI_CLASSROOM_TAILSCALE;
+  env.PI_CLASSROOM_CONFIG = path.join(f.root, "config.json");
+  const mcp = client();
+  await mcp.call("initialize", { clientInfo: { name: "codex-test" } });
+  const open = () =>
+    mcp.call("tools/call", { name: "open_classroom", arguments: { classroom: "rust" } });
+  const local = await open();
+  expect(local.result.isError).toBe(false);
+  expect(local.result.content[0].text).toContain("http://127.0.0.1:");
+  f.write("tailscale-up", "");
+  const failed = await open();
+  // The fake tailnet name does not resolve, so the URL check fails without a local fallback.
+  expect(failed.result?.isError ?? true).toBe(true);
+  expect(JSON.stringify(failed)).toContain('\\"tailscale\\": false');
+  expect(JSON.stringify(failed)).not.toContain("http://127.0.0.1:");
+  // Disabling tailnet links in config removes the owned route on the next open.
+  f.write("config.json", '{"tailscale":false}');
+  const disabled = await open();
+  expect(disabled.result.content[0].text).toContain("http://127.0.0.1:");
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, "tailscale-state.json"), "utf8"))).toEqual({
+    Web: {},
+  });
+  mcp.child.stdin.end();
+  await mcp.exited;
+  const { pid } = await serviceStatus();
+  await control("/stop", {});
+  await waitFor(async () => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      return true;
+    }
+  });
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, "tailscale-state.json"), "utf8"))).toEqual({
+    Web: {},
+  });
+}, 30_000);

@@ -5,6 +5,7 @@ import {
   configPath,
   readConfig,
   resolveConfiguredPort,
+  tailscaleLinks,
 } from "../src/config.ts";
 import { makeFixture, type Fixture } from "./helpers.ts";
 let fixture: Fixture;
@@ -19,14 +20,7 @@ describe("classroom configuration", () => {
     expect(resolveConfiguredPort(undefined)).toBe(0);
   });
   it("reports corrupt settings with the file path", () => {
-    for (const source of [
-      "{",
-      "null",
-      "[]",
-      '{"port":0}',
-      '{"port":"4098"}',
-      '{"autoOpen":"yes"}',
-    ]) {
+    for (const source of ["{", "null", "[]", '{"port":0}', '{"port":"4098"}']) {
       const file = fixture.write("config.json", source);
       expect(() => readConfig(file)).toThrow(/config.json/);
     }
@@ -46,5 +40,21 @@ describe("classroom configuration", () => {
     for (const port of [0, -1, 65536, 1.5, "4098", null])
       expect(() => resolveConfiguredPort(port)).toThrow();
     expect(resolveConfiguredPort(4098)).toBe(4098);
+  });
+  it("enables tailnet links unless the config or environment disables them", () => {
+    expect(tailscaleLinks("service", {})).toEqual({ enabled: true, port: undefined });
+    expect(tailscaleLinks("service", { tailscale: false })).toMatchObject({ enabled: false });
+    expect(tailscaleLinks("service", { tailscalePort: 8445 })).toEqual({
+      enabled: true,
+      port: 8445,
+    });
+    expect(tailscaleLinks("pi", { tailscalePort: 8445 })).toEqual({ enabled: true, port: 8444 });
+    expect(tailscaleLinks("pi", { piTailscalePort: 8446 })).toEqual({ enabled: true, port: 8446 });
+    process.env["PI_CLASSROOM_TAILSCALE"] = "0";
+    try {
+      expect(tailscaleLinks("pi", { tailscale: true })).toMatchObject({ enabled: false });
+    } finally {
+      delete process.env["PI_CLASSROOM_TAILSCALE"];
+    }
   });
 });

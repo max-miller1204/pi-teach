@@ -7,6 +7,7 @@ import { LearnerInbox, McpSession, type JsonRpcMessage } from "./mcp.ts";
 import { classroomsRoot, packageRoot } from "./paths.ts";
 import { servicePaths, servicePort } from "./service-client.ts";
 import { PhoneAccess } from "./phone-access.ts";
+import { TailnetLinks } from "./tailnet-links.ts";
 import { TeacherService } from "./teacher-service.ts";
 import { readTeacherState } from "./service-state.ts";
 import type { Backend } from "./teacher.ts";
@@ -44,10 +45,11 @@ function claim(): void {
 }
 claim();
 const teacher = new TeacherService(),
-  phone = new PhoneAccess();
+  phone = new PhoneAccess(),
+  links = new TailnetLinks(phone, "service");
 const clients = new Map<string, { session: McpSession; inbox: LearnerInbox }>();
 let closing = false;
-function status(): unknown {
+function status(): Record<string, unknown> {
   return {
     running: true,
     stopping: closing,
@@ -71,7 +73,7 @@ async function stop(): Promise<void> {
   closing = true;
   for (const c of clients.values()) c.inbox.reset();
   try {
-    await phone.stop();
+    await links.stop();
   } catch (err) {
     closing = false;
     throw err;
@@ -87,10 +89,11 @@ const tools: ClassroomTool[] = [
   {
     ...serviceToolDefinitions[0],
     async execute(args: { action: string }) {
-      if (args.action === "status" || args.action === "start") return result(status());
+      if (args.action === "status" || args.action === "start")
+        return result({ ...status(), tailnet: await phone.status() });
       if (args.action !== "stop") throw new Error("Unknown service action.");
       // Clean the route before reporting success. Keep the service live if cleanup fails.
-      await phone.stop();
+      const tailnet = await links.stop();
       setTimeout(() => {
         void stop()
           .then(() => process.exit(0))
@@ -99,31 +102,7 @@ const tools: ClassroomTool[] = [
             closing = false;
           });
       }, 50);
-      return result("Classroom service is stopping.");
-    },
-  },
-  {
-    ...serviceToolDefinitions[1],
-    async execute(args: {
-      action: string;
-      classroom?: string;
-      lesson?: string;
-      https_port?: number;
-    }) {
-      if (args.action === "status") return result(await phone.status());
-      if (args.action === "stop") return result(await phone.stop());
-      if (args.action !== "start") throw new Error("Unknown phone action.");
-      if (!args.classroom || !store.readClassroom(args.classroom))
-        throw new Error("A classroom is required for phone access.");
-      if (args.lesson && !store.readLesson(args.classroom, args.lesson))
-        throw new Error("No such lesson.");
-      teacher.attach(args.classroom);
-      const base = await phone.start(server.getBaseUrl()!, args.https_port);
-      const url = `${base}/c/${encodeURIComponent(args.classroom)}${args.lesson ? `/${encodeURIComponent(args.lesson)}` : ""}`;
-      const checked = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-      if (!checked.ok) throw new Error(`Phone URL check returned ${checked.status}: ${url}`);
-      await checked.body?.cancel();
-      return result(`[Open ${args.lesson ? "lesson" : "classroom"}](${url})`);
+      return result({ stopping: true, tailnet });
     },
   },
 ];
@@ -143,6 +122,7 @@ function session(id: string, backend?: Backend): McpSession {
           name,
           requested === undefined && readTeacherState(name) ? undefined : selected,
         );
+      await links.share();
       return server.urlFor(classroom ?? undefined)!;
     },
   });
@@ -165,7 +145,7 @@ const ipc = http.createServer((req, res) => {
         clients.delete(args.client);
         value = { detached: true };
       } else if (req.url === "/stop") {
-        await phone.stop();
+        await links.stop();
         value = { stopping: true };
         setTimeout(() => {
           void stop()

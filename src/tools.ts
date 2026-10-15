@@ -67,7 +67,7 @@ export interface ToolHost {
 }
 
 export const PI_HOST: ToolHost = {
-  browseHint: "Run /classroom to open it in a browser.",
+  browseHint: "Run /classroom to get its link.",
   checkPage:
     "Call lesson_health for this lesson. It reports unfinished question types and a missing rubric. Check the lesson URL in a headless browser. Look for contract errors and press each local control. Give the learner the lesson URL. Do not open a visible browser window. If the classroom server is not running, ask the learner to run /classroom. If headless checks cannot run, report the specific error and state that the controls were not checked. Do not switch to a visible browser.",
 };

@@ -43,7 +43,7 @@ The plugin installs its runtime dependency on first start. No build step is need
 
 ## Start learning
 
-**Pi:** Start a lesson, then open the classroom browser.
+**Pi:** Start a lesson, then get the classroom link.
 
 ```text
 /teach <topic>

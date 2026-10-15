@@ -76,27 +76,20 @@ lines.on("line", (line) => {
     ) {
       const status = await serviceStatus();
       if (!status.running) {
+        // A crashed service can leave its route. Report it, and remove it on stop.
+        const phone = new PhoneAccess();
+        const tailnet =
+          message.params.arguments.action === "status" ? await phone.status() : await phone.stop();
         write({
           jsonrpc: "2.0",
           id: message.id,
-          result: { content: [{ type: "text", text: JSON.stringify(status) }], isError: false },
+          result: {
+            content: [{ type: "text", text: JSON.stringify({ ...status, tailnet }) }],
+            isError: false,
+          },
         });
         return;
       }
-    }
-    if (
-      message.params?.name === "classroom_phone" &&
-      ["status", "stop"].includes(message.params?.arguments?.action)
-    ) {
-      const phone = new PhoneAccess();
-      const value =
-        message.params.arguments.action === "status" ? await phone.status() : await phone.stop();
-      write({
-        jsonrpc: "2.0",
-        id: message.id,
-        result: { content: [{ type: "text", text: JSON.stringify(value) }], isError: false },
-      });
-      return;
     }
     await attach();
     const response = await control("/rpc", { client, backend, message });

@@ -10,9 +10,8 @@ description: Teach a topic or create challenging quizzes and tests in the classr
 2. Call the `begin_teaching` tool from the `classroom` MCP server. Pass the topic as
    `topic`, or omit it to continue.
 3. Follow the method that `begin_teaching` returns. It is the full teaching brief.
-4. Before you give the learner a lesson URL, call `open_classroom` with
-   `open_browser: false`. Give the learner the link. Do not open a browser when
-   starting or continuing a lesson.
+4. Before you give the learner a lesson URL, call `open_classroom`. Give the
+   learner the link. Never open a browser for the learner.
 5. The persistent service selects a dedicated teacher for each classroom. Use the
    initiating host or pass teacher_backend explicitly to `open_classroom`. Do not
    change an existing classroom's backend.
@@ -30,9 +29,9 @@ description: Teach a topic or create challenging quizzes and tests in the classr
    An empty historical panel starts one corrective question. Use the panel retry
    control after failure. Do not ask the corrective question in the initiating chat.
 9. Do not start the next lesson without learner agreement. Use `classroom_service`
-   to inspect or explicitly stop the service. For requested phone access, use
-   `classroom_phone` with action start and the classroom and lesson. Give the full
-   checked URL it returns. Use status or stop to inspect or remove its route.
+   to inspect or explicitly stop the service. When Tailscale is connected, the
+   links from `open_classroom` and the scaffold tools are tailnet links. Give them
+   as returned. `classroom_service` status reports the tailnet route.
 10. When `begin_teaching` reports questions due for review, offer a review before new
     material. Create it with `scaffold_review`.
 11. Before you plan a lesson, call `lesson_health`. Fix a lesson that keeps failing.

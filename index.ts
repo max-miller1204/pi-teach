@@ -27,7 +27,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { resumeTeacherTool } from "./src/teacher-resume.ts";
 import { ClassroomBridge } from "./src/bridge.ts";
-import { registerClassroomCommands } from "./src/commands.ts";
+import { piLinks, registerClassroomCommands } from "./src/commands.ts";
 import * as server from "./src/server.ts";
 import { attachStatusWidget, detachStatusWidget } from "./src/status-widget.ts";
 import { registerClassroomTools } from "./src/tools.ts";
@@ -82,6 +82,12 @@ export default function classroomExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async () => {
     bridge.reset();
     detachStatusWidget();
+    try {
+      await piLinks().stop(true);
+    } catch (err) {
+      // The next session replaces a route whose target no longer listens.
+      console.error("[classroom] tailnet route cleanup failed", err);
+    }
     await server.close();
   });
 }

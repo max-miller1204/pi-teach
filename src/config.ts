@@ -5,7 +5,9 @@ import * as path from "node:path";
 
 export interface ClassroomConfig {
   port?: number;
-  autoOpen?: boolean;
+  tailscale?: boolean;
+  tailscalePort?: number;
+  piTailscalePort?: number;
 }
 
 let testConfigPath: string | undefined;
@@ -36,9 +38,10 @@ export function readConfig(file = configPath()): ClassroomConfig {
     }
     const config = parsed as ClassroomConfig;
     resolveConfiguredPort(config.port);
-    if (config.autoOpen !== undefined && typeof config.autoOpen !== "boolean") {
-      throw new Error("autoOpen must be a boolean.");
-    }
+    if (config.tailscale !== undefined && typeof config.tailscale !== "boolean")
+      throw new Error("tailscale must be a boolean.");
+    if (config.tailscalePort !== undefined) resolveConfiguredPort(config.tailscalePort);
+    if (config.piTailscalePort !== undefined) resolveConfiguredPort(config.piTailscalePort);
     return config;
   } catch (err) {
     throw new Error(`Invalid classroom config ${file}: ${(err as Error).message}`, { cause: err });
@@ -52,8 +55,15 @@ export function resolveConfiguredPort(port: unknown): number {
   throw new Error("Configured port must be an integer from 1 to 65535.");
 }
 
-/** The environment setting takes priority. */
-export function shouldAutoOpen(config: ClassroomConfig = readConfig()): boolean {
-  if (process.env["PI_CLASSROOM_AUTO_OPEN"] === "0") return false;
-  return config.autoOpen !== false;
+export type TailnetHost = "service" | "pi";
+
+/** Automatic tailnet links. `PI_CLASSROOM_TAILSCALE=0` takes priority. Pi uses port 8444. */
+export function tailscaleLinks(
+  host: TailnetHost,
+  config: ClassroomConfig = readConfig(),
+): { enabled: boolean; port?: number } {
+  return {
+    enabled: process.env["PI_CLASSROOM_TAILSCALE"] !== "0" && config.tailscale !== false,
+    port: host === "pi" ? (config.piTailscalePort ?? 8444) : config.tailscalePort,
+  };
 }

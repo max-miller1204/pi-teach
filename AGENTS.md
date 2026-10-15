@@ -4,7 +4,7 @@
 - Keep Pi's server in its live session. Keep the Claude Code and Codex service persistent.
 - Keep teacher requests sequential and durable. Save plans before writes. Do not grade twice after recovery.
 - Show specific errors. Require an explicit retry. Do not add fallbacks.
-- Keep HTTP on loopback. Phone access is opt-in and tailnet-only. Preserve unrelated Tailscale routes. Never enable Funnel.
+- Keep HTTP on loopback. Tailnet links are automatic while Tailscale is connected, tailnet-only, and can be disabled in config. Preserve unrelated Tailscale routes. Never enable Funnel.
 - Keep private quiz files off static routes. Use the path guards in `src/paths.ts`.
 - Keep the teaching brief out of the system prompt and MCP instructions.
 - Keep learner questions and replies on the lesson page after the lesson starts.

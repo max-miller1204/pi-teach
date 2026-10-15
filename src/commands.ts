@@ -1,7 +1,7 @@
 /**
  * commands.ts — /classroom and /teach.
  *
- * /classroom manages the local server and opens pages in a browser.
+ * /classroom manages the local server and reports page links. It never opens a browser.
  * /teach is the entry point to a teaching session, and replaces the old teach skill.
  *
  * Anything here that starts or stops the server also refreshes the status widget, so the
@@ -9,15 +9,16 @@
  */
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 
-import { shouldAutoOpen } from "./config.ts";
-import { openUrl } from "./open-browser.ts";
-import { classroomDir, slugify } from "./paths.ts";
+import { classroomDir, classroomsRoot, slugify } from "./paths.ts";
+import { PhoneAccess } from "./phone-access.ts";
 import { reviewStatusText, teachingPrompt } from "./prompts.ts";
 import { summarize } from "./review.ts";
 import * as server from "./server.ts";
 import { attachStatusWidget, refreshStatusWidget } from "./status-widget.ts";
 import * as store from "./store.ts";
+import { TailnetLinks } from "./tailnet-links.ts";
 import type { ClassroomBridge } from "./bridge.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -33,7 +34,7 @@ export function registerClassroomCommands(pi: any, bridge: ClassroomBridge): voi
 
   pi.registerCommand("classroom", {
     description:
-      "Browse your classrooms in the browser. Usage: /classroom [start|stop|status|list|open [<name>]]",
+      "Get a link to your classrooms. Usage: /classroom [start|stop|status|list|open [<name>]]",
     getArgumentCompletions: async (prefix: string) => {
       const verbs = ["start", "stop", "status", "list", "open"];
       const names = store.listClassrooms().map((c) => c.name);
@@ -130,21 +131,46 @@ export function classroomReviewText(classroom: string): string {
 
 // ── /classroom handlers ───────────────────────────────────────────────────────
 
+/** Pi sessions share one ownership file per classrooms root, apart from the service's. */
+export function piLinks(): TailnetLinks {
+  const file = path.join(classroomsRoot(), ".pi-teach-pi", "phone.json");
+  return new TailnetLinks(new PhoneAccess(undefined, file), "pi");
+}
+
+/** Report a failed tailnet route instead of giving a local link. */
+async function shareLinks(ctx: any): Promise<boolean> {
+  try {
+    await piLinks().share();
+    return true;
+  } catch (err) {
+    ctx.ui.notify((err as Error).message, "error");
+    return false;
+  }
+}
+
 async function handleStart(ctx: any): Promise<void> {
   if (server.isRunning()) {
     ctx.ui.notify(`Classroom server already running at ${server.getBaseUrl()}`, "info");
     return;
   }
-  const baseUrl = await server.start();
+  await server.start();
   // Reason: session_start may have run before any server existed, so every command that
   // starts or stops the server re-adopts this session's UI and redraws the widget.
   attachStatusWidget(ctx.ui);
-  ctx.ui.notify(`Classroom server started at ${baseUrl}`, "info");
+  if (!(await shareLinks(ctx))) return;
+  ctx.ui.notify(`Classroom server started at ${server.urlFor()}`, "info");
 }
 
 async function handleStop(ctx: any): Promise<void> {
   if (!server.isRunning()) {
     ctx.ui.notify("Classroom server is not running.", "info");
+    return;
+  }
+  // Keep the server running when its route cannot be removed.
+  try {
+    await piLinks().stop(true);
+  } catch (err) {
+    ctx.ui.notify((err as Error).message, "error");
     return;
   }
   await server.close();
@@ -154,11 +180,12 @@ async function handleStop(ctx: any): Promise<void> {
 
 function handleStatus(ctx: any): void {
   const baseUrl = server.getBaseUrl();
+  const link = server.urlFor();
   const classrooms = store.listClassrooms();
   const lessons = classrooms.reduce((sum, c) => sum + c.lessonCount, 0);
   ctx.ui.notify(
     baseUrl
-      ? `Classroom server running at ${baseUrl}\n${classrooms.length} classroom${classrooms.length === 1 ? "" : "s"}, ${lessons} lesson${lessons === 1 ? "" : "s"}`
+      ? `Classroom server running at ${baseUrl}${link !== baseUrl ? `\nLink: ${link}` : ""}\n${classrooms.length} classroom${classrooms.length === 1 ? "" : "s"}, ${lessons} lesson${lessons === 1 ? "" : "s"}`
       : `Classroom server is not running. ${classrooms.length} classroom${classrooms.length === 1 ? "" : "s"} on disk — run /classroom to browse them.`,
     "info",
   );
@@ -225,9 +252,9 @@ async function handleOpen(ctx: any, requested: string | null): Promise<void> {
     }
   }
 
-  const baseUrl = await server.start();
+  await server.start();
   attachStatusWidget(ctx.ui);
-  const url = target ? server.urlFor(target)! : baseUrl;
-  if (shouldAutoOpen()) openUrl(url);
+  if (!(await shareLinks(ctx))) return;
+  const url = server.urlFor(target ?? undefined)!;
   ctx.ui.notify(`📚 ${url}`, "info");
 }
