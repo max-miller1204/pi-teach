@@ -11,6 +11,7 @@ import { writeGradedAttempt, termAnswer, seedHistoricalReview } from "../test/he
 import { DAY_MS } from "../src/review.ts";
 import { currentReview } from "../src/review-session.ts";
 import { _overrideClassroomsDir } from "../src/paths.ts";
+import { notesStub } from "../src/prompts.ts";
 import { control, serviceStatus } from "../src/service-client.ts";
 
 const harness = parseHarness(
@@ -31,6 +32,7 @@ function seedClassroom(root: string): void {
     path.join(root, CLASSROOM, "MISSION.md"),
     "# Mission: Rust\n\n## Why\n\nUnderstand ownership.\n",
   );
+  fs.writeFileSync(path.join(root, CLASSROOM, "NOTES.md"), notesStub());
   fs.writeFileSync(
     path.join(root, CLASSROOM, "classroom.json"),
     JSON.stringify({ title: "Rust", emoji: "🦀", createdAt: Date.now() }),
