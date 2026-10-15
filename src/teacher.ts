@@ -48,6 +48,7 @@ export type TeacherOperation = TeacherPlan["calls"][number]["name"];
 export interface PlanContract {
   operations: TeacherOperation[];
   required?: boolean;
+  messageRequired?: boolean;
 }
 
 /** Limit structured output to operations permitted by the current request. */
@@ -57,6 +58,9 @@ export function planSchema(contract: PlanContract) {
     ...PLAN_SCHEMA,
     properties: {
       ...PLAN_SCHEMA.properties,
+      message: contract.messageRequired
+        ? { type: "string", minLength: 1, pattern: "\\S" }
+        : PLAN_SCHEMA.properties.message,
       calls: {
         ...calls,
         minItems: contract.required ? 1 : 0,

@@ -392,7 +392,9 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         (turn: any) =>
           turn.schema.properties.calls.minItems !== 1 ||
           turn.schema.properties.calls.maxItems !== 1 ||
-          turn.schema.properties.calls.items.properties.name.enum.length !== 1,
+          turn.schema.properties.calls.items.properties.name.enum.length !== 1 ||
+          turn.schema.properties.message.minLength !== 1 ||
+          turn.schema.properties.message.pattern !== "\\S",
       )
     )
       throw new Error("Grading must use two request-scoped model turns.");

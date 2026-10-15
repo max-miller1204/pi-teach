@@ -369,17 +369,17 @@ export class TeacherService {
   private contract(r: TeacherRequest): PlanContract {
     switch (r.kind) {
       case "quiz":
-        return { operations: ["grade_lesson_quiz"], required: true };
+        return { operations: ["grade_lesson_quiz"], required: true, messageRequired: true };
       case "ask":
       case "follow-up":
         return { operations: ["answer_lesson_question"], required: true };
       case "review":
-        return { operations: ["publish_review"], required: true };
+        return { operations: ["publish_review"], required: true, messageRequired: true };
       case "chat":
-        return { operations: ["record_retrieval_check"] };
+        return { operations: ["record_retrieval_check"], messageRequired: true };
       case "reflect":
       case "resume":
-        return { operations: [] };
+        return { operations: [], messageRequired: true };
     }
   }
   private prompt(r: TeacherRequest, state: TeacherState): string {
