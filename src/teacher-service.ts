@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { applyTurnAnswer, withHtml } from "./bridge.ts";
 import { classroomDir, lessonDir, safeStaticFile } from "./paths.ts";
 import { stageLesson } from "./pretest.ts";
+import { validateGrade } from "../assets/runtime/grade.mjs";
 import {
   askPrompt,
   followUpPrompt,
@@ -27,6 +28,7 @@ import {
   runTeacher,
   type Backend,
   type RunTeacher,
+  type PlanContract,
   type TeacherPlan,
   parsePlan,
 } from "./teacher.ts";
@@ -269,6 +271,32 @@ export class TeacherService {
         delete r.plan;
         delete r.planRubricDigest;
       }
+      if (r.plan && submission) {
+        try {
+          const call = r.plan.calls.find((call) => call.name === "grade_lesson_quiz");
+          if (!call) throw new Error("The saved plan has no grade call.");
+          const args = JSON.parse(call.arguments_json);
+          validateGrade(
+            args.score,
+            args.questions.map(
+              (q: {
+                question_id: string;
+                correct: boolean;
+                points_earned?: number;
+                points_possible?: number;
+              }) => ({
+                questionId: q.question_id,
+                correct: q.correct,
+                pointsEarned: q.points_earned,
+                pointsPossible: q.points_possible,
+              }),
+            ),
+            [...new Set(submission.answers.map((answer) => answer.questionId))],
+          );
+        } catch {
+          delete r.plan;
+        }
+      }
     }
     if (r.kind === "review" && r.plan) {
       try {
@@ -338,6 +366,22 @@ export class TeacherService {
     for (const controller of this.controllers) controller.abort();
     await this.idle();
   }
+  private contract(r: TeacherRequest): PlanContract {
+    switch (r.kind) {
+      case "quiz":
+        return { operations: ["grade_lesson_quiz"], required: true };
+      case "ask":
+      case "follow-up":
+        return { operations: ["answer_lesson_question"], required: true };
+      case "review":
+        return { operations: ["publish_review"], required: true };
+      case "chat":
+        return { operations: ["record_retrieval_check"] };
+      case "reflect":
+      case "resume":
+        return { operations: [] };
+    }
+  }
   private prompt(r: TeacherRequest, state: TeacherState): string {
     if (r.kind === "review") return r.prompt;
     const lesson = store.readLesson(r.classroom, r.lesson);
@@ -397,12 +441,11 @@ export class TeacherService {
       classroomDocs,
       topicNotes,
     };
-    const defs = classroomTools(PI_HOST).filter((t) =>
-      ["answer_lesson_question", "grade_lesson_quiz", "record_retrieval_check"].includes(t.name),
-    );
+    const contract = this.contract(r);
+    const defs = classroomTools(PI_HOST).filter((t) => contract.operations.includes(t.name));
     return dedicatedTeacherPrompt(
       r.id,
-      r.prompt,
+      `Current request kind: ${r.kind}. ${contract.required ? "Return exactly one call from the tool definitions." : contract.operations.length ? "Return only retrieval calls supported by this learner reply. Otherwise return calls=[]." : "Return calls=[]."}\n\n${r.prompt}`,
       context,
       defs.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
     );
@@ -433,6 +476,7 @@ export class TeacherService {
                 saveTeacherState(classroom, state);
               },
               controller.signal,
+              this.contract(r),
             );
           } finally {
             this.controllers.delete(controller);
@@ -641,7 +685,10 @@ export class TeacherService {
       } else if (name === "grade_lesson_quiz") {
         if (!store.listGrades(r.classroom, r.lesson).some((g) => g.submissionId === r.target)) {
           const result = await tool.execute(args);
-          if (isFailure(result)) throw new Error(result.content[0].text);
+          if (isFailure(result)) {
+            r.planValidated = false;
+            throw new Error(result.content[0].text);
+          }
         }
       } else {
         const dir = path.join(classroomDir(r.classroom), "learning-records");

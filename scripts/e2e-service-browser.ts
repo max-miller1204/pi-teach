@@ -26,6 +26,7 @@ export async function verifyServiceBrowser(artifacts: string | null): Promise<vo
     ),
   );
   const bin = path.join(fixture.root, "bin");
+  fixture.write("rust/001-ownership/quiz/key.json", '{"q1":"The owner."}');
   fs.mkdirSync(bin);
   fs.writeFileSync(
     path.join(bin, "codex"),
@@ -43,11 +44,12 @@ readline.createInterface({input:process.stdin}).on('line', line => {
  else if (m.method === 'thread/start' || m.method === 'thread/resume') send({id:m.id,result:{thread:{id:m.params.threadId || 'browser-teacher-session'}}});
  else if (m.method === 'turn/start') {
   const turns = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
-  turns.push({threadId:m.params.threadId, prompt:m.params.input[0].text});
+  turns.push({threadId:m.params.threadId, prompt:m.params.input[0].text, schema:m.params.outputSchema});
   fs.writeFileSync(file, JSON.stringify(turns));
   if (turns.length === 1) { send({id:m.id,error:{code:-32000,message:'Fixture teacher failure'}}); return; }
   const ask = /annotation_id: "([^"]+)"/.exec(m.params.input[0].text);
-  const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] : [];
+  const quiz = /submission_id: "([^"]+)"/.exec(m.params.input[0].text);
+  const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] : quiz ? [{name:'grade_lesson_quiz',arguments_json:JSON.stringify({submission_id:quiz[1],score:m.params.input[0].text.includes('Previous teacher plan error:') ? 0 : 10,feedback_markdown:'Check the owner.',questions:[{question_id:'q1',correct:false,feedback:'Trace the owner.'}]})}] : [];
   send({id:m.id,result:{turn:{id:'browser-turn'}}});
   send({method:'item/completed',params:{threadId:m.params.threadId,turnId:'browser-turn',item:{type:'agentMessage',text:JSON.stringify({calls,message:'What changes when the value moves?',learning_record:'',notes_markdown:''})}}});
   send({method:'turn/completed',params:{threadId:m.params.threadId,turn:{id:'browser-turn',status:'completed'}}});
@@ -355,6 +357,47 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     if (Object.hasOwn(store.readDrafts("rust", "001-ownership"), "teacher"))
       throw new Error("Send reply left its draft.");
     snapshot("sent-teacher-reply");
+    await browser(`
+      const submitted = page.waitForResponse(r => r.url().endsWith('/api/quiz/submit'));
+      await page.locator('form.cl-quiz').getByRole('button', {name:'Submit for grading', exact:true}).click();
+      if ((await submitted).status() !== 201) throw new Error('Quiz was refused.');
+      await page.getByRole('button', {name:'Retry request', exact:true}).waitFor();
+      if (!(await page.locator('.cl-teacher-requests').innerText()).includes('Score must match question points')) throw new Error('The invalid score was not shown.');
+      ${shot("rejected-grade")}
+    `);
+    const rejectedGrade = readTeacherState("rust")!.requests.find((r) => r.kind === "quiz")!;
+    if (rejectedGrade.status !== "failed" || store.listGrades("rust", "001-ownership").length)
+      throw new Error("An invalid grade must fail before saving a grade.");
+    snapshot("rejected-grade");
+    await browser(`
+      const retried = page.waitForResponse(r => r.url().endsWith('/api/teacher/retry'));
+      await page.getByRole('button', {name:'Retry request', exact:true}).click();
+      if (!(await retried).ok()) throw new Error('Grade retry was refused.');
+      await page.waitForFunction(() => document.querySelector('form.cl-quiz').dataset.state === 'graded');
+      await page.reload();
+      await page.waitForFunction(() => document.querySelector('form.cl-quiz').dataset.state === 'graded');
+      ${shot("retried-grade")}
+    `);
+    const grades = store.listGrades("rust", "001-ownership");
+    if (grades.length !== 1 || grades[0].score !== 0)
+      throw new Error("Retry must save exactly one corrected grade.");
+    const gradingTurns = JSON.parse(
+      fs.readFileSync(path.join(fixture.root, "mock-turns.json"), "utf8"),
+    ).filter((turn: any) =>
+      turn.schema.properties.calls.items.properties.name.enum?.includes("grade_lesson_quiz"),
+    );
+    if (
+      gradingTurns.length !== 2 ||
+      gradingTurns.some(
+        (turn: any) =>
+          turn.schema.properties.calls.minItems !== 1 ||
+          turn.schema.properties.calls.maxItems !== 1 ||
+          turn.schema.properties.calls.items.properties.name.enum.length !== 1,
+      )
+    )
+      throw new Error("Grading must use two request-scoped model turns.");
+    evidence("grading-turns", gradingTurns);
+    snapshot("retried-grade");
     evidence("result", {
       passed: [
         "MCP open_classroom link to lesson",
@@ -362,6 +405,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         "follow-up and teacher reply draft reload",
         "service restart preserves four unsaved fields",
         "Send reply removes its draft",
+        "invalid score fails before writes and explicit retry saves one grade",
       ],
     });
     console.log("PASS: service browser reading, retry, drafts, and reconnect");

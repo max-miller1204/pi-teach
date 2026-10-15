@@ -12,6 +12,7 @@ The learner receives follow-up questions and answers them in the lesson's teache
 - Save replies and restore the conversation after reload.
 - Show specific failures and require an explicit retry.
 - Regenerate a plan rejected before writes. Keep valid plans for recovery.
+- Request a new grade plan after an explicit retry of a rejected score.
 - Keep the persistent service available after MCP exit.
 
 ## How to get to it (user POV)
@@ -31,6 +32,8 @@ Run `npm run verify -- browser --artifacts /tmp/pi-teach-teacher`.
 The Pi fixture checks `.cl-teacher` follows the quiz, a prose-only grading run fails, and an explicit retry permits grading. It checks the panel reply reaches the correct prompt and all three conversation messages survive reload.
 
 The service fixture checks failure, retry, MCP disconnect and reconnect, request isolation between lessons, and teacher drafts. Inspect `pi-panel/pi-panel.json` and service state evidence.
+
+The service fixture also submits a quiz with an invalid teacher score. It checks the visible error and the absence of a saved grade. `Retry request` must request one corrected plan. Reload must show the corrected grade. Inspect `service/rejected-grade.json`, `service/retried-grade.json`, and `service/grading-turns.json`. The grading turns must each permit exactly one grade call.
 
 The resume fixtures use a saved review with an empty panel or an unanswered saved reply. They check the explicit handoff, panel link, reply recovery, message order, reload, and unchanged assessment and evidence files for Pi, Claude, and Codex. Repeated handoffs must reuse the request. Inspect `resume/`. The real Pi and service host drives also resume a historical 67% review from initiating chat. They check the saved grade and teacher identity.
 

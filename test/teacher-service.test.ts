@@ -51,6 +51,33 @@ afterEach(async () => {
   f.cleanup();
 });
 describe("persistent teacher", () => {
+  it("limits model operations to the active request across a persistent session", async () => {
+    const s = submission();
+    const seen: string[][] = [];
+    const teacher = new TeacherService(
+      async (_identity, prompt, _cwd, _save, _signal, contract) => {
+        seen.push(contract.operations);
+        const marker = "Tool definitions:\n";
+        const definitions = JSON.parse(prompt.split(marker)[1].split("\n\nRequest ")[0]);
+        expect(definitions.map((tool: { name: string }) => tool.name)).toEqual(contract.operations);
+        if (seen.length === 1) {
+          expect(contract.required).toBe(true);
+          return plan([grade(s.id)]);
+        }
+        expect(contract.required).not.toBe(true);
+        return plan([]);
+      },
+    );
+    teacher.attach("rust", "codex");
+    await teacher.idle();
+    teacher.chat("rust", location.lesson, "I need another example.", randomUUID());
+    await teacher.idle();
+    expect(seen).toEqual([["grade_lesson_quiz"], ["record_retrieval_check"]]);
+    expect(readTeacherState("rust")!.requests.every((request) => request.status === "done")).toBe(
+      true,
+    );
+    await teacher.stop();
+  });
   it("identifies teaching behind a pretest before and after grading without leaking it", async () => {
     f.write(
       "rust/001-ownership/lesson.html",
@@ -616,4 +643,73 @@ it("requests a new plan on explicit retry after invalid panel evidence", async (
   expect(runs).toBe(2);
   expect(readTeacherState("rust")!.requests[0].status).toBe("done");
   await teacher.stop();
+});
+
+it("regenerates a rejected grade on explicit retry without repeating a saved grade", async () => {
+  const s = submission();
+  let runs = 0;
+  const teacher = new TeacherService(async (_identity, prompt) => {
+    runs++;
+    const call = grade(s.id);
+    if (runs === 1) {
+      const args = JSON.parse(call.arguments_json);
+      args.score = 10;
+      call.arguments_json = JSON.stringify(args);
+    } else expect(prompt).toContain("Score must match question points");
+    return plan([call]);
+  });
+  teacher.attach("rust", "codex");
+  await teacher.idle();
+  expect(readTeacherState("rust")!.requests[0].status).toBe("failed");
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(0);
+  teacher.attach("rust", "codex");
+  await teacher.idle();
+  expect(runs).toBe(1);
+  teacher.retry("rust", `quiz:${s.id}`);
+  await teacher.idle();
+  expect(runs).toBe(2);
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(1);
+  const state = readTeacherState("rust")!;
+  state.requests[0].status = "planned";
+  state.requests[0].applied = 0;
+  saveTeacherState("rust", state);
+  const restarted = new TeacherService(async () => {
+    throw new Error("Recovery must keep the saved grade.");
+  });
+  restarted.restore();
+  await restarted.idle();
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(1);
+  await teacher.stop();
+  await restarted.stop();
+});
+
+it("regenerates an older rejected score marked as a valid plan", async () => {
+  const s = submission();
+  const invalid = grade(s.id);
+  const args = JSON.parse(invalid.arguments_json);
+  args.score = 10;
+  invalid.arguments_json = JSON.stringify(args);
+  const first = new TeacherService(async () => plan([invalid]));
+  first.attach("rust", "codex");
+  await first.idle();
+  const state = readTeacherState("rust")!;
+  state.requests[0].planValidated = true;
+  saveTeacherState("rust", state);
+  let runs = 0;
+  const restored = new TeacherService(async () => {
+    runs++;
+    return plan([grade(s.id)]);
+  });
+  restored.restore();
+  await restored.idle();
+  expect(runs).toBe(0);
+  restored.retry("rust", `quiz:${s.id}`);
+  await restored.idle();
+  expect(runs).toBe(1);
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(1);
+  await first.stop();
+  await restored.stop();
 });

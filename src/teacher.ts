@@ -44,12 +44,47 @@ export const PLAN_SCHEMA = {
   },
   required: ["calls", "message", "learning_record", "notes_markdown"],
 };
+export type TeacherOperation = TeacherPlan["calls"][number]["name"];
+export interface PlanContract {
+  operations: TeacherOperation[];
+  required?: boolean;
+}
+
+/** Limit structured output to operations permitted by the current request. */
+export function planSchema(contract: PlanContract) {
+  const calls = PLAN_SCHEMA.properties.calls;
+  return {
+    ...PLAN_SCHEMA,
+    properties: {
+      ...PLAN_SCHEMA.properties,
+      calls: {
+        ...calls,
+        minItems: contract.required ? 1 : 0,
+        ...(contract.required
+          ? { maxItems: 1 }
+          : contract.operations.length
+            ? {}
+            : { maxItems: 0 }),
+        items: {
+          ...calls.items,
+          properties: {
+            ...calls.items.properties,
+            name: contract.operations.length
+              ? { type: "string", enum: contract.operations }
+              : { type: "string" },
+          },
+        },
+      },
+    },
+  };
+}
 export type RunTeacher = (
   identity: TeacherIdentity,
   prompt: string,
   cwd: string,
   saveIdentity: (sessionId: string) => void,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  contract: PlanContract,
 ) => Promise<TeacherPlan>;
 
 export function parsePlan(value: unknown): TeacherPlan {
@@ -67,10 +102,18 @@ export function parsePlan(value: unknown): TeacherPlan {
   return p;
 }
 
-export const runTeacher: RunTeacher = async (identity, prompt, cwd, saveIdentity, signal) => {
+export const runTeacher: RunTeacher = async (
+  identity,
+  prompt,
+  cwd,
+  saveIdentity,
+  signal,
+  contract,
+) => {
+  const schema = planSchema(contract);
   return identity.backend === "codex"
-    ? runCodex(identity, prompt, cwd, saveIdentity, signal)
-    : runClaude(identity, prompt, cwd, saveIdentity, signal);
+    ? runCodex(identity, prompt, cwd, saveIdentity, schema, signal)
+    : runClaude(identity, prompt, cwd, saveIdentity, schema, signal);
 };
 
 async function runClaude(
@@ -78,6 +121,7 @@ async function runClaude(
   prompt: string,
   cwd: string,
   save: (id: string) => void,
+  schema: ReturnType<typeof planSchema>,
   signal?: AbortSignal,
 ): Promise<TeacherPlan> {
   const args = [
@@ -85,7 +129,7 @@ async function runClaude(
     "--output-format",
     "json",
     "--json-schema",
-    JSON.stringify(PLAN_SCHEMA),
+    JSON.stringify(schema),
     "--tools",
     "",
     "--strict-mcp-config",
@@ -140,6 +184,7 @@ async function runCodex(
   prompt: string,
   cwd: string,
   save: (id: string) => void,
+  schema: ReturnType<typeof planSchema>,
   signal?: AbortSignal,
 ): Promise<TeacherPlan> {
   const child = spawn("codex", ["app-server", "--stdio"], {
@@ -264,7 +309,7 @@ async function runCodex(
     await request("turn/start", {
       threadId: result.thread.id,
       input: [{ type: "text", text: prompt }],
-      outputSchema: PLAN_SCHEMA,
+      outputSchema: schema,
     });
     deadline.enter(`running turn ${turnId} in thread ${threadId}`);
     await completed;

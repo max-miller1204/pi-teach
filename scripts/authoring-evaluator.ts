@@ -12,7 +12,14 @@ export async function evaluateContent(
   content: AuthoredContent,
   rawArtifact?: string,
 ) {
-  const raw = await runTeacher({ backend }, contentEvaluationPrompt(content), cwd, () => {});
+  const raw = await runTeacher(
+    { backend },
+    contentEvaluationPrompt(content),
+    cwd,
+    () => {},
+    undefined,
+    { operations: [] },
+  );
   if (rawArtifact) fs.writeFileSync(rawArtifact, JSON.stringify(raw, null, 2));
   if (raw.calls.length || raw.learning_record || raw.notes_markdown)
     throw new Error("Content evaluator must not request writes or learning records.");

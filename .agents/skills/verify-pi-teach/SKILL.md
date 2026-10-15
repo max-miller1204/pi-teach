@@ -46,6 +46,8 @@ The runner prints the evidence directory. It saves stdout, stderr, exit codes, r
 
 Inspect screenshots before citing them. Fixture teachers prove UI, storage, SSE, and failure handling. They do not prove model behavior. Real host runs prove the model connection for the tested account and lesson. Authoring reports are evaluations, not evidence of human learning. Read each report, including semantic findings.
 
+Real service targets retain `classroom/` on success and failure. Inspect its private `.teacher.json` for the rejected plan and applied call count. The quality target saves `<host>-quality-raw.json` before it validates source excerpts. Read that plan after an evaluator failure. Preserve the exact-source check.
+
 ## Cleanup
 
 Harnesses close their named browser sessions and owned servers in `finally`. They remove temporary classrooms and temporary Codex homes. They retain the evidence directory. Do not stop a shared server by port or process name. If a run is interrupted, identify its scratch root and owned process from its saved logs before cleanup.
