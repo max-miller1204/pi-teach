@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PhoneAccess } from "../src/phone-access.ts";
 
-function fixture(config: any = {}) {
+function fixture(config: any = {}, alive = async (_url: string) => true) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-phone-test-")),
     calls: string[][] = [];
   const phone = new PhoneAccess(
@@ -29,6 +29,7 @@ function fixture(config: any = {}) {
       return "";
     },
     path.join(dir, "phone.json"),
+    alive,
   );
   return { phone, config, calls, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
@@ -126,6 +127,35 @@ describe("phone routes", () => {
       expect(fs.existsSync(file)).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("replaces only an owned route whose target stopped listening", async () => {
+    const live = new Set(["http://127.0.0.1:5001"]);
+    const f = fixture({}, async (url) => live.has(url));
+    try {
+      await f.phone.start("http://127.0.0.1:5001", 8444);
+      await expect(f.phone.start("http://127.0.0.1:5002", 8444)).rejects.toThrow("still running");
+      expect(f.config.Web["test.tailnet.ts.net:8444"].Handlers["/"].Proxy).toBe(
+        "http://127.0.0.1:5001",
+      );
+      live.clear();
+      await f.phone.start("http://127.0.0.1:5002", 8444);
+      expect(f.config.Web["test.tailnet.ts.net:8444"].Handlers["/"].Proxy).toBe(
+        "http://127.0.0.1:5002",
+      );
+    } finally {
+      f.cleanup();
+    }
+  });
+  it("keeps a route that another target owns when stopping by target", async () => {
+    const f = fixture();
+    try {
+      await f.phone.start("http://127.0.0.1:5001", 8444);
+      expect(await f.phone.stop("http://127.0.0.1:5002")).toEqual({ removed: false });
+      expect(await f.phone.status()).toMatchObject({ enabled: true });
+      expect(await f.phone.stop("http://127.0.0.1:5001")).toEqual({ removed: true });
+    } finally {
+      f.cleanup();
     }
   });
   it("fails clearly when Tailscale is unavailable", async () => {

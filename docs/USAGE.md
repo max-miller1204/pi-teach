@@ -88,13 +88,13 @@ have a 180-second limit. Model and authentication errors remain visible.
 
 ### Phone and remote links
 
-When the `tailscale` command reports a connected node, `open_classroom` creates a
-tailnet-only HTTPS Serve route and checks it. Classroom and lesson links then use
+When the `tailscale` command reports a connected node, `open_classroom` and Pi's
+`/classroom` create a tailnet-only HTTPS Serve route and check it. Classroom and lesson links then use
 your node's tailnet name, so the same link works on a phone or from another computer,
 including over SSH. Without Tailscale, or while it is logged out or stopped, links
 use `127.0.0.1`.
 
-The route uses port 8443 by default. Set `tailscalePort` in the
+The service route uses port 8443 by default. Set `tailscalePort` in the
 [configuration](CONFIGURATION.md) to select another port. The next `open_classroom`
 moves the route. A connected node whose route fails returns that error. It never
 switches ports or falls back to a local link. The helper rejects conflicts and
@@ -105,6 +105,10 @@ not remove it. `classroom_service` status reports it, and service stop removes i
 first. Set `"tailscale": false` to keep links local. The next `open_classroom` then
 removes the route. While Tailscale is disconnected, the route cannot be removed.
 Stop keeps its record and reports it. The next start reuses or removes it.
+
+Pi uses its own route on port 8444, or `piTailscalePort`. `/classroom stop` and the
+end of the Pi session remove it. If a Pi session exits without cleanup, the next
+session replaces its route once the old server no longer listens.
 
 This does not enable public access. Tailnet members allowed by your Tailscale policy
 can reach the classroom pages and submit requests.

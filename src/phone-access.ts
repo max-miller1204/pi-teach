@@ -6,6 +6,17 @@ import { promisify } from "node:util";
 import { servicePaths } from "./service-client.ts";
 const exec = promisify(execFile);
 export type TailscaleCommand = (args: string[]) => Promise<string>;
+export type Listening = (url: string) => Promise<boolean>;
+/** Only a refused connection proves that a recorded target is gone. */
+const listening: Listening = async (url) => {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+    await res.body?.cancel();
+    return true;
+  } catch (err) {
+    return ((err as Error).cause as NodeJS.ErrnoException | undefined)?.code !== "ECONNREFUSED";
+  }
+};
 const command: TailscaleCommand = async (args) => {
   try {
     return (await exec("tailscale", args, { timeout: 15_000, maxBuffer: 1024 * 1024 })).stdout;
@@ -21,9 +32,15 @@ interface Route {
 export class PhoneAccess {
   private readonly run: TailscaleCommand;
   private readonly file: string;
-  constructor(run: TailscaleCommand = command, file = path.join(servicePaths().dir, "phone.json")) {
+  private readonly alive: Listening;
+  constructor(
+    run: TailscaleCommand = command,
+    file = path.join(servicePaths().dir, "phone.json"),
+    alive: Listening = listening,
+  ) {
     this.run = run;
     this.file = file;
+    this.alive = alive;
   }
   private owner(): Route | null {
     try {
@@ -93,10 +110,14 @@ export class PhoneAccess {
     const status = JSON.parse(text);
     return status.BackendState === "Running" && !!status.Self?.DNSName;
   }
-  /** Move this target's owned route when the configured port changes. */
+  /** Move this target's owned route when the configured port changes.
+   * Replace another target's owned route once that target refuses connections. */
   async start(target: string, port = 8443): Promise<string> {
     let owner = this.owner();
-    if (owner?.target === target && owner.port !== port) {
+    if (
+      owner &&
+      (owner.target === target ? owner.port !== port : !(await this.alive(owner.target)))
+    ) {
       await this.stop();
       owner = null;
     }
@@ -110,7 +131,9 @@ export class PhoneAccess {
     const current = this.handler(config, host, port);
     const ours = owner?.host === host && owner.port === port && owner.target === target;
     if (owner && !ours)
-      throw new Error("Phone access owns a different route. Stop it before changing the port.");
+      throw new Error(
+        `The owned tailnet route on port ${owner.port} serves ${owner.target}, which is still running. Stop that classroom server first.`,
+      );
     if (
       (handlers &&
         Object.keys(handlers).length > 0 &&
@@ -131,10 +154,11 @@ export class PhoneAccess {
       throw new Error("Tailscale did not create the requested tailnet-only route.");
     return `https://${host}:${port}`;
   }
-  /** Tailscale must be connected to remove a route. Otherwise keep the record and report it. */
-  async stop(): Promise<unknown> {
+  /** With a target, keep a route that another server owns.
+   * Tailscale must be connected to remove a route. Otherwise keep the record and report it. */
+  async stop(target?: string): Promise<unknown> {
     const owner = this.owner();
-    if (!owner) return { removed: false };
+    if (!owner || (target !== undefined && owner.target !== target)) return { removed: false };
     if (!(await this.available()))
       return {
         removed: false,

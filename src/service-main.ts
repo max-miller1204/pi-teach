@@ -4,10 +4,10 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 import { LearnerInbox, McpSession, type JsonRpcMessage } from "./mcp.ts";
-import { configPath, tailscaleLinks } from "./config.ts";
 import { classroomsRoot, packageRoot } from "./paths.ts";
 import { servicePaths, servicePort } from "./service-client.ts";
 import { PhoneAccess } from "./phone-access.ts";
+import { TailnetLinks } from "./tailnet-links.ts";
 import { TeacherService } from "./teacher-service.ts";
 import { readTeacherState } from "./service-state.ts";
 import type { Backend } from "./teacher.ts";
@@ -45,7 +45,8 @@ function claim(): void {
 }
 claim();
 const teacher = new TeacherService(),
-  phone = new PhoneAccess();
+  phone = new PhoneAccess(),
+  links = new TailnetLinks(phone, "service");
 const clients = new Map<string, { session: McpSession; inbox: LearnerInbox }>();
 let closing = false;
 function status(): Record<string, unknown> {
@@ -61,46 +62,6 @@ function status(): Record<string, unknown> {
     log: paths.log,
   };
 }
-/** Start the owned route and check its base URL before any link uses it. */
-async function checkedRoute(port?: number): Promise<string> {
-  const base = await phone.start(server.getBaseUrl()!, port);
-  const checked = await fetch(base, { signal: AbortSignal.timeout(15_000) }).catch((err) => {
-    const cause = (err as Error).cause as Error | undefined;
-    throw new Error(`Tailnet URL check failed for ${base}: ${cause?.message ?? err.message}.`);
-  });
-  if (!checked.ok) throw new Error(`Tailnet URL check returned ${checked.status}: ${base}.`);
-  await checked.body?.cancel();
-  server.setLinkBase(base);
-  return base;
-}
-/** Use tailnet links while Tailscale is connected. A connected node with a failed route is an error.
- * Disabling them in config removes the owned route on the next open. */
-async function shareLinks(): Promise<void> {
-  const settings = tailscaleLinks();
-  if (!settings.enabled) {
-    if (phone.owns()) await stopPhone();
-    server.setLinkBase(null);
-    return;
-  }
-  if (!(await phone.available())) {
-    server.setLinkBase(null);
-    return;
-  }
-  try {
-    await checkedRoute(settings.port);
-  } catch (err) {
-    throw new Error(
-      `Tailscale is connected, but its classroom link failed: ${(err as Error).message} ` +
-        `Set "tailscalePort" to a free port, or set "tailscale": false in ${configPath()} for local links.`,
-      { cause: err },
-    );
-  }
-}
-async function stopPhone(): Promise<unknown> {
-  const removed = await phone.stop();
-  server.setLinkBase(null);
-  return removed;
-}
 function result(value: unknown): ToolResult {
   return {
     content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }],
@@ -112,7 +73,7 @@ async function stop(): Promise<void> {
   closing = true;
   for (const c of clients.values()) c.inbox.reset();
   try {
-    await stopPhone();
+    await links.stop();
   } catch (err) {
     closing = false;
     throw err;
@@ -132,7 +93,7 @@ const tools: ClassroomTool[] = [
         return result({ ...status(), tailnet: await phone.status() });
       if (args.action !== "stop") throw new Error("Unknown service action.");
       // Clean the route before reporting success. Keep the service live if cleanup fails.
-      const tailnet = await stopPhone();
+      const tailnet = await links.stop();
       setTimeout(() => {
         void stop()
           .then(() => process.exit(0))
@@ -161,7 +122,7 @@ function session(id: string, backend?: Backend): McpSession {
           name,
           requested === undefined && readTeacherState(name) ? undefined : selected,
         );
-      await shareLinks();
+      await links.share();
       return server.urlFor(classroom ?? undefined)!;
     },
   });
@@ -184,7 +145,7 @@ const ipc = http.createServer((req, res) => {
         clients.delete(args.client);
         value = { detached: true };
       } else if (req.url === "/stop") {
-        await stopPhone();
+        await links.stop();
         value = { stopping: true };
         setTimeout(() => {
           void stop()

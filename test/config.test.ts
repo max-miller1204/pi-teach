@@ -42,12 +42,17 @@ describe("classroom configuration", () => {
     expect(resolveConfiguredPort(4098)).toBe(4098);
   });
   it("enables tailnet links unless the config or environment disables them", () => {
-    expect(tailscaleLinks({})).toEqual({ enabled: true, port: undefined });
-    expect(tailscaleLinks({ tailscale: false })).toMatchObject({ enabled: false });
-    expect(tailscaleLinks({ tailscalePort: 8445 })).toEqual({ enabled: true, port: 8445 });
+    expect(tailscaleLinks("service", {})).toEqual({ enabled: true, port: undefined });
+    expect(tailscaleLinks("service", { tailscale: false })).toMatchObject({ enabled: false });
+    expect(tailscaleLinks("service", { tailscalePort: 8445 })).toEqual({
+      enabled: true,
+      port: 8445,
+    });
+    expect(tailscaleLinks("pi", { tailscalePort: 8445 })).toEqual({ enabled: true, port: 8444 });
+    expect(tailscaleLinks("pi", { piTailscalePort: 8446 })).toEqual({ enabled: true, port: 8446 });
     process.env["PI_CLASSROOM_TAILSCALE"] = "0";
     try {
-      expect(tailscaleLinks({ tailscale: true })).toMatchObject({ enabled: false });
+      expect(tailscaleLinks("pi", { tailscale: true })).toMatchObject({ enabled: false });
     } finally {
       delete process.env["PI_CLASSROOM_TAILSCALE"];
     }

@@ -88,7 +88,9 @@ Extension side (`.ts`):
 - `src/service-state.ts`: saves request identity, plans, errors, and teacher messages.
 - `src/teacher-service.ts`: runs requests in sequence and applies plans in the service.
 - `src/teacher.ts`: Codex app-server and Claude CLI structured output adapters.
-- `src/phone-access.ts`: manages only the service-owned Tailscale Serve route.
+- `src/phone-access.ts`: manages only the owned Tailscale Serve route. The service and Pi
+  keep separate ownership files.
+- `src/tailnet-links.ts`: checks the route and builds tailnet links for the local server.
 - `mcp/launch.mjs`: the MCP entry point. Checks the Node version, runs
   `npm ci --omit=dev` on the first start, then imports `src/mcp-stdio.ts`.
 - `src/commands.ts`: `/classroom` and `/teach`.
