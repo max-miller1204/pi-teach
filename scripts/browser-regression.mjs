@@ -680,17 +680,16 @@ export async function browserRegression(page, highlightText) {
   await screenshot("math-dark");
   await page.locator("[data-cl-theme-toggle]").click();
 
-  let sentMath = null;
-  await page.route("**/api/quiz/submit", async (route) => {
-    sentMath = route.request().postDataJSON().answers[0];
-    await route.abort();
-  });
-  page.once("dialog", (dialog) => dialog.dismiss());
   const mathQuiz = page.locator('form[data-quiz-id="math-check"]');
   await mathQuiz.locator('input[value="a"]').check();
+  const mathSubmitted = page.waitForResponse(
+    (r) => r.url().endsWith("/api/quiz/submit") && r.request().method() === "POST",
+  );
   await mathQuiz.getByRole("button", { name: "Submit for grading", exact: true }).click();
-  for (let i = 0; i < 50 && sentMath === null; i++) await page.waitForTimeout(100);
-  await page.unroute("**/api/quiz/submit");
+  const mathResponse = await mathSubmitted;
+  assert(mathResponse.status() === 201, await mathResponse.text());
+  const mathSubmission = await mathResponse.json();
+  const sentMath = mathSubmission.answers[0];
   assert(
     sentMath?.stimulus === String.raw`Let \(f(x) = x^2\).` &&
       sentMath.prompt === String.raw`What is \(f'(3)\)?` &&
@@ -701,6 +700,16 @@ export async function browserRegression(page, highlightText) {
     (await mathQuiz.locator(".cl-math > math").count()) === 4,
     "Reading the question removed its formulas",
   );
+  await grade(mathSubmission.id, String.raw`The derivative is $f'(x) = 2x$, so $f'(3) = 6$.`, true);
+  await mathQuiz.locator(".cl-grade-feedback .cl-math > math").nth(1).waitFor();
+  await page.reload();
+  await mathQuiz.locator(".cl-grade-feedback .cl-math > math").nth(1).waitFor();
+  assert(
+    (await mathQuiz.getAttribute("data-state")) === "graded" &&
+      (await mathQuiz.locator('input[value="a"]').isChecked()),
+    "Reload lost the graded math answer",
+  );
+  await screenshot("math-graded");
 
   await page.goto(page.url().replace("/c/rust/003-math", "/r/rust/math.html"));
   await page.locator(".cl-math > math").waitFor();

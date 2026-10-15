@@ -306,10 +306,30 @@ try {
     throw new Error("The browser flow lost saved attempts or grades");
   const review = store.reviewItems("rust");
   if (
-    review.length !== 16 ||
+    review.length !== 17 ||
     review.some((item) => item.box !== 0 || item.progress === "retained-evidence")
   )
     throw new Error("Immediate answers must not advance retention evidence");
+  const mathSubmissions = store.listSubmissions("rust", "003-math");
+  const mathGrades = store.listGrades("rust", "003-math");
+  const mathReview = review.find((item) => item.lesson === "003-math");
+  if (
+    mathSubmissions.length !== 1 ||
+    mathSubmissions[0].answers[0].prompt !== String.raw`What is \(f'(3)\)?` ||
+    mathGrades.length !== 1 ||
+    mathGrades[0].submissionId !== mathSubmissions[0].id ||
+    mathReview?.prompt !== String.raw`What is \(f'(3)\)?`
+  )
+    throw new Error("The math flow lost its saved TeX, grade, or review prompt");
+  if (artifacts)
+    fs.writeFileSync(
+      path.join(artifacts, "stored-math.json"),
+      JSON.stringify(
+        { submissions: mathSubmissions, grades: mathGrades, review: mathReview },
+        null,
+        2,
+      ),
+    );
 } catch (error) {
   if (artifacts)
     fs.writeFileSync(
