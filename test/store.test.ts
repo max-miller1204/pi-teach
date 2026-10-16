@@ -532,3 +532,93 @@ it("reports a corrupt grade instead of dropping it from history", () => {
   fixture.write("rust/001-ownership/quiz/grades/corrupt.json", "{");
   expect(() => store.listGrades("rust", "001-ownership")).toThrow(/corrupt.json/);
 });
+
+describe("classroom folders", () => {
+  it("keeps membership across reads and preserves classroom paths", () => {
+    seedClassroom(fixture);
+    expect(store.readClassroomFolders()).toEqual([]);
+    const original = store.readClassroom("rust");
+    const [first] = store.editClassroomFolders({ action: "create", name: " Programming " });
+    const second = store.editClassroomFolders({ action: "create", name: "Work" })[1];
+    store.editClassroomFolders({ action: "move", classroom: "rust", id: first.id });
+    expect(store.readClassroomFolders()[0].classrooms).toEqual(["rust"]);
+    store.editClassroomFolders({ action: "move", classroom: "rust", id: second.id });
+    store.editClassroomFolders({ action: "rename", id: second.id, name: "Projects" });
+    expect(store.readClassroomFolders()).toEqual([
+      { ...first, name: "Programming", classrooms: [] },
+      { ...second, name: "Projects", classrooms: ["rust"] },
+    ]);
+    expect(store.readClassroom("rust")).toEqual(original);
+    expect(store.listClassrooms()).toHaveLength(1);
+    store.editClassroomFolders({ action: "move", classroom: "rust", id: null });
+    expect(store.readClassroomFolders()[1].classrooms).toEqual([]);
+    store.editClassroomFolders({ action: "move", classroom: "rust", id: second.id });
+    store.editClassroomFolders({ action: "delete", id: second.id });
+    expect(store.readClassroomFolders()).toEqual([{ ...first, classrooms: [] }]);
+    expect(store.readClassroom("rust")).toEqual(original);
+    expect(store.listLessons("rust")).toHaveLength(1);
+    expect(fs.readdirSync(fixture.root).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("rejects invalid edits without changing saved membership", () => {
+    seedClassroom(fixture);
+    const [folder] = store.editClassroomFolders({ action: "create", name: "Work" });
+    store.editClassroomFolders({ action: "move", classroom: "rust", id: folder.id });
+    const saved = fs.readFileSync(path.join(fixture.root, ".folders.json"), "utf8");
+    for (const command of [
+      null,
+      [],
+      { action: "create", name: " " },
+      { action: "create", name: "x".repeat(81) },
+      { action: "create", name: "work", id: folder.id },
+      { action: "rename", id: "missing", name: "Other" },
+      { action: "delete", id: "missing" },
+      { action: "move", classroom: "rust", id: "missing" },
+      { action: "move", classroom: "rust" },
+      { action: "move", classroom: "../rust", id: null },
+      { action: "move", classroom: "missing", id: folder.id },
+      { action: "unknown" },
+    ]) {
+      expect(() => store.editClassroomFolders(command)).toThrow(store.FolderInputError);
+      expect(fs.readFileSync(path.join(fixture.root, ".folders.json"), "utf8")).toBe(saved);
+      expect(fs.existsSync(path.join(fixture.root, ".folders.lock"))).toBe(false);
+    }
+  });
+
+  it("refuses overlapping edits until the lock is released", () => {
+    const [folder] = store.editClassroomFolders({ action: "create", name: "Work" });
+    const file = path.join(fixture.root, ".folders.json");
+    const saved = fs.readFileSync(file, "utf8");
+    fixture.write(".folders.lock", "other server");
+    expect(() =>
+      store.editClassroomFolders({ action: "rename", id: folder.id, name: "Projects" }),
+    ).toThrow(store.FolderBusyError);
+    expect(fs.readFileSync(file, "utf8")).toBe(saved);
+    expect(fs.readFileSync(path.join(fixture.root, ".folders.lock"), "utf8")).toBe("other server");
+    fs.unlinkSync(path.join(fixture.root, ".folders.lock"));
+    store.editClassroomFolders({ action: "rename", id: folder.id, name: "Projects" });
+    expect(store.readClassroomFolders()[0].name).toBe("Projects");
+    expect(fs.existsSync(path.join(fixture.root, ".folders.lock"))).toBe(false);
+  });
+
+  it("refuses corrupt state without replacing it", () => {
+    for (const state of [
+      "{",
+      "[]",
+      "{}",
+      JSON.stringify({ folders: [{ id: "x", name: " ", classrooms: [] }] }),
+      JSON.stringify({ folders: [{ id: "x", name: "Work", classrooms: ["rust", "rust"] }] }),
+      JSON.stringify({
+        folders: [
+          { id: "x", name: "Work", classrooms: ["rust"] },
+          { id: "y", name: "Other", classrooms: ["rust"] },
+        ],
+      }),
+    ]) {
+      fixture.write(".folders.json", state);
+      expect(() => store.readClassroomFolders()).toThrow();
+      expect(() => store.editClassroomFolders({ action: "create", name: "New" })).toThrow();
+      expect(fs.readFileSync(path.join(fixture.root, ".folders.json"), "utf8")).toBe(state);
+    }
+  });
+});

@@ -145,6 +145,14 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
 
 ## Key behaviours
 
+- **Classroom folders keep stable paths.** The folder API reads folder names and
+  membership from `<root>/.folders.json`. Each classroom belongs to at most one
+  folder. Folder edits hold `<root>/.folders.lock` and replace the state file with
+  an atomic rename. An overlapping edit returns a conflict and requires an explicit
+  retry. If a process stops during a save, the error names the lock file that must
+  be removed before retrying. Folder edits do not move classroom directories. Deleting a folder returns its classrooms to Unfiled.
+  Invalid saved state fails with an error. The HTTP API does not serve this file.
+
 - **Origin FIFO.** `agent_end` fires once per run. `bridge.noteForeignTurn()` is called
   for typed input and for `/teach`, `bridge.ask()` pushes an ask origin, and grades,
   self-explanations, and panel replies push a panel origin, so a run's final assistant

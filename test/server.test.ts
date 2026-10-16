@@ -1059,3 +1059,71 @@ describe("drafts", () => {
     expect(await drafts()).toEqual({});
   });
 });
+
+it("edits folder membership without changing classroom paths or public file access", async () => {
+  try {
+    const created = await post("/api/folders", { action: "create", name: "Work" });
+    expect(created.status).toBe(200);
+    const {
+      folders: [folder],
+    } = await created.json();
+    const moved = await post("/api/folders", { action: "move", classroom: "rust", id: folder.id });
+    expect(moved.status).toBe(200);
+    expect((await moved.json()).folders[0].classrooms).toEqual(["rust"]);
+    const renamed = await post("/api/folders", {
+      action: "rename",
+      id: folder.id,
+      name: "Projects",
+    });
+    expect(renamed.status).toBe(200);
+    expect((await renamed.json()).folders[0]).toEqual({
+      ...folder,
+      name: "Projects",
+      classrooms: ["rust"],
+    });
+    expect((await get("/c/rust/001-ownership")).status).toBe(200);
+    expect((await get("/c/rust/001-ownership/quiz/key.json")).status).toBe(404);
+    expect((await get("/.folders.json")).status).toBe(404);
+    expect((await get("/.folders.lock")).status).toBe(404);
+    expect((await get("/api/folders")).status).toBe(405);
+    expect(
+      (await post("/api/folders", { action: "move", classroom: "rust", id: "missing" })).status,
+    ).toBe(400);
+    const malformed = await fetch(`${baseUrl}/api/folders`, { method: "POST", body: "{" });
+    expect(malformed.status).toBe(400);
+    const deleted = await post("/api/folders", { action: "delete", id: folder.id });
+    expect(deleted.status).toBe(200);
+    expect((await deleted.json()).folders).toEqual([]);
+    expect(store.readClassroom("rust")).not.toBeNull();
+  } finally {
+    fs.rmSync(path.join(fixture.root, ".folders.json"), { force: true });
+  }
+});
+
+it("returns a specific folder storage error without replacing corrupt state", async () => {
+  fixture.write(".folders.json", "{");
+  try {
+    const response = await post("/api/folders", { action: "create", name: "Work" });
+    expect(response.status).toBe(500);
+    expect((await response.json()).error).toContain("Cannot read JSON state");
+    expect(fs.readFileSync(path.join(fixture.root, ".folders.json"), "utf8")).toBe("{");
+  } finally {
+    fs.rmSync(path.join(fixture.root, ".folders.json"), { force: true });
+  }
+});
+
+it("returns a conflict for a locked folder edit and requires an explicit retry", async () => {
+  fixture.write(".folders.lock", "other server");
+  try {
+    const response = await post("/api/folders", { action: "create", name: "Work" });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("locked folder edits");
+    expect(fs.existsSync(path.join(fixture.root, ".folders.json"))).toBe(false);
+    fs.unlinkSync(path.join(fixture.root, ".folders.lock"));
+    expect((await post("/api/folders", { action: "create", name: "Work" })).status).toBe(200);
+    expect(store.readClassroomFolders()).toHaveLength(1);
+  } finally {
+    fs.rmSync(path.join(fixture.root, ".folders.lock"), { force: true });
+    fs.rmSync(path.join(fixture.root, ".folders.json"), { force: true });
+  }
+});
