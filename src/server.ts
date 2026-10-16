@@ -51,6 +51,7 @@ import {
 import {
   classroomPage,
   documentPage,
+  folderLoadErrorPage,
   landingPage,
   learningRecordsPage,
   notFoundPage,
@@ -247,7 +248,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     const due = Object.fromEntries(
       classrooms.map((c) => [c.name, summarize(store.reviewItems(c.name), now).due]),
     );
-    return sendHtml(res, landingPage(classrooms, due));
+    let folders: store.ClassroomFolder[];
+    try {
+      folders = store.readClassroomFolders();
+    } catch (error) {
+      console.error("[classroom] folder load failed", error);
+      return sendHtml(
+        res,
+        folderLoadErrorPage((error as Error).message, url.pathname + url.search),
+        500,
+      );
+    }
+    const folderId = url.searchParams.get("folder");
+    if (folderId !== null && !folders.some((f) => f.id === folderId))
+      return sendNotFound(res, "This folder no longer exists. Return to Classrooms.");
+    return sendHtml(res, landingPage(classrooms, due, folders, folderId));
   }
   // Reason: lessons are plain documents with no <link rel="icon">, so the browser asks
   // for /favicon.ico and logs a 404 in the console on every lesson view.

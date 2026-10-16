@@ -71,6 +71,11 @@ running when you close the initiating chat.
 
 Your material is saved in `~/.pi/agent/classrooms/`. All three hosts use this folder.
 
+On the Classrooms page, select **New folder** to group related classrooms. Use
+**Move to folder** on a classroom to change its folder. Open a folder to rename or
+delete it. Deleting a folder returns its classrooms to **Unfiled** and keeps all
+lessons saved. Folder changes keep classroom and lesson links unchanged.
+
 ## Documentation
 
 - [Features and screenshots](docs/FEATURES.md): quizzes, review, diagrams, and the web UI.

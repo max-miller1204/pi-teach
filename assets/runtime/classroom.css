@@ -330,6 +330,90 @@ img {
   margin: 0 0 0.9rem;
 }
 
+/* Folder navigation and controls. */
+.cl-folder-heading,
+.cl-folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cl-folder-heading {
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.cl-grid.cl-folder-grid {
+  margin-bottom: 2.5rem;
+}
+
+.cl-classroom-card {
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cl-classroom-card .cl-card-link {
+  flex: 1;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.cl-classroom-move {
+  padding: 0.6rem 1.25rem;
+  text-align: left;
+  font: 0.8rem var(--cl-sans);
+  color: var(--cl-text-muted);
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-top: 0;
+  border-radius: 0 0 var(--cl-radius) var(--cl-radius);
+  cursor: pointer;
+}
+
+.cl-classroom-move:hover {
+  color: var(--cl-accent);
+  background: var(--cl-bg);
+}
+
+.cl-folder-field {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.cl-folder-field[hidden] {
+  display: none;
+}
+
+.cl-folder-field input,
+.cl-folder-field select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem;
+  font: inherit;
+  background: var(--cl-bg);
+  color: var(--cl-text);
+  border: 1px solid var(--cl-border-strong);
+  border-radius: var(--cl-radius-sm);
+}
+
+.cl-folder-error {
+  color: var(--cl-danger);
+  font-size: 0.85rem;
+}
+
+.cl-folder-empty {
+  color: var(--cl-text-muted);
+}
+
+.cl-folder-heading h1,
+.cl-card-title,
+.cl-confirm-title {
+  overflow-wrap: anywhere;
+}
+
 /* ── Classroom cards ──────────────────────────────────────────────────────── */
 
 .cl-grid {

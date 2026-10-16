@@ -1,3 +1,4 @@
+import { verifyFoldersBrowser } from "./e2e-folders-browser.ts";
 import { verifyResumeBrowser } from "./e2e-resume-browser.ts";
 import { verifyCardBrowser } from "./e2e-card-browser.ts";
 import { verifyReviewBrowser } from "./e2e-review-browser.ts";
@@ -370,3 +371,5 @@ await verifyReviewBrowser(artifacts ? path.join(artifacts, "review") : null);
 if (artifacts) fs.mkdirSync(path.join(artifacts, "resume"), { recursive: true });
 await verifyResumeBrowser(artifacts ? path.join(artifacts, "resume") : null);
 await verifyCardBrowser(artifacts ? path.join(artifacts, "cards") : null);
+
+await verifyFoldersBrowser(artifacts ? path.join(artifacts, "folders") : null);
