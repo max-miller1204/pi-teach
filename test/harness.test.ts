@@ -115,6 +115,14 @@ describe("packaged authoring check receipts", () => {
       .join("\n");
     expect(packagedPageChecks("claude", events)).toHaveLength(1);
   });
+  it("recognizes a relative path from the plugin directory", () => {
+    expect(
+      packagedPageChecks(
+        "codex",
+        codex(receipt, "cd /plugin && node scripts/check-lesson.ts os 002-forks"),
+      ),
+    ).toHaveLength(1);
+  });
   it("does not count reading the checker as execution", () => {
     expect(
       packagedPageChecks("codex", codex(receipt, "cat /plugin/scripts/check-lesson.ts")),

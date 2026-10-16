@@ -219,7 +219,9 @@ export function packagedPageChecks(
     return start >= 0 ? [...values, ...receipts(output.slice(start + 1))] : values;
   }
   function collect(command: string, output: string): void {
-    if (!/\bnode\s+(?:\\?["'])?[^\s"'\\]*\/scripts\/check-lesson\.ts(?:\\?["'])?\s/.test(command))
+    if (
+      !/\bnode\s+(?:\\?["'])?(?:[^\s"'\\]*\/)?scripts\/check-lesson\.ts(?:\\?["'])?\s/.test(command)
+    )
       return;
     const parsed = receipts(output);
     for (const value of parsed) {
