@@ -126,6 +126,8 @@ try {
     ),
     fixture.root,
     () => {},
+    undefined,
+    { operations: ["grade_lesson_quiz"], required: true, messageRequired: true },
   );
   if (artifacts)
     fs.writeFileSync(

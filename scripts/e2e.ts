@@ -11,6 +11,8 @@ import { writeGradedAttempt, termAnswer, seedHistoricalReview } from "../test/he
 import { DAY_MS } from "../src/review.ts";
 import { currentReview } from "../src/review-session.ts";
 import { _overrideClassroomsDir } from "../src/paths.ts";
+import { notesStub } from "../src/prompts.ts";
+import * as store from "../src/store.ts";
 import { control, serviceStatus } from "../src/service-client.ts";
 
 const harness = parseHarness(
@@ -19,6 +21,8 @@ const harness = parseHarness(
 );
 const CLASSROOM = "rust",
   LESSON = "001-ownership";
+const RETRIEVAL_REPLY =
+  "The value is dropped when its owner leaves scope. If a String moves to another variable, the new variable owns it. The old variable cannot use it, so the same value is not freed twice. I answered without help.";
 const artifacts = process.argv[3] ? path.resolve(process.argv[3]) : null;
 if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
 function log(message: string): void {
@@ -31,6 +35,7 @@ function seedClassroom(root: string): void {
     path.join(root, CLASSROOM, "MISSION.md"),
     "# Mission: Rust\n\n## Why\n\nUnderstand ownership.\n",
   );
+  fs.writeFileSync(path.join(root, CLASSROOM, "NOTES.md"), notesStub());
   fs.writeFileSync(
     path.join(root, CLASSROOM, "classroom.json"),
     JSON.stringify({ title: "Rust", emoji: "🦀", createdAt: Date.now() }),
@@ -200,7 +205,7 @@ async function main(): Promise<void> {
       `async page => {
       await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'graded');
       if (!await page.getByRole('button',{name:'Graded',exact:true}).isDisabled()) throw new Error('Graded quiz is unlocked.');
-      await page.locator('.cl-teacher textarea').fill('The value is dropped when its owner leaves scope. If a String moves to another variable, the new variable owns it. The old variable cannot use it, so the same value is not freed twice.');
+      await page.locator('.cl-teacher textarea').fill(${JSON.stringify(RETRIEVAL_REPLY)});
       await page.locator('.cl-teacher button[type="submit"]').click();
       ${artifacts ? `await page.screenshot({path:${JSON.stringify(path.join(artifacts, `${harness}-teacher-panel.png`))},fullPage:true});` : ""}
       return true;
@@ -213,6 +218,21 @@ async function main(): Promise<void> {
         s.teacher.requests.every((r: any) => r.status === "done"),
     );
     log(`retrieval feedback: ${checked.teacher.messages.at(-1).text}`);
+    const retrieval = store
+      .listRetrievalChecks(CLASSROOM)
+      .find((check) => check.answer === RETRIEVAL_REPLY);
+    if (!retrieval || retrieval.key !== `${LESSON}/check-1/q1` || retrieval.assistance !== "none")
+      throw new Error(
+        "The successful panel reply has no linked retrieval evidence with reported assistance.",
+      );
+    const learningRecord = fs.readFileSync(
+      path.join(root, CLASSROOM, "learning-records", retrieval.learningRecord),
+      "utf8",
+    );
+    if (!learningRecord.trim()) throw new Error("The linked learning record is empty.");
+    const reviewItem = store.reviewItems(CLASSROOM).find((item) => item.key === retrieval.key);
+    if (!reviewItem || reviewItem.progress === "retained-evidence")
+      throw new Error("An immediate panel correction must not establish retained knowledge.");
     if (checked.teacher.identity.sessionId !== answered.teacher.identity.sessionId)
       throw new Error("Teacher changed session.");
     const grades = fs.readdirSync(path.join(root, CLASSROOM, LESSON, "quiz/grades"));
@@ -229,6 +249,9 @@ async function main(): Promise<void> {
         JSON.stringify(
           {
             checked,
+            retrieval,
+            learningRecord,
+            reviewItem,
             savedAnnotation,
             grade: JSON.parse(
               fs.readFileSync(path.join(root, CLASSROOM, LESSON, "quiz/grades", grades[0]), "utf8"),
@@ -363,6 +386,7 @@ async function main(): Promise<void> {
     if (artifacts) {
       fs.writeFileSync(path.join(artifacts, "host-stdout.log"), stdout);
       fs.writeFileSync(path.join(artifacts, "host-stderr.log"), stderr);
+      fs.cpSync(path.join(root, CLASSROOM), path.join(artifacts, "classroom"), { recursive: true });
       const serviceLog = path.join(root, ".pi-teach-service/service.log");
       if (fs.existsSync(serviceLog))
         fs.copyFileSync(serviceLog, path.join(artifacts, "service.log"));

@@ -53,13 +53,12 @@ const rubric = JSON.stringify({
 const restoreModel = useTestModel(backend);
 try {
   parseTeachingPlan(plan, html);
-  const review = await evaluateContent(backend, fixture.root, {
-    objective,
-    mode: "lesson",
-    html,
-    rubric,
-    plan,
-  });
+  const review = await evaluateContent(
+    backend,
+    fixture.root,
+    { objective, mode: "lesson", html, rubric, plan },
+    artifacts ? path.join(artifacts, `${backend}-quality-raw.json`) : undefined,
+  );
   if (artifacts)
     fs.writeFileSync(
       path.join(artifacts, `${backend}-quality-report.json`),
