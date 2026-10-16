@@ -41,6 +41,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as net from "node:net";
+import { createHash } from "node:crypto";
 import { control, servicePaths, serviceStatus } from "../src/service-client.ts";
 
 import { _overrideClassroomsDir } from "../src/paths.ts";
@@ -502,13 +503,18 @@ async function main(): Promise<void> {
       throw new Error(`Expected ${OBJECTIVES.length} new lessons, found: ${lessons.join(", ")}`);
     }
     const packagedChecks = packagedPageChecks(harness, authoring.stream());
-    if (
-      launches.length === 0 &&
-      !lessons.every((lesson) =>
-        packagedChecks.some((check) => check.classroom === CLASSROOM && check.lesson === lesson),
+    for (const lesson of lessons) {
+      const htmlHash = createHash("sha256")
+        .update(fs.readFileSync(path.join(root, CLASSROOM, lesson, "lesson.html")))
+        .digest("hex");
+      if (
+        !packagedChecks.some(
+          (check) =>
+            check.classroom === CLASSROOM && check.lesson === lesson && check.htmlHash === htmlHash,
+        )
       )
-    )
-      failures.push("The agent did not complete headless checks for every lesson.");
+        failures.push(`The agent did not complete the packaged page check for ${lesson}.`);
+    }
     const reports = lessons.map((lesson, i) => inspectLesson(root, lesson, OBJECTIVES[i]!));
     for (const [i, report] of reports.entries()) {
       const html = fs.readFileSync(

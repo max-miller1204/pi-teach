@@ -40,6 +40,7 @@ const command = 'node "/plugin/scripts/check-lesson.ts" os 002-forks';
 const receipt = {
   classroom: "os",
   lesson: "002-forks",
+  htmlHash: "a".repeat(64),
   learnerStateChanged: false,
   initial: { quizzes: 1, contractErrors: 0, pageErrors: 0 },
   released: { quizzes: 2, contractErrors: 0, pageErrors: 0 },
@@ -59,8 +60,30 @@ function codex(output: unknown = receipt, executed = command, exit_code = 0): st
 describe("packaged authoring check receipts", () => {
   it("accepts a successful Codex execution", () => {
     expect(packagedPageChecks("codex", codex())).toEqual([
-      { classroom: "os", lesson: "002-forks" },
+      { classroom: "os", lesson: "002-forks", htmlHash: receipt.htmlHash },
     ]);
+  });
+  it("recognizes shell-escaped program quotes", () => {
+    expect(
+      packagedPageChecks(
+        "codex",
+        codex(receipt, 'node \\"/plugin/scripts/check-lesson.ts\\" os 002-forks'),
+      ),
+    ).toHaveLength(1);
+  });
+  it("reads separate receipts from one successful command without changing JSON strings", () => {
+    const second = {
+      ...receipt,
+      lesson: "003-pipes",
+      initial: { ...receipt.initial, controls: ["a } { b"] },
+    };
+    const event = JSON.parse(codex());
+    event.item.aggregated_output = JSON.stringify(receipt) + "\n" + JSON.stringify(second) + "\n";
+    expect(packagedPageChecks("codex", JSON.stringify(event)).map((check) => check.lesson)).toEqual(
+      ["002-forks", "003-pipes"],
+    );
+    event.item.aggregated_output += "unexpected output";
+    expect(packagedPageChecks("codex", JSON.stringify(event))).toEqual([]);
   });
   it("matches Claude results to the script execution", () => {
     const events = [
@@ -96,6 +119,8 @@ describe("packaged authoring check receipts", () => {
   });
   it.each([
     { ...receipt, learnerStateChanged: true },
+    { ...receipt, htmlHash: undefined },
+    { ...receipt, htmlHash: "not-a-hash" },
     { ...receipt, initial: { ...receipt.initial, contractErrors: 1 } },
     { ...receipt, released: { ...receipt.released, pageErrors: 1 } },
     { ...receipt, released: undefined },

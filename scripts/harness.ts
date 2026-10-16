@@ -181,26 +181,66 @@ export function browserCommands(harness: Harness, events: string): string[] {
 export function packagedPageChecks(
   harness: Harness,
   events: string,
-): Array<{ classroom: string; lesson: string }> {
+): Array<{ classroom: string; lesson: string; htmlHash: string }> {
   const commands = new Map<string, string>();
-  const checks: Array<{ classroom: string; lesson: string }> = [];
+  const checks: Array<{ classroom: string; lesson: string; htmlHash: string }> = [];
+  function receipts(output: string): unknown[] {
+    const values: unknown[] = [];
+    let start = -1,
+      depth = 0,
+      quoted = false,
+      escaped = false;
+    for (let i = 0; i < output.length; i++) {
+      const char = output[i];
+      if (start < 0) {
+        if (/\s/.test(char)) continue;
+        if (char !== "{") throw new Error("A page-check receipt must be a JSON object.");
+        start = i;
+      }
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') quoted = false;
+      } else if (char === '"') quoted = true;
+      else if (char === "{") depth++;
+      else if (char === "}" && --depth === 0) {
+        values.push(JSON.parse(output.slice(start, i + 1)));
+        start = -1;
+      }
+    }
+    if (start >= 0) throw new Error("A page-check receipt is incomplete.");
+    return values;
+  }
   function collect(command: string, output: string, failed: boolean): void {
-    if (failed || !/\bnode\s+["']?[^\s"']*\/scripts\/check-lesson\.ts["']?\s/.test(command)) return;
-    let receipt;
+    if (
+      failed ||
+      !/\bnode\s+(?:\\?["'])?[^\s"'\\]*\/scripts\/check-lesson\.ts(?:\\?["'])?\s/.test(command)
+    )
+      return;
+    let parsed;
     try {
-      receipt = JSON.parse(output);
+      parsed = receipts(output);
     } catch {
       return;
     }
-    if (
-      typeof receipt?.classroom === "string" &&
-      typeof receipt.lesson === "string" &&
-      receipt.learnerStateChanged === false &&
-      [receipt.initial, receipt.released].every(
-        (phase) => phase?.quizzes > 0 && phase.contractErrors === 0 && phase.pageErrors === 0,
+    for (const value of parsed) {
+      const receipt = value as Record<string, any>;
+      if (
+        typeof receipt?.classroom === "string" &&
+        typeof receipt.lesson === "string" &&
+        typeof receipt.htmlHash === "string" &&
+        /^[a-f0-9]{64}$/.test(receipt.htmlHash) &&
+        receipt.learnerStateChanged === false &&
+        [receipt.initial, receipt.released].every(
+          (phase) => phase?.quizzes > 0 && phase.contractErrors === 0 && phase.pageErrors === 0,
+        )
       )
-    )
-      checks.push({ classroom: receipt.classroom, lesson: receipt.lesson });
+        checks.push({
+          classroom: receipt.classroom,
+          lesson: receipt.lesson,
+          htmlHash: receipt.htmlHash,
+        });
+    }
   }
   for (const line of events.split("\n").filter(Boolean)) {
     const event = JSON.parse(line);
