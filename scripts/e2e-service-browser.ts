@@ -49,7 +49,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
   if (turns.length === 1) { send({id:m.id,error:{code:-32000,message:'Fixture teacher failure'}}); return; }
   const ask = /annotation_id: "([^"]+)"/.exec(m.params.input[0].text);
   const quiz = /submission_id: "([^"]+)"/.exec(m.params.input[0].text);
-  const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] : quiz ? [{name:'grade_lesson_quiz',arguments_json:JSON.stringify({submission_id:quiz[1],score:m.params.input[0].text.includes('Previous teacher plan error:') ? 0 : 10,feedback_markdown:'Check the owner.',questions:[{question_id:'q1',correct:false,feedback:'Trace the owner.'}]})}] : [];
+  const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] : quiz ? [{name:'grade_quiz_answers',arguments_json:JSON.stringify({submission_id:quiz[1],...(m.params.input[0].text.includes('Previous teacher plan error:') ? {} : {score:10}),feedback_markdown:'Check the owner.',questions:[{question_id:'q1',correct:false,feedback:'Trace the owner.'}]})}] : [];
   send({id:m.id,result:{turn:{id:'browser-turn'}}});
   send({method:'item/completed',params:{threadId:m.params.threadId,turnId:'browser-turn',item:{type:'agentMessage',text:JSON.stringify({calls,message:'What changes when the value moves?',learning_record:'',notes_markdown:''})}}});
   send({method:'turn/completed',params:{threadId:m.params.threadId,turn:{id:'browser-turn',status:'completed'}}});
@@ -362,10 +362,11 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await page.locator('form.cl-quiz').getByRole('button', {name:'Submit for grading', exact:true}).click();
       if ((await submitted).status() !== 201) throw new Error('Quiz was refused.');
       await page.getByRole('button', {name:'Retry request', exact:true}).waitFor();
-      if (!(await page.locator('.cl-teacher-requests').innerText()).includes('Score must match question points')) throw new Error('The invalid score was not shown.');
+      if (!(await page.locator('.cl-teacher-requests').innerText()).includes('grade_quiz_answers must omit score')) throw new Error('The invalid score was not shown.');
       ${shot("rejected-grade")}
     `);
     const rejectedGrade = readTeacherState("rust")!.requests.find((r) => r.kind === "quiz")!;
+    if (!rejectedGrade.modelOutput) throw new Error("The raw model plan was not retained.");
     if (rejectedGrade.status !== "failed" || store.listGrades("rust", "001-ownership").length)
       throw new Error("An invalid grade must fail before saving a grade.");
     snapshot("rejected-grade");
@@ -384,7 +385,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
     const gradingTurns = JSON.parse(
       fs.readFileSync(path.join(fixture.root, "mock-turns.json"), "utf8"),
     ).filter((turn: any) =>
-      turn.schema.properties.calls.items.properties.name.enum?.includes("grade_lesson_quiz"),
+      turn.schema.properties.calls.items.properties.name.enum?.includes("grade_quiz_answers"),
     );
     if (
       gradingTurns.length !== 2 ||

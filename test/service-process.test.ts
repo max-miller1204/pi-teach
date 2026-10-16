@@ -47,7 +47,7 @@ lines.on('line', line => {
   const ask = /annotation_id: "([^"]+)"/.exec(prompt);
   const quiz = /submission_id: "([^"]+)"/.exec(prompt);
   const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] :
-   quiz ? [{name:'grade_lesson_quiz',arguments_json:JSON.stringify({submission_id:quiz[1],score:0,feedback_markdown:'Check the lifetime.',questions:[{question_id:'q1',correct:false,feedback:'The value is dropped.'}]})}] : [];
+   quiz ? [{name:'grade_quiz_answers',arguments_json:JSON.stringify({submission_id:quiz[1],feedback_markdown:'Check the lifetime.',questions:[{question_id:'q1',correct:false,feedback:'The value is dropped.'}]})}] : [];
   send({id:m.id,result:{turn:{id:'test-turn'}}});
   const finish = () => {
   if (behavior.foreign) {

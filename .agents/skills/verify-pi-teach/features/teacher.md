@@ -34,7 +34,7 @@ The Pi fixture checks `.cl-teacher` follows the quiz, a prose-only grading run f
 
 The service fixture checks failure, retry, MCP disconnect and reconnect, request isolation between lessons, and teacher drafts. Inspect `pi-panel/pi-panel.json` and service state evidence.
 
-The service fixture also submits a quiz with an invalid teacher score. It checks the visible error and the absence of a saved grade. `Retry request` must request one corrected plan. Reload must show the corrected grade. Inspect `service/rejected-grade.json`, `service/retried-grade.json`, and `service/grading-turns.json`. The grading turns must each permit exactly one grade call.
+The service fixture also submits a quiz whose teacher supplies a forbidden total score. The score-free operation must reject it. The fixture checks the visible error and the absence of a saved grade. `Retry request` must request one corrected plan with no total score. Reload must show the calculated grade. Inspect `service/rejected-grade.json`, `service/retried-grade.json`, and `service/grading-turns.json`. The grading turns must each permit exactly one grade call. Local recovery tests keep the score checks for older saved plans.
 
 The resume fixtures use a saved review with an empty panel or an unanswered saved reply. They check the explicit handoff, panel link, reply recovery, message order, reload, and unchanged assessment and evidence files for Pi, Claude, and Codex. Repeated handoffs must reuse the request. Inspect `resume/`. The real Pi and service host drives also resume a historical 67% review from initiating chat. They check the saved grade and teacher identity.
 

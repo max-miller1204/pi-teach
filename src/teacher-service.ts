@@ -7,6 +7,7 @@ import { applyTurnAnswer, withHtml } from "./bridge.ts";
 import { classroomDir, lessonDir, safeStaticFile } from "./paths.ts";
 import { stageLesson } from "./pretest.ts";
 import { validateGrade } from "../assets/runtime/grade.mjs";
+import { answerGradingTool, GRADE_ANSWERS, scoredAnswers } from "./teacher-grading.ts";
 import {
   askPrompt,
   followUpPrompt,
@@ -273,9 +274,12 @@ export class TeacherService {
       }
       if (r.plan && submission) {
         try {
-          const call = r.plan.calls.find((call) => call.name === "grade_lesson_quiz");
+          const call = r.plan.calls.find(
+            (call) => call.name === (r.planVersion === 2 ? GRADE_ANSWERS : "grade_lesson_quiz"),
+          );
           if (!call) throw new Error("The saved plan has no grade call.");
-          const args = JSON.parse(call.arguments_json);
+          const supplied = JSON.parse(call.arguments_json);
+          const args = r.planVersion === 2 ? scoredAnswers(supplied) : supplied;
           validateGrade(
             args.score,
             args.questions.map(
@@ -369,7 +373,7 @@ export class TeacherService {
   private contract(r: TeacherRequest): PlanContract {
     switch (r.kind) {
       case "quiz":
-        return { operations: ["grade_lesson_quiz"], required: true, messageRequired: true };
+        return { operations: [GRADE_ANSWERS], required: true, messageRequired: true };
       case "ask":
       case "follow-up":
         return { operations: ["answer_lesson_question"], required: true };
@@ -447,7 +451,9 @@ export class TeacherService {
       topicNotes,
     };
     const contract = this.contract(r);
-    const defs = classroomTools(PI_HOST).filter((t) => contract.operations.includes(t.name));
+    const defs = classroomTools(PI_HOST)
+      .map((tool) => (tool.name === "grade_lesson_quiz" ? answerGradingTool(tool) : tool))
+      .filter((t) => contract.operations.includes(t.name));
     return dedicatedTeacherPrompt(
       r.id,
       `Current request kind: ${r.kind}. ${contract.required ? "Return exactly one call from the tool definitions." : contract.operations.length ? "Return only retrieval calls supported by this learner reply. Otherwise return calls=[]." : "Return calls=[]."}\n\n${r.prompt}`,
@@ -491,11 +497,16 @@ export class TeacherService {
               },
               controller.signal,
               this.contract(r),
+              (value) => {
+                r.modelOutput = value;
+                saveTeacherState(classroom, state);
+              },
             );
           } finally {
             this.controllers.delete(controller);
           }
           r.plan = parsePlan(plan);
+          r.planVersion = 2;
           r.planValidated = false;
           r.status = "planned";
           saveTeacherState(classroom, state);
@@ -562,7 +573,9 @@ export class TeacherService {
       );
     const required =
       r.kind === "quiz"
-        ? "grade_lesson_quiz"
+        ? r.planVersion === 2
+          ? GRADE_ANSWERS
+          : "grade_lesson_quiz"
         : r.kind === "ask" || r.kind === "follow-up"
           ? "answer_lesson_question"
           : null;
@@ -581,7 +594,7 @@ export class TeacherService {
       )
         throw new Error("Teacher tried to answer a request it does not own.");
       if (
-        c.name === "grade_lesson_quiz" &&
+        (c.name === "grade_lesson_quiz" || c.name === GRADE_ANSWERS) &&
         (required !== c.name || args.submission_id !== r.target)
       )
         throw new Error("Teacher tried to grade a request it does not own.");
@@ -617,10 +630,19 @@ export class TeacherService {
             "Retrieval check must use the actual learner reply and this lesson's review item.",
           );
       }
-      const tool = classroomTools(PI_HOST).find((t) => t.name === c.name);
+      const publicTools = classroomTools(PI_HOST);
+      const tool =
+        c.name === GRADE_ANSWERS
+          ? answerGradingTool(publicTools.find((t) => t.name === "grade_lesson_quiz")!)
+          : publicTools.find((t) => t.name === c.name);
       if (
         !tool ||
-        !["answer_lesson_question", "grade_lesson_quiz", "record_retrieval_check"].includes(c.name)
+        ![
+          "answer_lesson_question",
+          "grade_lesson_quiz",
+          GRADE_ANSWERS,
+          "record_retrieval_check",
+        ].includes(c.name)
       )
         throw new Error(`Teacher operation is not allowed: ${c.name}`);
       for (const key of tool.parameters.required as string[])
@@ -655,7 +677,7 @@ export class TeacherService {
       plan.learning_record.trim() &&
       parsed.some(
         (call) =>
-          call.name === "grade_lesson_quiz" &&
+          (call.name === "grade_lesson_quiz" || call.name === GRADE_ANSWERS) &&
           Array.isArray(call.args.questions) &&
           citedQuestions.length > 0 &&
           citedQuestions.every(
@@ -696,7 +718,7 @@ export class TeacherService {
             throw new Error("Teacher answer is empty.");
           applyTurnAnswer(r.target, turn, args.answer_markdown);
         }
-      } else if (name === "grade_lesson_quiz") {
+      } else if (name === "grade_lesson_quiz" || name === GRADE_ANSWERS) {
         if (!store.listGrades(r.classroom, r.lesson).some((g) => g.submissionId === r.target)) {
           const result = await tool.execute(args);
           if (isFailure(result)) {

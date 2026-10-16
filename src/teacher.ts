@@ -29,6 +29,7 @@ export const PLAN_SCHEMA = {
             enum: [
               "answer_lesson_question",
               "grade_lesson_quiz",
+              "grade_quiz_answers",
               "record_retrieval_check",
               "publish_review",
             ],
@@ -93,6 +94,7 @@ export type RunTeacher = (
   saveIdentity: (sessionId: string) => void,
   signal: AbortSignal | undefined,
   contract: PlanContract,
+  saveModelOutput?: (value: unknown) => void,
 ) => Promise<TeacherPlan>;
 
 export function parsePlan(value: unknown): TeacherPlan {
@@ -117,21 +119,42 @@ export const runTeacher: RunTeacher = async (
   saveIdentity,
   signal,
   contract,
+  saveModelOutput,
 ) => {
-  const schema = planSchema(contract);
+  const raw = await runStructured(
+    identity,
+    prompt,
+    cwd,
+    saveIdentity,
+    planSchema(contract),
+    signal,
+  );
+  saveModelOutput?.(raw);
+  return parsePlan(raw);
+};
+
+/** Run a read-only model turn with a schema supplied by the caller. */
+export async function runStructured(
+  identity: TeacherIdentity,
+  prompt: string,
+  cwd: string,
+  saveIdentity: (sessionId: string) => void,
+  schema: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
   return identity.backend === "codex"
     ? runCodex(identity, prompt, cwd, saveIdentity, schema, signal)
     : runClaude(identity, prompt, cwd, saveIdentity, schema, signal);
-};
+}
 
 async function runClaude(
   identity: TeacherIdentity,
   prompt: string,
   cwd: string,
   save: (id: string) => void,
-  schema: ReturnType<typeof planSchema>,
+  schema: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<TeacherPlan> {
+): Promise<unknown> {
   const args = [
     "-p",
     "--output-format",
@@ -179,7 +202,7 @@ async function runClaude(
           throw new Error(
             `Claude teacher failed: ${result.result ?? JSON.stringify(result.errors)}`,
           );
-        resolve(parsePlan(result.structured_output));
+        resolve(result.structured_output);
       } catch (err) {
         reject(err);
       }
@@ -192,9 +215,9 @@ async function runCodex(
   prompt: string,
   cwd: string,
   save: (id: string) => void,
-  schema: ReturnType<typeof planSchema>,
+  schema: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<TeacherPlan> {
+): Promise<unknown> {
   const child = spawn("codex", ["app-server", "--stdio"], {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
@@ -328,7 +351,7 @@ async function runCodex(
     } catch (err) {
       throw new Error(`Invalid Codex teacher plan JSON: ${(err as Error).message}`, { cause: err });
     }
-    return parsePlan(value);
+    return value;
   } finally {
     deadline.stop();
     child.stdin.end();
