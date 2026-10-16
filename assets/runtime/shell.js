@@ -6,6 +6,9 @@ import { initTheme } from "./theme.mjs";
 initTheme();
 initLinks();
 
+const folderControl = document.querySelector("[data-cl-folders]");
+if (folderControl) initFolders(folderControl);
+
 const reviewControl = document.querySelector("[data-cl-review]");
 if (reviewControl) initReview(reviewControl);
 
@@ -128,4 +131,106 @@ function initReview(control) {
     if (event.persisted) check();
   });
   check();
+}
+
+function initFolders(control) {
+  const dialog = control.querySelector("dialog");
+  const form = dialog.querySelector("form");
+  const title = dialog.querySelector("h2");
+  const description = dialog.querySelector("[data-cl-folder-description]");
+  const nameLabel = dialog.querySelector("[data-cl-folder-name-label]");
+  const selectLabel = dialog.querySelector("[data-cl-folder-select-label]");
+  const name = form.elements.name;
+  const folder = form.elements.folder;
+  const error = dialog.querySelector("[data-cl-folder-error]");
+  const save = dialog.querySelector("[data-cl-folder-save]");
+  const cancel = dialog.querySelector("[data-cl-folder-cancel]");
+  let command;
+  let busy = false;
+
+  function open(action, classroom) {
+    command = { action, id: control.dataset.folderId || null };
+    error.hidden = true;
+    error.textContent = "";
+    nameLabel.hidden = action !== "create" && action !== "rename";
+    name.disabled = nameLabel.hidden;
+    selectLabel.hidden = action !== "move";
+    folder.disabled = selectLabel.hidden;
+    save.classList.toggle("cl-button-danger", action === "delete");
+    description.textContent = "";
+    if (action === "create") {
+      title.textContent = "New folder";
+      name.value = "";
+      save.textContent = "Create folder";
+    } else if (action === "rename") {
+      title.textContent = "Rename folder";
+      name.value = control.querySelector(".cl-hero h1").textContent;
+      save.textContent = "Save name";
+    } else if (action === "delete") {
+      title.textContent = "Delete folder?";
+      description.textContent =
+        "Classrooms in this folder will return to Unfiled. Your classrooms and lessons will stay saved.";
+      save.textContent = "Delete folder";
+    } else if (action === "move") {
+      command.classroom = classroom.dataset.clMove;
+      title.textContent = `Move ${classroom.dataset.classroomTitle}`;
+      folder.value = control.dataset.folderId;
+      save.textContent = "Move classroom";
+    }
+    dialog.showModal();
+    if (!name.disabled) {
+      name.focus();
+      name.select();
+    }
+  }
+  control.querySelector("[data-cl-folder-create]")?.addEventListener("click", () => open("create"));
+  control.querySelector("[data-cl-folder-rename]")?.addEventListener("click", () => open("rename"));
+  control.querySelector("[data-cl-folder-delete]")?.addEventListener("click", () => open("delete"));
+  control.querySelectorAll("[data-cl-move]").forEach((button) => {
+    button.addEventListener("click", () => open("move", button));
+  });
+  cancel.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("cancel", (event) => {
+    if (busy) event.preventDefault();
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    save.disabled = true;
+    cancel.disabled = true;
+    name.disabled = true;
+    folder.disabled = true;
+    error.hidden = true;
+    const body = { ...command };
+    if (command.action === "create" || command.action === "rename") body.name = name.value;
+    if (command.action === "move") body.id = folder.value || null;
+    try {
+      const response = await fetch("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        if (typeof result.error !== "string")
+          throw new Error("Folder response has no error description.");
+        throw new Error(result.error);
+      }
+      if (!Array.isArray(result.folders)) throw new Error("Folder response has no folder list.");
+      if (command.action === "delete") window.location.assign("/");
+      else window.location.reload();
+    } catch (failure) {
+      error.textContent = failure.message;
+      error.hidden = false;
+      save.disabled = false;
+      cancel.disabled = false;
+      name.disabled = nameLabel.hidden;
+      folder.disabled = selectLabel.hidden;
+      busy = false;
+    }
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) window.location.reload();
+  });
 }

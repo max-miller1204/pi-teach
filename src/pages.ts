@@ -8,7 +8,7 @@
 
 import { escapeHtml, renderMarkdown } from "./markdown.ts";
 import { DEFAULT_REVIEW_SIZE, relativeDay, type ReviewSummary } from "./review.ts";
-import type { Classroom, Lesson } from "./store.ts";
+import type { Classroom, ClassroomFolder, Lesson } from "./store.ts";
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 
@@ -72,31 +72,71 @@ ${options.body}
 export function landingPage(
   classrooms: Classroom[],
   dueByClassroom: Record<string, number> = {},
+  folders: ClassroomFolder[] = [],
+  folderId: string | null = null,
 ): string {
-  const body =
-    classrooms.length === 0
-      ? emptyState(
-          "No classrooms yet",
-          "Ask your agent to teach you a topic (<code>/teach &lt;topic&gt;</code> in Pi) and your first classroom will appear here.",
-        )
-      : `<div class="cl-hero">
-  <h1>Classrooms</h1>
-  <p class="cl-lede">Pick up where you left off, or start something new with <code>/teach</code>.</p>
+  const folder = folders.find((f) => f.id === folderId);
+  if (folderId !== null && !folder) throw new Error("Unknown classroom folder.");
+  const filed = new Set(folders.flatMap((f) => f.classrooms));
+  const visible = classrooms.filter((c) =>
+    folder ? folder.classrooms.includes(c.name) : !filed.has(c.name),
+  );
+  const title = folder?.name ?? "Classrooms";
+  const body = `<div data-cl-folders data-folder-id="${escapeHtml(folderId ?? "")}">
+<div class="cl-hero">
+  <div class="cl-folder-heading"><h1>${escapeHtml(title)}</h1>
+    <div class="cl-folder-actions">${folder ? `<button type="button" class="cl-button cl-button-quiet" data-cl-folder-rename>Rename folder</button><button type="button" class="cl-button cl-button-quiet" data-cl-folder-delete>Delete folder</button>` : `<button type="button" class="cl-button cl-button-quiet" data-cl-folder-create>New folder</button>`}</div>
+  </div>
+  <p class="cl-lede">${folder ? "Keep related classrooms together." : "Pick up where you left off, or start something new with <code>/teach</code>."}</p>
 </div>
-<ul class="cl-grid">
-${classrooms.map((c) => classroomCard(c, dueByClassroom[c.name] ?? 0)).join("\n")}
-</ul>`;
+${!folder && folders.length ? `<section aria-label="Folders"><h2 class="cl-section-title">Folders</h2><ul class="cl-grid cl-folder-grid">${folders.map((f) => `<li class="cl-card"><a class="cl-card-link" href="/?folder=${encodeURIComponent(f.id)}"><span class="cl-card-emoji" aria-hidden="true">📁</span><span class="cl-card-body"><span class="cl-card-title">${escapeHtml(f.name)}</span><span class="cl-card-meta">${plural(classrooms.filter((c) => f.classrooms.includes(c.name)).length, "classroom")}</span></span></a></li>`).join("\n")}</ul></section>` : ""}
+<section aria-label="${folder ? "Classrooms in folder" : "Unfiled classrooms"}">
+${!folder && folders.length ? '<h2 class="cl-section-title">Unfiled classrooms</h2>' : ""}
+${visible.length ? `<ul class="cl-grid">${visible.map((c) => classroomCard(c, dueByClassroom[c.name] ?? 0)).join("\n")}</ul>` : folder ? '<p class="cl-folder-empty">This folder is empty. Use “Move to folder” on a classroom to add it here.</p>' : classrooms.length ? '<p class="cl-folder-empty">All classrooms are in folders.</p>' : emptyState("No classrooms yet", "Ask your agent to teach you a topic (<code>/teach &lt;topic&gt;</code> in Pi) and your first classroom will appear here.")}
+</section>
+<dialog class="cl-confirm cl-folder-dialog" aria-labelledby="cl-folder-dialog-title">
+  <form data-cl-folder-form>
+    <h2 class="cl-confirm-title" id="cl-folder-dialog-title"></h2>
+    <p class="cl-confirm-body" data-cl-folder-description></p>
+    <label class="cl-folder-field" data-cl-folder-name-label>Folder name
+      <input name="name" required maxlength="80" autocomplete="off">
+    </label>
+    <div class="cl-folder-field" data-cl-folder-select-label>
+      <label for="cl-folder-select">Folder</label>
+      <select id="cl-folder-select" name="folder"><option value="">Unfiled</option>${folders.map((f) => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`).join("")}</select>
+    </div>
+    <p role="alert" class="cl-folder-error" data-cl-folder-error hidden></p>
+    <div class="cl-confirm-actions">
+      <button type="button" class="cl-button cl-button-quiet" data-cl-folder-cancel>Cancel</button>
+      <button type="submit" class="cl-button" data-cl-folder-save>Save</button>
+    </div>
+  </form>
+</dialog>
+</div>`;
 
   return shell({
-    title: "Classrooms",
-    breadcrumb: `<span class="cl-crumb cl-crumb-current">Classrooms</span>`,
+    title,
+    breadcrumb: folder
+      ? `<a class="cl-crumb" href="/">Classrooms</a><span class="cl-crumb-sep" aria-hidden="true">/</span><span class="cl-crumb cl-crumb-current">${escapeHtml(folder.name)}</span>`
+      : `<span class="cl-crumb cl-crumb-current">Classrooms</span>`,
     body,
+  });
+}
+
+export function folderLoadErrorPage(message: string, retryUrl: string): string {
+  return shell({
+    title: "Cannot load classrooms",
+    breadcrumb: '<a class="cl-crumb" href="/">Classrooms</a>',
+    body: `<div class="cl-hero"><h1>Cannot load classroom folders</h1></div>
+<p role="alert">${escapeHtml(message)}</p>
+<p>Fix the folder state, then retry loading.</p>
+<a class="cl-button cl-button-quiet" href="${escapeHtml(retryUrl)}">Retry loading</a>`,
   });
 }
 
 function classroomCard(classroom: Classroom, due: number): string {
   const why = missionWhy(classroom.mission);
-  return `<li class="cl-card">
+  return `<li class="cl-card cl-classroom-card">
   <a class="cl-card-link" href="/c/${encodeURIComponent(classroom.name)}">
     <span class="cl-card-emoji" aria-hidden="true">${escapeHtml(classroom.emoji)}</span>
     <span class="cl-card-body">
@@ -105,6 +145,7 @@ function classroomCard(classroom: Classroom, due: number): string {
       <span class="cl-card-meta">${plural(classroom.lessonCount, "lesson")}${due > 0 ? ` · <span class="cl-card-due">${due} due for review</span>` : ""}</span>
     </span>
   </a>
+  <button type="button" class="cl-classroom-move" data-cl-move="${escapeHtml(classroom.name)}" data-classroom-title="${escapeHtml(classroom.title)}" aria-label="Move ${escapeHtml(classroom.title)} to folder">Move to folder</button>
 </li>`;
 }
 

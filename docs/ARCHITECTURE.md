@@ -145,7 +145,7 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
 
 ## Key behaviours
 
-- **Classroom folders keep stable paths.** The folder API reads folder names and
+- **Classroom folders keep stable paths.** The landing page reads folder names and
   membership from `<root>/.folders.json`. Each classroom belongs to at most one
   folder. Folder edits hold `<root>/.folders.lock` and replace the state file with
   an atomic rename. An overlapping edit returns a conflict and requires an explicit

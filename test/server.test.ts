@@ -1127,3 +1127,51 @@ it("returns a conflict for a locked folder edit and requires an explicit retry",
     fs.rmSync(path.join(fixture.root, ".folders.json"), { force: true });
   }
 });
+
+it("groups classrooms through folder edits while keeping lesson URLs private and stable", async () => {
+  try {
+    const created = await post("/api/folders", { action: "create", name: "<Work & study>" });
+    expect(created.status).toBe(200);
+    const {
+      folders: [folder],
+    } = await created.json();
+    expect(
+      (await post("/api/folders", { action: "move", classroom: "rust", id: folder.id })).status,
+    ).toBe(200);
+    const root = await (await get("/")).text();
+    expect(root).toContain("&lt;Work &amp; study&gt;");
+    expect(root).not.toContain('href="/c/rust"');
+    const grouped = await (await get(`/?folder=${folder.id}`)).text();
+    expect(grouped).toContain('href="/c/rust"');
+    expect(grouped).toContain("&lt;Work &amp; study&gt;");
+    expect((await get("/c/rust/001-ownership")).status).toBe(200);
+    expect((await get("/c/rust/001-ownership/quiz/key.json")).status).toBe(404);
+    expect((await get("/.folders.json")).status).toBe(404);
+    expect((await get("/api/folders")).status).toBe(405);
+    expect(
+      (await post("/api/folders", { action: "move", classroom: "rust", id: "missing" })).status,
+    ).toBe(400);
+    expect((await get("/?folder=missing")).status).toBe(404);
+    const malformed = await fetch(`${baseUrl}/api/folders`, { method: "POST", body: "{" });
+    expect(malformed.status).toBe(400);
+    expect((await post("/api/folders", { action: "delete", id: folder.id })).status).toBe(200);
+    expect(await (await get("/")).text()).toContain('href="/c/rust"');
+    expect((await get(`/?folder=${folder.id}`)).status).toBe(404);
+  } finally {
+    fs.rmSync(path.join(fixture.root, ".folders.json"), { force: true });
+  }
+});
+
+it("shows a specific folder load error and preserves the retry URL", async () => {
+  fixture.write(".folders.json", "{");
+  try {
+    const page = await get("/?folder=work");
+    expect(page.status).toBe(500);
+    const html = await page.text();
+    expect(html).toContain("Cannot read JSON state");
+    expect(html).toContain('href="/?folder=work">Retry loading');
+    expect(fs.readFileSync(path.join(fixture.root, ".folders.json"), "utf8")).toBe("{");
+  } finally {
+    fs.rmSync(path.join(fixture.root, ".folders.json"), { force: true });
+  }
+});
