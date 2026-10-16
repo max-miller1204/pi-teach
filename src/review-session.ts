@@ -108,7 +108,7 @@ export function startReview(
   const existing =
     requests.find((r) => r.id === id) ?? [...requests].reverse().find(resumableReview);
   if (existing) {
-    requireReviewOwner(existing, owner);
+    if (existing.status !== "done") requireReviewOwner(existing, owner);
     return { session: existing, added: false };
   }
   const at = Date.now();

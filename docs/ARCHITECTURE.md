@@ -255,7 +255,7 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   graded.
 - **Reviews start on the classroom page.** `Start review` saves one request and up to
   five due items. Each request records its host and process. Another host cannot take over
-  the request. Pi authors the assigned files in its live session. The persistent
+  unfinished authoring. A published review can open from any host. Pi authors the assigned files in its live session. The persistent
   teacher returns one `publish_review` call. The service saves that plan before it
   writes files. Normal teacher requests cannot publish pages. Validate the item keys,
   private rubric, control shapes, and teaching plan before publication. Hide unfinished reviews from
