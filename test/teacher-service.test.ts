@@ -772,3 +772,66 @@ it("rejects an unknown saved plan version before recovery", async () => {
   expect(() => readTeacherState("rust")).toThrow("Invalid teacher state");
   await teacher.stop();
 });
+
+it("rejects unsupported pretest records before saving a grade", async () => {
+  const s = store.createSubmission({
+    ...location,
+    quizId: "prior",
+    quizTitle: "Pretest",
+    kind: "pretest",
+    answers: [termAnswer("q1", "forever")],
+  });
+  const teacher = new TeacherService(async () => ({
+    ...plan([grade(s.id)]),
+    learning_record: "No learning record. Neither answer was correct.",
+  }));
+  teacher.attach("rust", "claude");
+  await teacher.idle();
+  const request = readTeacherState("rust")!.requests[0];
+  expect(request.status).toBe("failed");
+  expect(request.error).toContain("requires fully credited evidence");
+  expect(request.applied).toBeUndefined();
+  expect(store.listGrades("rust", location.lesson)).toHaveLength(0);
+  expect(store.listLearningRecords("rust")).toHaveLength(0);
+  await teacher.stop();
+});
+
+it("recovers an older unsupported pretest record on explicit retry and preserves its saved grade", async () => {
+  const s = store.createSubmission({
+    ...location,
+    quizId: "prior",
+    quizTitle: "Pretest",
+    kind: "pretest",
+    answers: [termAnswer("q1", "forever")],
+  });
+  const first = new TeacherService(async () => plan([grade(s.id)]));
+  first.attach("rust", "claude");
+  await first.idle();
+  const originalGrade = store.listGrades("rust", location.lesson)[0];
+  const state = readTeacherState("rust")!;
+  Object.assign(state.requests[0], {
+    status: "failed",
+    applied: 1,
+    planValidated: true,
+    recordFile: "0001-teacher-check.md",
+    error: "A quiz learning record requires fully credited evidence.",
+  });
+  state.requests[0].plan!.learning_record = "No learning record. Neither answer was correct.";
+  saveTeacherState("rust", state);
+  await first.stop();
+  let runs = 0;
+  const restarted = new TeacherService(async () => {
+    runs++;
+    return plan([grade(s.id)]);
+  });
+  restarted.restore();
+  await restarted.idle();
+  expect(runs).toBe(0);
+  restarted.retry("rust", `quiz:${s.id}`);
+  await restarted.idle();
+  expect(runs).toBe(1);
+  expect(readTeacherState("rust")!.requests[0].status).toBe("done");
+  expect(store.listGrades("rust", location.lesson)).toEqual([originalGrade]);
+  expect(store.listLearningRecords("rust")).toHaveLength(0);
+  await restarted.stop();
+});

@@ -40,7 +40,17 @@ export const PLAN_SCHEMA = {
       },
     },
     message: { type: "string" },
-    learning_record: { type: "string" },
+    learning_record: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          additionalProperties: false,
+          properties: { markdown: { type: "string", minLength: 1, pattern: "\\S" } },
+          required: ["markdown"],
+        },
+      ],
+    },
     notes_markdown: { type: "string" },
   },
   required: ["calls", "message", "learning_record", "notes_markdown"],
@@ -112,6 +122,25 @@ export function parsePlan(value: unknown): TeacherPlan {
   return p;
 }
 
+/** Decode explicit absence without treating descriptive text as an absent record. */
+export function parseModelPlan(value: unknown): TeacherPlan {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Teacher returned no plan.");
+  const record = (value as Record<string, unknown>).learning_record;
+  if (
+    record !== null &&
+    (!record ||
+      typeof record !== "object" ||
+      Array.isArray(record) ||
+      Object.keys(record).length !== 1 ||
+      !("markdown" in record) ||
+      typeof record.markdown !== "string" ||
+      !record.markdown.trim())
+  )
+    throw new Error("Teacher learning_record must be null or an object with nonblank markdown.");
+  return parsePlan({ ...value, learning_record: record === null ? "" : record.markdown });
+}
+
 export const runTeacher: RunTeacher = async (
   identity,
   prompt,
@@ -130,7 +159,7 @@ export const runTeacher: RunTeacher = async (
     signal,
   );
   saveModelOutput?.(raw);
-  return parsePlan(raw);
+  return parseModelPlan(raw);
 };
 
 /** Run a read-only model turn with a schema supplied by the caller. */

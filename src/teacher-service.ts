@@ -266,6 +266,22 @@ export class TeacherService {
     const state = this.states.get(classroom),
       r = state?.requests.find((r) => r.id === id);
     if (!state || !r || r.status !== "failed") throw new Error("This request cannot be retried.");
+    if (r.kind === "quiz" && r.plan?.learning_record.trim()) {
+      const submitted = store.findSubmission(r.target);
+      const grade = store
+        .latestGrades(r.classroom, r.lesson)
+        .find((grade) => grade.submissionId === r.target);
+      if (
+        submitted?.kind === "pretest" &&
+        grade &&
+        !grade.questions.some((question) => question.correct)
+      ) {
+        delete r.plan;
+        delete r.recordFile;
+        r.applied = 0;
+        r.planValidated = false;
+      }
+    }
     if (r.kind === "quiz" && r.plan && !(r.applied ?? 0)) {
       const submission = store.findSubmission(r.target);
       if (submission?.rubricDigest && r.planRubricDigest !== submission.rubricDigest) {
@@ -689,6 +705,17 @@ export class TeacherService {
               ),
           ),
       );
+    if (
+      pretest &&
+      plan.learning_record.trim() &&
+      !parsed.some(
+        (call) =>
+          (call.name === "grade_lesson_quiz" || call.name === GRADE_ANSWERS) &&
+          Array.isArray(call.args.questions) &&
+          call.args.questions.some((question: { correct?: boolean }) => question.correct === true),
+      )
+    )
+      throw new Error("A quiz learning record requires fully credited evidence.");
     if (
       plan.learning_record.trim() &&
       !pretest &&
