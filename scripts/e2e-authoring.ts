@@ -27,8 +27,13 @@
  *
  * Hard failures: a missing lesson, an unfinished question, a missing rubric, no
  * browser check of the agent's own pages, a contract error, a page error, a refused
- * submission, or a missing grade. Variety is reported, not enforced: a model can
- * author differently on every run, and suitable repetition is valid. Read the report.
+ * submission, or a missing grade. These check whether the product works, so they set
+ * the verdict.
+ *
+ * Teaching quality is reported, not enforced. A separate model judges each lesson
+ * against the semantic criteria. Model output and these judgments vary between runs,
+ * so the report gives a score and findings without changing the verdict. Variety is
+ * also reported, not enforced: suitable repetition is valid. Read the report.
  *
  * This calls a real model, so it needs a logged-in harness and is not part of CI. The
  * classrooms root and any CODEX_HOME are temporary directories, deleted at the end.
@@ -242,6 +247,10 @@ interface LessonReport {
   images: number;
   rubric: boolean;
   semanticEvaluation?: Awaited<ReturnType<typeof evaluateContent>>;
+  /** Failed semantic judgments. Reported only; they do not fail the run. */
+  qualityFindings: string[];
+  /** Set when the semantic evaluator returned no usable judgments. */
+  qualityError?: string;
   problems: string[];
 }
 
@@ -301,6 +310,7 @@ function inspectLesson(root: string, lesson: string, objective: string): LessonR
     tables: count(body, /<table\b/g),
     images: count(body, /<(?:img|svg)\b/g),
     rubric,
+    qualityFindings: [],
     problems,
   };
 }
@@ -570,14 +580,14 @@ async function main(): Promise<void> {
         );
         for (const judgment of report.semanticEvaluation.judgments)
           if (judgment.verdict === "fail")
-            report.problems.push(`Content ${judgment.criterion}: ${judgment.reason}`);
+            report.qualityFindings.push(`${judgment.criterion}: ${judgment.reason}`);
         if (artifacts)
           fs.writeFileSync(
             path.join(artifacts, `${harness}-${report.lesson}-semantic.json`),
             JSON.stringify(report.semanticEvaluation, null, 2),
           );
       } catch (err) {
-        report.problems.push(`Semantic evaluator: ${(err as Error).message}`);
+        report.qualityError = (err as Error).message;
       }
     }
 
@@ -687,12 +697,22 @@ async function main(): Promise<void> {
     }
 
     // Report.
+    const judged = reports.flatMap((r) =>
+      (r.semanticEvaluation?.judgments ?? []).filter((j) => j.verdict !== "not-applicable"),
+    );
+    const quality = {
+      setsVerdict: false,
+      criteriaPassed: judged.filter((j) => j.verdict === "pass").length,
+      criteriaJudged: judged.length,
+      lessonsWithoutReview: reports.filter((r) => r.qualityError).map((r) => r.lesson),
+    };
     const summary = {
       harness,
       agentSummary: finalText(authoring.stream()),
       humanLearningEvidence: false,
       browserCommands: pageChecks,
       lessons: reports.map((r) => ({ ...r, submitted: undefined })),
+      quality,
       variety: {
         distinctOutlines: new Set(reports.map((r) => r.outline.join(" > "))).size,
         distinctHeadingSets: new Set(reports.map((r) => r.headings.join(" | "))).size,
@@ -720,9 +740,25 @@ async function main(): Promise<void> {
         `   local controls: ${r.localControls.map((c) => `${c.label}${c.changed ? "" : " (no visible change)"}`).join(", ") || "none"}`,
       );
       log(`   problems: ${r.problems.join(" ") || "none"}`);
+      if (r.qualityError) log(`   quality: no review. Evaluator error: ${r.qualityError}`);
+      else {
+        const applicable = (r.semanticEvaluation?.judgments ?? []).filter(
+          (j) => j.verdict !== "not-applicable",
+        );
+        log(
+          `   quality: ${applicable.filter((j) => j.verdict === "pass").length}/${applicable.length} criteria pass`,
+        );
+        for (const finding of r.qualityFindings) log(`     - ${finding}`);
+      }
       failures.push(...r.problems.map((p) => `${r.lesson}: ${p}`));
     }
     log(`variety: ${JSON.stringify(summary.variety)}`);
+    log(
+      `quality (reported, does not set the verdict): ${quality.criteriaPassed}/${quality.criteriaJudged} criteria pass` +
+        (quality.lessonsWithoutReview.length
+          ? `; no review for ${quality.lessonsWithoutReview.join(", ")}`
+          : ""),
+    );
     log(`agent summary: ${summary.agentSummary}`);
     if (artifacts) {
       fs.writeFileSync(

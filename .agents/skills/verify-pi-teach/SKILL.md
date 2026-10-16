@@ -40,6 +40,14 @@ Use the installed `playwright-cli` through the repository harness. Each run has 
 
 Pass `--artifacts <directory>` to any target. Use a new directory for each run. `checks` runs only formatting, types, and automated tests. `browser` runs only browser checks. Do not repeat completed checks unless code changes or a finding requires it.
 
+## Verdicts and quality reports
+
+The default target, the real `pi`, `claude`, and `codex` drives, and `feedback` set a PASS or FAIL verdict. They check whether the product works.
+
+`authoring` sets its verdict from mechanical checks only: lessons exist, rubrics exist, pages load without contract or page errors, quizzes submit, grades save, and reload keeps them. Its semantic judgments are a quality report. They give a score and findings, but they do not change the verdict. `quality` reports how many known defects the judge detects. Only an evaluator error fails it.
+
+Model output and model judgments change between runs. Do not hold a change because a quality finding appears, and do not rerun until the score improves. Fix a finding only when it shows a code or contract defect. Report other findings to the user. When a change affects authoring guidance or templates, compare quality reports with `main` over more than one run.
+
 ## Evidence
 
 The runner prints the evidence directory. It saves stdout, stderr, exit codes, revision, and working tree status in `run.json`. Browser drives save screenshots and stored state below `browser/`. Real hosts save their event streams and teacher state. Keep failed evidence.
