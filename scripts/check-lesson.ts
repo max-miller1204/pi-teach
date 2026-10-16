@@ -2,6 +2,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import {
   classroomsRoot,
   classroomDir,
@@ -96,7 +97,18 @@ try {
   }
   const released = await playwrightCode(browser, root, check);
   console.log(
-    JSON.stringify({ classroom, lesson, initial, released, learnerStateChanged: false }, null, 2),
+    JSON.stringify(
+      {
+        classroom,
+        lesson,
+        htmlHash: createHash("sha256").update(html).digest("hex"),
+        initial,
+        released,
+        learnerStateChanged: false,
+      },
+      null,
+      2,
+    ),
   );
 } finally {
   try {
