@@ -8,6 +8,9 @@ Run authoring evaluations for Claude and Codex. Run `e2e:quality` on both hosts
 to test a structurally valid lesson with unrelated prequestions and exposed answers.
 Run `e2e:feedback` on both hosts for fixed grading cases. Keep every report, including failures.
 An agent answering its own questions is not evidence of human learning.
+Mechanical checks set the verdict. Semantic judgments of teaching quality are
+reported as a score with findings and do not set the verdict. Judge models vary
+between runs, so compare reports over several runs before you change guidance.
 
 Use structural checks for objective coverage, teaching targets, question identities,
 private rubric binding, and gates. Review generated content separately. Metadata
