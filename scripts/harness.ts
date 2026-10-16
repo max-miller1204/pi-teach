@@ -184,6 +184,10 @@ export function packagedPageChecks(
 ): Array<{ classroom: string; lesson: string; htmlHash: string }> {
   const commands = new Map<string, string>();
   const checks: Array<{ classroom: string; lesson: string; htmlHash: string }> = [];
+  // A receipt proves its own result: check-lesson prints one only after the checks
+  // finish, with error counts and the checked HTML hash. Read every complete JSON
+  // object in the output. Other output, such as a failed command chained after the
+  // check, does not hide a receipt.
   function receipts(output: string): unknown[] {
     const values: unknown[] = [];
     let start = -1,
@@ -193,8 +197,7 @@ export function packagedPageChecks(
     for (let i = 0; i < output.length; i++) {
       const char = output[i];
       if (start < 0) {
-        if (/\s/.test(char)) continue;
-        if (char !== "{") throw new Error("A page-check receipt must be a JSON object.");
+        if (char !== "{") continue;
         start = i;
       }
       if (quoted) {
@@ -204,25 +207,21 @@ export function packagedPageChecks(
       } else if (char === '"') quoted = true;
       else if (char === "{") depth++;
       else if (char === "}" && --depth === 0) {
-        values.push(JSON.parse(output.slice(start, i + 1)));
+        try {
+          values.push(JSON.parse(output.slice(start, i + 1)));
+        } catch {
+          i = start;
+        }
         start = -1;
       }
     }
-    if (start >= 0) throw new Error("A page-check receipt is incomplete.");
-    return values;
+    // An unclosed brace before a receipt must not hide it.
+    return start >= 0 ? [...values, ...receipts(output.slice(start + 1))] : values;
   }
-  function collect(command: string, output: string, failed: boolean): void {
-    if (
-      failed ||
-      !/\bnode\s+(?:\\?["'])?[^\s"'\\]*\/scripts\/check-lesson\.ts(?:\\?["'])?\s/.test(command)
-    )
+  function collect(command: string, output: string): void {
+    if (!/\bnode\s+(?:\\?["'])?[^\s"'\\]*\/scripts\/check-lesson\.ts(?:\\?["'])?\s/.test(command))
       return;
-    let parsed;
-    try {
-      parsed = receipts(output);
-    } catch {
-      return;
-    }
+    const parsed = receipts(output);
     for (const value of parsed) {
       const receipt = value as Record<string, any>;
       if (
@@ -246,8 +245,7 @@ export function packagedPageChecks(
     const event = JSON.parse(line);
     if (harness === "codex" && event.type === "item.completed") {
       const item = event.item;
-      if (item?.type === "command_execution")
-        collect(item.command, item.aggregated_output, item.exit_code !== 0);
+      if (item?.type === "command_execution") collect(item.command, item.aggregated_output);
     }
     if (harness === "claude" && event.type === "assistant") {
       for (const block of event.message.content) {
@@ -265,7 +263,7 @@ export function packagedPageChecks(
                 .filter((part: { type: string }) => part.type === "text")
                 .map((part: { text: string }) => part.text)
                 .join("\n");
-        collect(commands.get(block.tool_use_id) ?? "", output, block.is_error === true);
+        collect(commands.get(block.tool_use_id) ?? "", output);
       }
     }
   }

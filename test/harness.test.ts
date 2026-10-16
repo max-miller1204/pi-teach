@@ -52,7 +52,7 @@ function codex(output: unknown = receipt, executed = command, exit_code = 0): st
       type: "command_execution",
       command: executed,
       exit_code,
-      aggregated_output: JSON.stringify(output),
+      aggregated_output: typeof output === "string" ? output : JSON.stringify(output),
     },
   });
 }
@@ -71,7 +71,7 @@ describe("packaged authoring check receipts", () => {
       ),
     ).toHaveLength(1);
   });
-  it("reads separate receipts from one successful command without changing JSON strings", () => {
+  it("reads separate receipts from one command without changing JSON strings", () => {
     const second = {
       ...receipt,
       lesson: "003-pipes",
@@ -82,8 +82,14 @@ describe("packaged authoring check receipts", () => {
     expect(packagedPageChecks("codex", JSON.stringify(event)).map((check) => check.lesson)).toEqual(
       ["002-forks", "003-pipes"],
     );
-    event.item.aggregated_output += "unexpected output";
-    expect(packagedPageChecks("codex", JSON.stringify(event))).toEqual([]);
+    event.item.aggregated_output = "=== { unclosed\n" + event.item.aggregated_output + "done";
+    expect(packagedPageChecks("codex", JSON.stringify(event)).map((check) => check.lesson)).toEqual(
+      ["002-forks", "003-pipes"],
+    );
+  });
+  it("ignores a receipt cut off by tail", () => {
+    const output = JSON.stringify(receipt, null, 2).split("\n").slice(3).join("\n");
+    expect(packagedPageChecks("codex", codex(output))).toEqual([]);
   });
   it("matches Claude results to the script execution", () => {
     const events = [
@@ -114,8 +120,14 @@ describe("packaged authoring check receipts", () => {
       packagedPageChecks("codex", codex(receipt, "cat /plugin/scripts/check-lesson.ts")),
     ).toEqual([]);
   });
-  it("rejects a failed process even with a receipt", () => {
-    expect(packagedPageChecks("codex", codex(receipt, command, 1))).toEqual([]);
+  it("keeps a receipt when a command chained after the check fails", () => {
+    const output = JSON.stringify(receipt, null, 2) + "\n(eval):1: == not found\n";
+    expect(
+      packagedPageChecks("codex", codex(output, `${command} | tail -30; echo ===`, 1)),
+    ).toEqual([{ classroom: "os", lesson: "002-forks", htmlHash: receipt.htmlHash }]);
+  });
+  it("rejects a failed check that prints no receipt", () => {
+    expect(packagedPageChecks("codex", codex("Error: Contract error", command, 1))).toEqual([]);
   });
   it.each([
     { ...receipt, learnerStateChanged: true },
