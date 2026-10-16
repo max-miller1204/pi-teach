@@ -10,6 +10,9 @@
  * override the system preference in either direction.
  */
 
+/* Temml's MathML rules, drawn with the math font the device has. */
+@import url("vendor/temml/Temml-Local.css");
+
 :root {
   --cl-bg: #fbfaf8;
   --cl-surface: #ffffff;
@@ -1457,6 +1460,31 @@ figure:has(> .cl-diagram) figcaption {
   font-size: 0.9rem;
   color: var(--cl-text-muted);
   text-align: center;
+}
+
+/* ── Math ─────────────────────────────────────────────────────────────────── */
+
+/* math.mjs and src/markdown.ts draw each formula into this span as MathML. */
+.cl-math-display {
+  display: block;
+  margin: 1rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.cl-math .cl-contract-error {
+  display: inline-block;
+  margin: 0;
+  vertical-align: middle;
+}
+
+.cl-math .cl-contract-error > * {
+  display: block;
+}
+
+.cl-math .cl-contract-error code {
+  margin-top: 0.3rem;
+  white-space: pre-wrap;
 }
 
 /* ── Self-explanations ────────────────────────────────────────────────────── */

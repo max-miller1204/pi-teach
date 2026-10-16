@@ -56,6 +56,7 @@ try {
     await page.reload();
     if(await page.locator('form.cl-quiz').count() === 0) throw new Error('The page has no quiz.');
     await page.waitForFunction(() => [...document.querySelectorAll('form.cl-quiz')].every(f => f.dataset.state));
+    await page.waitForFunction(() => !document.querySelector('.cl-diagram[aria-busy], .cl-math[aria-busy]'), null, { timeout: 30000 });
     const contract = await page.locator('.cl-contract-error').allTextContents();
     if(contract.length) throw new Error(contract.join(' '));
     const controls = [];

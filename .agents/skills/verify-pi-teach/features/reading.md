@@ -7,7 +7,7 @@ The learner reads a lesson and asks about text without leaving the page.
 - Highlight lesson prose or a quiz question and its options.
 - Read a card answer and send a card follow-up.
 - Restore saved cards and unsent text after reload.
-- Open glossary definitions. Draw diagrams. Change the theme.
+- Open glossary definitions. Draw diagrams and math. Change the theme.
 
 ## How to get to it (user POV)
 
@@ -24,7 +24,7 @@ Run `npm run verify -- browser --artifacts /tmp/pi-teach-reading`.
 
 The suite selects text with the mouse. It uses `.cl-ask-pill`, `[data-cl-question]`, and `[data-cl-followup]`. It checks saved annotations, draft restoration, and card placement after the quiz question. Asking about an option must not select it. Sending a follow-up must not submit the quiz.
 
-The suite opens glossary definitions and changes the theme. It checks drawn diagrams, accessible descriptions, and a visible error for invalid Mermaid source. Diagram text must not offer the ask pill.
+The suite opens glossary definitions and changes the theme. It checks drawn diagrams, accessible descriptions, and a visible error for invalid Mermaid source. Diagram text must not offer the ask pill. It checks drawn math, literal TeX in code, a visible error for invalid TeX, and Markdown math in a card answer. Math text must not offer the ask pill. A highlight around a formula marks the whole formula and quotes it as TeX. Grading receives each formula as TeX.
 
 ## Gotchas
 

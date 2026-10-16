@@ -201,6 +201,7 @@ show its result visibly. Check it in the browser. Keep local controls outside
 | Check (the default quiz kind)   | After teaching, to test the objective. It sets the lesson score and enters review.                                                        |
 | Review (`scaffold_review`)      | Questions are due and the learner agrees. Write new examples for the returned items. Keep each `data-review-of` exactly.                  |
 | `.cl-q-stimulus`                | The question needs code, a passage, a table, an image, or a diagram. Give images useful alt text: grading receives the text and alt text. |
+| Math                            | The topic needs formulas. Write TeX between `\(` and `\)` inline, or `\[` and `\]` for display. See below.                                |
 | Mermaid diagram                 | A process, relationship, or state is easier to understand as a diagram. Use the markup below and check the drawing in the browser.        |
 | `form.cl-reflect`               | You want an ungraded self-explanation after a key idea. Read it and record what it shows.                                                 |
 | Glossary                        | The topic has its own terms. The page marks them and asks the learner to recall each one before it shows the definition.                  |
@@ -234,6 +235,32 @@ diagrams inside the pretest gate.
 Check that each diagram draws in the headless browser. Check its labels and
 arrows. A parse error appears on the page and in the console. Fix it before
 sharing the page.
+
+### Math
+
+Write TeX inside `\(` and `\)` for inline math, and inside `\[` and `\]` for
+display math. The runtime draws it as MathML with the bundled Temml build, so no
+network script is needed. For example:
+
+```html
+<p>The slope of \(f(x) = x^2\) at \(x = a\) is</p>
+<p>\[ f'(a) = \lim_{h \to 0} \frac{f(a + h) - f(a)}{h} = 2a. \]</p>
+```
+
+The HTML parser reads the page before the runtime does. Write `<` as `&lt;` or
+`\lt` inside math, and keep HTML tags out of a formula. Text in `pre`, `code`, or
+an element with the class `cl-no-math` stays literal, so code can show TeX.
+
+Questions can use math in prompts, stimuli, choices, and cloze passages. The
+grader receives the TeX. Keep math out of `match` items: their select shows the
+TeX source. Learners type answers as plain text.
+
+In Markdown (answers, feedback, teacher messages, glossary definitions, notes),
+write `$...$` or `\(...\)` inline and `$$...$$` or `\[...\]` for display. The
+server renders it. Dollar amounts such as `$5 and $10` stay literal.
+
+Check that each formula draws in the headless browser. A TeX error appears on the
+page and in the console. Fix it before sharing the page.
 
 ### Checks on learning
 

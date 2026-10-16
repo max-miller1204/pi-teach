@@ -126,6 +126,13 @@ Browser side (`assets/runtime/`):
   `node scripts/vendor-mermaid.ts <version>`. It is vendored, not an npm dependency,
   because the package installs about 200 MB of Node modules that the browser build
   does not use.
+- `math.mjs` (+ `.d.mts`): draws each `\( \)` and `\[ \]` formula with the vendored
+  Temml build. Lessons and reference documents both load it. The build loads only on
+  a page that has math.
+- `vendor/temml/`: the Temml ES module, its types, `Temml-Local.css`, its font,
+  `LICENSE`, and `VERSION`. Update it with `node scripts/vendor-temml.ts <version>`.
+  `src/markdown.ts` imports the same module, so Markdown math and lesson math always
+  use one version. `classroom.css` imports the stylesheet.
 - `glossary.mjs` (+ `.d.mts`): pure glossary term matching. The server imports it for
   the avoided-word check.
 - `draft.mjs` (+ `.d.mts`): the draft contract: draft keys and the values each one
@@ -204,7 +211,8 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   older failure preserves any saved grade and requests a corrected plan.
 
 - **Answers render server-side.** `applyAnswer` and `applyGrade` store markdown _and_
-  HTML, so the browser needs no markdown parser.
+  HTML, so the browser needs no markdown parser. Markdown math becomes MathML there
+  too. TeX that does not parse shows its error in place.
 - **Submission timestamps are strictly increasing per lesson.** "Latest submission" is
   what the page rehydrates from, so the ordering has to be total: two submissions in the
   same millisecond would otherwise resolve by random UUID.
@@ -263,6 +271,11 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   index, the glossary, and the ask pill all skip `.cl-diagram`, so an anchor never
   depends on whether a diagram has finished drawing. A stimulus sends the Mermaid
   source to grading, not the SVG labels.
+- **A formula is drawn, not highlighted.** `initMath()` swaps each delimited formula
+  for a `span.cl-math` before anything indexes the text. The text index, the glossary,
+  and the ask pill skip `.cl-math`, because a `<mark>` inside MathML breaks the
+  drawing. A highlight around a formula quotes it as TeX. Grading reads each formula
+  as its TeX through `swapMathForSource()`.
 - **`quiz/` is never a static route.** It holds submissions and any answer key. Adding a
   route that serves lesson directories wholesale would leak it; the media route is
   deliberately narrow (`<lesson>/media/*` only).
