@@ -487,7 +487,8 @@ async function handleApi(
       return sendJson(res, { error: "Unknown classroom." }, 404);
     const session = currentReview(classroom);
     try {
-      if (session && hooks?.reviewOwner) requireReviewOwner(session, hooks.reviewOwner);
+      if (session && session.status !== "done" && hooks?.reviewOwner)
+        requireReviewOwner(session, hooks.reviewOwner);
       return sendJson(res, { review: publicReview(session) });
     } catch (err) {
       return sendJson(res, { error: (err as Error).message }, 409);

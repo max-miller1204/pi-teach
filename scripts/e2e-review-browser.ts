@@ -95,19 +95,21 @@ export async function verifyReviewBrowser(artifacts: string | null): Promise<voi
         notes_markdown: "",
       };
     });
-    if (host === "service") {
-      teacher.connect();
-      teacher.attach("rust", "codex");
-    } else
-      server.setHooks({
-        onAsk: (a) => bridge.ask(a),
-        onFollowUp: (a, f) => bridge.followUp(a, f),
-        onQuizSubmit: (s) => bridge.grade(s),
-        onReflect: (r) => bridge.reflect(r),
-        reviewOwner: "pi",
-        onReview: (s) => bridge.review(s),
-        onReviewRetry: (s) => bridge.retryReview(s),
-      });
+    const connectHost = () => {
+      if (host === "service") teacher.connect();
+      else
+        server.setHooks({
+          onAsk: (a) => bridge.ask(a),
+          onFollowUp: (a, f) => bridge.followUp(a, f),
+          onQuizSubmit: (s) => bridge.grade(s),
+          onReflect: (r) => bridge.reflect(r),
+          reviewOwner: "pi",
+          onReview: (s) => bridge.review(s),
+          onReviewRetry: (s) => bridge.retryReview(s),
+        });
+    };
+    connectHost();
+    if (host === "service") teacher.attach("rust", "codex");
     const code = (body: string) =>
       playwrightCode(
         session,
@@ -200,6 +202,18 @@ export async function verifyReviewBrowser(artifacts: string | null): Promise<voi
         fixture.write(`rust/${request.lesson}/lesson.html`, doc.lesson_html);
         bridge.onAgentEnd([]);
       }
+      const unexpectedWork = () => {
+        throw new Error("Opening a published review must not start teacher work.");
+      };
+      server.setHooks({
+        reviewOwner: host === "pi" ? "service" : "pi",
+        onAsk: unexpectedWork,
+        onFollowUp: unexpectedWork,
+        onQuizSubmit: unexpectedWork,
+        onReflect: unexpectedWork,
+        onReview: unexpectedWork,
+        onReviewRetry: unexpectedWork,
+      });
       await code(`
         await page.waitForURL(${JSON.stringify(`${base}/c/rust/${request.lesson}`)});
         await page.waitForFunction(() => document.querySelector('form.cl-quiz')?.dataset.state === 'fresh');
@@ -218,6 +232,7 @@ export async function verifyReviewBrowser(artifacts: string | null): Promise<voi
         if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Review controls overflow on mobile.');
         ${shot("mobile-continue-review")}
       `);
+      connectHost();
       if (
         Number(runs) !== 3 ||
         reviewSessions("rust").length !== 1 ||
@@ -308,6 +323,7 @@ export async function verifyReviewBrowser(artifacts: string | null): Promise<voi
                 "explicit retry",
                 "invalid control rejection",
                 "host ownership",
+                "continue published review from another host",
                 "automatic open",
                 "resume draft",
                 "mobile",

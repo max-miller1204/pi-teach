@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { ClassroomBridge } from "../src/bridge.ts";
-import { currentReview, reviewSessions, startReview, updateReview } from "../src/review-session.ts";
+import {
+  currentReview,
+  publishReview,
+  reviewSessions,
+  startReview,
+  updateReview,
+} from "../src/review-session.ts";
 import { DAY_MS } from "../src/review.ts";
 import * as server from "../src/server.ts";
 import * as store from "../src/store.ts";
@@ -49,6 +55,65 @@ const post = (base: string, route: string, body: unknown) =>
   });
 
 describe("browser review hosts", () => {
+  it.each(["pi", "service"] as const)(
+    "opens a published %s review from the other host without taking over authoring",
+    async (owner) => {
+      const session = startReview("rust", randomUUID(), owner).session;
+      const unexpectedWork = () => {
+        throw new Error("The other host must not author this review.");
+      };
+      server.setHooks({
+        reviewOwner: owner === "pi" ? "service" : "pi",
+        onAsk: unexpectedWork,
+        onFollowUp: unexpectedWork,
+        onQuizSubmit: unexpectedWork,
+        onReflect: unexpectedWork,
+        onReview: unexpectedWork,
+        onReviewRetry: unexpectedWork,
+      });
+      const base = await server.start(0);
+      for (const status of ["queued", "running", "failed"] as const) {
+        updateReview(session, status);
+        expect((await fetch(`${base}/api/review?classroom=rust`)).status).toBe(409);
+        expect((await post(base, "review", { classroom: "rust", id: randomUUID() })).status).toBe(
+          409,
+        );
+        expect(
+          (await post(base, "review/retry", { classroom: "rust", id: session.id })).status,
+        ).toBe(409);
+        expect((await fetch(`${base}/c/rust/${session.lesson}`)).status).toBe(404);
+      }
+      publishReview(session, reviewDocument(session.items));
+      updateReview(session, "done");
+      const status = await fetch(`${base}/api/review?classroom=rust`);
+      expect(status.status).toBe(200);
+      expect(await status.json()).toMatchObject({
+        review: { id: session.id, status: "done", resumable: true },
+      });
+      for (const id of [session.id, randomUUID()]) {
+        const resumed = await post(base, "review", { classroom: "rust", id });
+        expect(resumed.status).toBe(202);
+        expect(await resumed.json()).toMatchObject({ review: { id: session.id } });
+      }
+      expect((await fetch(`${base}/c/rust/${session.lesson}`)).status).toBe(200);
+      expect(currentReview("rust")).toMatchObject({ owner, status: "done" });
+      expect(reviewSessions("rust")).toHaveLength(1);
+      expect(store.listSubmissions("rust", session.lesson)).toHaveLength(0);
+      writeGradedAttempt({
+        lesson: session.lesson,
+        quizId: "review-check",
+        kind: "review",
+        at: Date.now(),
+        answers: [termAnswer("r1", "owner", { reviewOf: session.items[0].key })],
+        correct: { r1: true },
+      });
+      const completed = await fetch(`${base}/api/review?classroom=rust`);
+      expect(completed.status).toBe(200);
+      expect(await completed.json()).toMatchObject({
+        review: { id: session.id, status: "done", resumable: false },
+      });
+    },
+  );
   it("rejects unknown classrooms, missing teachers, and requests with no due items", async () => {
     const teacher = new TeacherService(async () => reviewPlan());
     teacher.connect();
