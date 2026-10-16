@@ -617,8 +617,10 @@ async function onAskSubmit(event) {
     });
     if (!response.ok) throw new Error(await response.text());
     const annotation = await response.json();
-    const mark = wrapRange(range, annotation.id);
-    renderCard(annotation, mark);
+    const answered = cards.get(annotation.id);
+    const mark = answered?.mark ?? wrapRange(range, annotation.id);
+    // An answer event can arrive before the pending submission response.
+    renderCard(answered?.annotation ?? annotation, mark);
   } catch (err) {
     console.error("[classroom] ask failed", err);
     alert("Could not reach your teacher. Is the session that started the classroom still running?");
@@ -979,6 +981,32 @@ function askConfirm({ title, body, confirmLabel, cancelLabel = "Cancel" }) {
 async function deleteCard(annotationId) {
   const card = cards.get(annotationId);
   if (!card) return;
+  const button = card.panel.querySelector("[data-cl-delete]");
+  button.disabled = true;
+  card.panel.querySelector(".cl-card-delete-error")?.remove();
+  try {
+    const response = await fetch(
+      `/api/annotations/${encodeURIComponent(annotationId)}?classroom=${encodeURIComponent(config.classroom)}&lesson=${encodeURIComponent(config.lesson)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      let detail = body;
+      try {
+        detail = JSON.parse(body).error ?? body;
+      } catch {}
+      throw new Error(`Could not delete this question (${response.status}): ${detail}`);
+    }
+  } catch (err) {
+    const error = document.createElement("p");
+    error.className = "cl-card-delete-error";
+    error.setAttribute("role", "alert");
+    error.textContent = `${err.message} Select Delete to retry.`;
+    card.panel.appendChild(error);
+    return;
+  } finally {
+    button.disabled = false;
+  }
 
   card.panel.remove();
   card.badge.remove();
@@ -992,15 +1020,6 @@ async function deleteCard(annotationId) {
     while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
     mark.remove();
     parent.normalize();
-  }
-
-  try {
-    await fetch(
-      `/api/annotations/${encodeURIComponent(annotationId)}?classroom=${encodeURIComponent(config.classroom)}&lesson=${encodeURIComponent(config.lesson)}`,
-      { method: "DELETE" },
-    );
-  } catch (err) {
-    console.warn("[classroom] delete failed", err);
   }
 }
 
@@ -1039,7 +1058,7 @@ function connectEvents() {
   source.addEventListener("answer", (event) => {
     const annotation = JSON.parse(event.data);
     const existing = cards.get(annotation.id);
-    renderCard(annotation, existing?.mark ?? null);
+    renderCard(annotation, existing?.mark ?? restoreAnnotation(annotation));
     // An answer that arrives while minimised should not steal the reader's place.
     if (minimised.has(annotation.id)) minimiseCard(annotation.id);
   });

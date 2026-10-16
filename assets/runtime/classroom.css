@@ -963,6 +963,13 @@ mark.cl-hl.cl-hl-pending {
   font-size: 0.75rem;
 }
 
+.cl-card-delete-error {
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.6rem 0.9rem;
+  color: #b42318;
+  font-size: 0.75rem;
+}
+
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 
 .cl-button {
