@@ -51,7 +51,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
   const quiz = /submission_id: "([^"]+)"/.exec(m.params.input[0].text);
   const calls = ask ? [{name:'answer_lesson_question',arguments_json:JSON.stringify({annotation_id:ask[1],answer_markdown:'The owner releases the value.'})}] : quiz ? [{name:'grade_quiz_answers',arguments_json:JSON.stringify({submission_id:quiz[1],...(m.params.input[0].text.includes('Previous teacher plan error:') ? {} : {score:10}),feedback_markdown:'Check the owner.',questions:[{question_id:'q1',correct:false,feedback:'Trace the owner.'}]})}] : [];
   send({id:m.id,result:{turn:{id:'browser-turn'}}});
-  send({method:'item/completed',params:{threadId:m.params.threadId,turnId:'browser-turn',item:{type:'agentMessage',text:JSON.stringify({calls,message:'What changes when the value moves?',learning_record:'',notes_markdown:''})}}});
+  send({method:'item/completed',params:{threadId:m.params.threadId,turnId:'browser-turn',item:{type:'agentMessage',text:JSON.stringify({calls,message:'What changes when the value moves?',learning_record:null,notes_markdown:''})}}});
   send({method:'turn/completed',params:{threadId:m.params.threadId,turn:{id:'browser-turn',status:'completed'}}});
  }
 });
@@ -366,7 +366,11 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       ${shot("rejected-grade")}
     `);
     const rejectedGrade = readTeacherState("rust")!.requests.find((r) => r.kind === "quiz")!;
-    if (!rejectedGrade.modelOutput) throw new Error("The raw model plan was not retained.");
+    if (
+      !rejectedGrade.modelOutput ||
+      (rejectedGrade.modelOutput as { learning_record?: unknown }).learning_record !== null
+    )
+      throw new Error("The raw model plan with explicit record absence was not retained.");
     if (rejectedGrade.status !== "failed" || store.listGrades("rust", "001-ownership").length)
       throw new Error("An invalid grade must fail before saving a grade.");
     snapshot("rejected-grade");

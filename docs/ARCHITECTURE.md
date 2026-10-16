@@ -198,6 +198,11 @@ Authoring contracts (`assets/templates/`) and the teaching methodology (`docs/`)
   Recovery does not replace an inconsistent saved score. The service saves the raw
   model response in `modelOutput` before it decodes the plan.
 
+  The model returns `learning_record: null` when no record qualifies. A record uses
+  an object with a nonblank `markdown` field. The stored plan keeps its string
+  format. Unsupported pretest records fail before grading. Explicit retry of an
+  older failure preserves any saved grade and requests a corrected plan.
+
 - **Answers render server-side.** `applyAnswer` and `applyGrade` store markdown _and_
   HTML, so the browser needs no markdown parser.
 - **Submission timestamps are strictly increasing per lesson.** "Latest submission" is
